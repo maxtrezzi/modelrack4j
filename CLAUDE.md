@@ -5,20 +5,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Project state
 
 **Greenfield — no code exists yet.** The repository contains documentation only:
-`CLAUDE.md`, `docs/adr/`, `.gitignore`, and the untracked `brainstorm/`. There is no POM,
-no source tree, and no git repository (`git init` has not been run).
+`CLAUDE.md`, `docs/`, `.gitignore`, and the untracked `brainstorm/`. There is no POM and no
+source tree. Git is initialised on `main` with no remote configured.
 
-Two documents matter, with different jobs:
+Three documents matter, with different jobs:
 
-- **`brainstorm/PLAN.md`** — the specification: purpose, settled decisions, module layout,
-  target API shape, config schema, SPI, Phase 0 verification tasks, milestones. Read it
-  before writing any code and follow it rather than re-deriving a design. Local-only.
-- **`docs/adr/`** — the rationale: ADR-0002 … ADR-0014 carry the reasoning behind each
-  design constraint, backfilled from the plan's Appendix A. Tracked and citable.
+- **`docs/tasks/`** — what to do next and whether it is done: the Phase 0 verification
+  tasks, milestones M0–M5, and the decisions waiting on the owner. **Start here.**
+- **`docs/adr/`** — why the work is shaped this way: ADR-0002 … ADR-0014 carry the
+  reasoning behind each design constraint, backfilled from the plan's Appendix A.
+- **`brainstorm/PLAN.md`** — the specification: config schema, target API shape, SPI
+  signature, module layout, and the §2 decision table. Local-only, never committed. Read it
+  before writing code and follow it rather than re-deriving a design.
 
-They overlap deliberately. Where the two differ on a *decision*, the ADR is the record of
-force; the plan remains the owner's working copy and the only home for the schema,
-milestones, and Phase 0 detail that the ADRs do not restate.
+They overlap deliberately. Where they differ: the ADR wins on a *decision*, `docs/tasks/`
+wins on *status*, and the plan remains the owner's working copy and the only home for the
+schema and API detail the tracked files do not restate.
 
 **`brainstorm/` is local-only and MUST NEVER be committed.** It is git-ignored; never
 `git add -f` it, never quote it into a commit message, README, issue, or PR body, and
@@ -27,7 +29,7 @@ must be rewritten for its destination (README, Javadoc, CHANGELOG), not pasted.
 
 ## Decision workflow — follow this every session
 
-Two artifacts, different audiences (ADR-0001):
+Three artifacts, different audiences (ADR-0001, ADR-0015):
 
 - **`brainstorm/discussions/YYYY-MM-DD-topic.md`** — local-only, never committed. Log
   every substantive design discussion here: what was asked, what was weighed, what was
@@ -39,6 +41,13 @@ Two artifacts, different audiences (ADR-0001):
   `docs/adr/0000-template.md`, take the next number, follow
   Context → Forces → Decision → Consequences, and add a row to the index in
   `docs/adr/README.md`.
+- **`docs/tasks/`** — tracked. Update the status of whatever you worked on, in the entry
+  and in the status board, in the same commit as the work. Verification tasks record what
+  was *found*, not just that they finished. Never renumber an item: `Task 0.4` and `M3` are
+  cited from this file and from the ADRs.
+
+Seed the session task list from `docs/tasks/` when starting work, and treat the files as
+the durable record — the session list is a working copy, not a second source of truth.
 
 Content moves from the discussion log to the ADR by **rewriting**, never copying — the log
 is private material, the ADR is the distilled public result. Accepted ADRs are immutable:
@@ -107,7 +116,7 @@ independently — two callbacks would let an application observe new-SL with old
 is a correctness hazard for multi-model councils. The staging step is load-bearing:
 builders throw for reasons `validate()` cannot predict.
 
-**Resolve after merging, never per file (ADR-0007, §6 TRAP).** Typesafe Config separates parsing
+**Resolve after merging, never per file (ADR-0007).** Typesafe Config separates parsing
 from resolution. Parse each layer with `ConfigFactory.parseFile(...)` only, merge with
 `withFallback` (lowest → highest precedence), then call `.resolve()` exactly ONCE on the
 merged result. Resolving per file breaks mandatory `${VAR}` substitution in layered
@@ -156,13 +165,14 @@ in-flight requests may still hold them.
 
 ## Working practices for this repo
 
-- **Phase 0 verification tasks (§3) gate design details.** Pin the LangChain4j version and
-  verify interface names, Java baseline, GLM module status, and which Gemini module is
-  current *against Maven Central and upstream sources* — the plan explicitly says not to
-  rely on training data for these.
-- **§9 lists open items that need the owner's decision.** Ask; do not decide unilaterally.
-- The §2 decision table is closed: do not reopen those choices without asking.
-- Milestones run M0 → M5 (definition of done for v1 = M5). Note the M4/M3 ordering question
-  in the plan.
+- **Phase 0 gates design details** — see `docs/tasks/phase-0-verification.md`. Verify those
+  facts *against Maven Central and upstream sources*, never from recollection; that is the
+  whole point of the phase. Several ADRs rest on assumptions those tasks confirm or refute,
+  and each entry names the ADR its finding would amend.
+- **`docs/tasks/open-decisions.md` needs the owner.** Ask; do not decide unilaterally.
+- The §2 decision table in `brainstorm/PLAN.md` is closed: do not reopen those choices
+  without asking. The ADRs carry the same decisions with their reasoning.
+- Milestones run M0 → M5 in `docs/tasks/milestones.md` (v1 is done at M5). Note the open
+  M3-vs-M4 ordering question recorded there.
 - The `java-best-practices-modern` plugin skill is enabled for this project; use it for
   non-trivial Java.

@@ -40,6 +40,10 @@ Discussion transcripts and half-formed thinking do **not** belong here — those
 `brainstorm/discussions/`, which is local-only and never committed. An ADR is the
 distilled, rewritten result, safe to publish.
 
+Work items do not belong here either. What to do, and whether it is done, lives in
+[`../tasks/`](../tasks/README.md) (ADR-0015); an ADR explains why the work is shaped the
+way it is.
+
 ## Index
 
 ADR-0002 through ADR-0014 were backfilled on 2026-07-26 from the decision records in the
@@ -80,3 +84,4 @@ by number, since the numbering only reflects the order of the original appendix.
 | ADR | Title | Status |
 |---|---|---|
 | [0001](0001-record-decisions-as-adrs.md) | Record decisions as ADRs; keep discussion logs out of the repo | Accepted |
+| [0015](0015-track-work-items-in-docs-tasks.md) | Track work items in `docs/tasks/`, alongside the ADRs | Accepted |

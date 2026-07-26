@@ -36,9 +36,10 @@ after each event. Re-register when a watched directory is lost.
 Measure actual macOS latency and document it, rather than asserting real-time behaviour
 everywhere.
 
-A verification spike gates implementation: confirm filename filtering, temp-file-rename
-behaviour, symlink target swap, and macOS latency on the target platforms before building
-the watcher.
+A verification spike gates implementation
+([Task 0.8](../tasks/phase-0-verification.md#task-08--watch-strategy-spike)): confirm
+filename filtering, temp-file-rename behaviour, symlink target swap, and macOS latency on
+the target platforms before building the watcher.
 
 ## Consequences
 
