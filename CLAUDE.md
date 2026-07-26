@@ -49,6 +49,12 @@ Three artifacts, different audiences (ADR-0001, ADR-0015):
 Seed the session task list from `docs/tasks/` when starting work, and treat the files as
 the durable record — the session list is a working copy, not a second source of truth.
 
+**Branch before starting.** Every task gets its own branch and nothing is committed
+directly to `main` (ADR-0016). Name it after the work item — `task/0.1-pin-langchain4j-version`,
+`milestone/m0-skeleton`, `decision/d2-repository-visibility`, or `docs/<slug>` for work with
+no task ID. One branch carries the work, its status update in `docs/tasks/`, and any ADR it
+produces.
+
 Content moves from the discussion log to the ADR by **rewriting**, never copying — the log
 is private material, the ADR is the distilled public result. Accepted ADRs are immutable:
 to change a decision, write a new ADR and mark the old one `Superseded by ADR-NNNN` (or

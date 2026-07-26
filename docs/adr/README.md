@@ -85,3 +85,4 @@ by number, since the numbering only reflects the order of the original appendix.
 |---|---|---|
 | [0001](0001-record-decisions-as-adrs.md) | Record decisions as ADRs; keep discussion logs out of the repo | Accepted |
 | [0015](0015-track-work-items-in-docs-tasks.md) | Track work items in `docs/tasks/`, alongside the ADRs | Accepted |
+| [0016](0016-one-feature-branch-per-task.md) | One feature branch per task | Accepted |

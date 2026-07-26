@@ -40,6 +40,12 @@ than renumbered, and new work takes the next free number.
 verification task whose answer is lost has to be redone. Findings that contradict a current
 ADR trigger an amendment to that ADR (see the folder README there for the mechanism).
 
+**Every task gets its own branch** ([ADR-0016](../adr/0016-one-feature-branch-per-task.md)).
+Branch before starting, never commit to `main`, and name the branch after the item:
+`task/0.1-pin-langchain4j-version`, `milestone/m0-skeleton`,
+`decision/d2-repository-visibility`. The branch carries the work, the status update here,
+and any ADR the task produces.
+
 ## Status board
 
 Phase 0 gates everything else; nothing below M0 should start before its blockers clear.
