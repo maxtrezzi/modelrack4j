@@ -1,0 +1,16 @@
+# Local-only planning material — never commit
+brainstorm/
+
+# Maven
+target/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.settings/
+.classpath
+.project
+
+# OS
+.DS_Store
