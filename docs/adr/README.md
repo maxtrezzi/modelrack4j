@@ -58,6 +58,7 @@ by number, since the numbering only reflects the order of the original appendix.
 | [0002](0002-scope-to-langchain4j-llm-configuration.md) | Scope to LangChain4j LLM configuration, not generic reloadable config | Accepted |
 | [0003](0003-bundle-holds-config-shaped-inputs-only.md) | A bundle holds the config-shaped inputs only | Accepted |
 | [0011](0011-independent-name-and-deferred-wrapper.md) | Independent name; the hot-swap wrapper deferred to v2 | Accepted |
+| [0017](0017-apache-2-0-license.md) | License under Apache 2.0, with no NOTICE file | Accepted |
 
 **Structure and configuration**
 
