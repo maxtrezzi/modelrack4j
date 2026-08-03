@@ -222,7 +222,7 @@ Also confirmed, since the SPI touches them: the request/response types are
 
 ### Task 0.6 — Provider capability matrix
 
-**Status:** Not started — unblocked by Task 0.1 (pinned `1.18.0`)
+**Status:** Done — checked 2026-08-03 against the `1.18.0` artifacts; token-estimation expectation refuted
 
 For the pinned version, determine which providers actually ship a `ModerationModel`
 (expected: the OpenAI family only) and which ship a `TokenCountEstimator` (expected:
@@ -240,6 +240,55 @@ amending.
 
 **Done when:** a provider × capability table exists, sourced from the artifacts, and the
 README capability matrix can be generated from it.
+
+#### Found
+
+The matrix for `1.18.0`, read from the artifacts. **This is the source the README capability
+table is generated from.**
+
+| Provider | `ModerationModel` | `TokenCountEstimator` | Counting mechanism |
+|---|---|---|---|
+| `langchain4j-open-ai` | ✅ `OpenAiModerationModel` | ✅ `OpenAiTokenCountEstimator` | **local** — `jtokkit`, a declared compile dependency |
+| `langchain4j-anthropic` | ❌ | ✅ `AnthropicTokenCountEstimator` | **remote** — HTTP to `/v1/…count_tokens` |
+| `langchain4j-google-ai-gemini` | ❌ | ✅ `GoogleAiGeminiTokenCountEstimator` | **remote** — HTTP to `countTokens` |
+| `langchain4j-google-genai` | ❌ | ✅ `GoogleGenAiTokenCountEstimator` | **remote** — HTTP |
+
+**Moderation: expectation confirmed.** OpenAI only. The bundle's `Optional<ModerationModel>`
+is permanently empty for three of the four providers.
+
+**Token estimation: expectation refuted.** The task expected "OpenAI; the others need
+checking" — in fact *all four* ship an estimator, so availability does not vary at all.
+
+**What varies is the mechanism, and the constructor signatures prove it** rather than
+suggesting it:
+
+- `OpenAiTokenCountEstimator` is constructed from a model name and nothing else.
+- The other three take a builder carrying `apiKey`, `baseUrl`, `timeout` and
+  `httpClientBuilder`. They are HTTP clients.
+
+This is consequential because `TokenWindowChatMemory` calls the estimator on eviction, so on
+three of four providers ordinary conversation turns make a billed, rate-limited, network-
+dependent call inside what the application treats as in-memory bookkeeping.
+
+Recorded as [ADR-0021](../adr/0021-token-estimation-is-universal-but-two-cost-classes.md):
+the SPI's token-estimation capability is three-valued (`ABSENT`/`LOCAL`/`REMOTE`), not
+boolean. A boolean would return true for all four and bless every configuration — the check
+would exist and catch nothing.
+
+#### Hands to other tasks
+
+- **[D3](open-decisions.md#d3--token-window-memory-on-a-remote-estimator)** — new, and needs
+  the owner: what `validate()` should *do* about token-window memory on a remote estimator.
+  Reject, warn, or opt-in — it changes the config schema, so ADR-0021 deliberately does not
+  decide it.
+- **[Task 0.4](#task-04--which-gemini-module)** — does not separate the two Gemini modules;
+  both are moderation-less and remote-counting, so capability is not a tiebreaker.
+- **[D1](open-decisions.md#d1--glm-route-if-no-maintained-module-exists)** — a GLM factory
+  built on `langchain4j-open-ai` would inherit OpenAI's *tokenizer* by accident of shape.
+  Whether GLM's tokenization matches OpenAI's is not something the endpoint's compatibility
+  guarantee covers; `ABSENT` is the honest reporting there.
+- **Re-verify on every LangChain4j bump.** This is a fact about `1.18.0`, not a permanent
+  property.
 
 ---
 
