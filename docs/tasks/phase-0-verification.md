@@ -15,7 +15,7 @@ has to be repeated.
 
 ### Task 0.1 — Pin the LangChain4j version
 
-**Status:** Not started
+**Status:** Done — checked 2026-07-28 against Maven Central
 
 Find the current stable LangChain4j release on Maven Central and pin it in the root POM as
 `<langchain4j.version>`.
@@ -25,11 +25,52 @@ answered until this one is. Nothing in M0 can build without it.
 
 **Done when:** a specific version is chosen and recorded, with the date checked.
 
+#### Found
+
+**Pinned version: `1.18.0`**, the current stable release. Published **2026-07-17**,
+confirmed twice — Central's `Last-Modified` on the artifact and the upstream GitHub
+release's `published_at`. It was eleven days old when checked, not fresh off the press.
+
+> The `<lastUpdated>` field in `maven-metadata.xml` is *not* a release date — it records
+> when Central regenerated the index, and read naively it makes every artifact look like it
+> shipped today. Use `Last-Modified` on the artifact, or the upstream release.
+
+**Upstream ships two version lines, and one property cannot express that.** This is the
+finding that matters, and it contradicts the single-`<langchain4j.version>` premise above.
+`langchain4j-bom:1.18.0` declares:
+
+| Property | Value | Covers |
+|---|---|---|
+| `langchain4j.stable.version` | `1.18.0` | `langchain4j-core`, `-open-ai`, `-anthropic`, `-google-ai-gemini` |
+| `langchain4j.beta.version` | `1.18.0-beta28` | `-google-genai`, and other not-yet-stabilised integrations |
+
+Verified per artifact: `langchain4j-core`, `-open-ai`, `-anthropic` and `-google-ai-gemini`
+all resolve at `1.18.0` (HTTP 200 on the POM); `langchain4j-google-genai` has **no** plain
+`1.18.0` (HTTP 404) and its newest release is `1.18.0-beta28`.
+
+**Consequence: import the BOM rather than hand-pinning artifacts** — it manages all 115
+artifacts across both lines and keeps the two in step on every bump. Recorded as
+[ADR-0018](../adr/0018-manage-langchain4j-versions-via-bom.md); M0 implements it.
+
+#### Hands to other tasks
+
+- **[Task 0.2](#task-02--verify-the-java-baseline), [0.5](#task-05--confirm-interface-names),
+  [0.6](#task-06--provider-capability-matrix)** — unblocked; the version they each asked
+  "for which version?" about is `1.18.0`.
+- **[Task 0.4](#task-04--which-gemini-module)** — a heavy input, but not the answer:
+  `-google-ai-gemini` is stable while the newer `-google-genai` is still beta after 28
+  betas. 0.4 asks what upstream *recommends*, which this does not establish.
+- **[Task 0.3](#task-03--glm-module-status)** — no zhipu or GLM artifact appears anywhere
+  in the BOM's 115 entries, consistent with the move to the community repository. Attempts
+  to browse `dev/langchain4j/community/` on Central returned nothing, which is
+  **inconclusive** rather than negative — Central does not reliably serve directory
+  listings. 0.3 still has to check the community repository properly.
+
 ---
 
 ### Task 0.2 — Verify the Java baseline
 
-**Status:** Blocked by Task 0.1
+**Status:** Not started — unblocked by Task 0.1 (pinned `1.18.0`)
 
 Determine the Java version required by the pinned LangChain4j release — from its POM or
 release notes, not from assumption — and set `maven.compiler.release` to match.
@@ -84,7 +125,7 @@ upstream deprecates the winner.
 
 ### Task 0.5 — Confirm interface names
 
-**Status:** Blocked by Task 0.1
+**Status:** Not started — unblocked by Task 0.1 (pinned `1.18.0`)
 
 Against the pinned version, confirm the exact names and packages of every type the public
 API touches: `ChatModel`, `StreamingChatModel`, `ModerationModel`
@@ -106,7 +147,7 @@ across `CLAUDE.md` and the ADRs in the same change.
 
 ### Task 0.6 — Provider capability matrix
 
-**Status:** Blocked by Task 0.1
+**Status:** Not started — unblocked by Task 0.1 (pinned `1.18.0`)
 
 For the pinned version, determine which providers actually ship a `ModerationModel`
 (expected: the OpenAI family only) and which ship a `TokenCountEstimator` (expected:
