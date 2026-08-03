@@ -70,7 +70,7 @@ artifacts across both lines and keeps the two in step on every bump. Recorded as
 
 ### Task 0.2 — Verify the Java baseline
 
-**Status:** Not started — unblocked by Task 0.1 (pinned `1.18.0`)
+**Status:** Done — checked 2026-08-03 against the artifacts, upstream POM and upstream docs
 
 Determine the Java version required by the pinned LangChain4j release — from its POM or
 release notes, not from assumption — and set `maven.compiler.release` to match.
@@ -83,6 +83,37 @@ to build on.
 
 **Done when:** `maven.compiler.release` is set and the reasoning recorded. Note that the
 development machine currently runs JDK 21, which is not the same question.
+
+#### Found
+
+**LangChain4j `1.18.0` requires Java 17.** It does not require more than 17, so the
+project's own floor stands and `maven.compiler.release` is **17** — recorded as
+[ADR-0019](../adr/0019-target-java-17.md), which M0 implements.
+
+Confirmed three independent ways, since one source alone would not have settled it:
+
+| Source | Evidence |
+|---|---|
+| Bytecode in the published artifacts | major version **61** (= Java 17) on all 1006 classes across `langchain4j-core`, `-open-ai`, `-anthropic`, `-google-ai-gemini` and `-google-genai:1.18.0-beta28`; **no** `META-INF/versions` overlays in any of them |
+| `langchain4j-parent/pom.xml` at tag `1.18.0` | `<java.version>17</java.version>` with `<maven.compiler.release>${java.version}</maven.compiler.release>` |
+| `docs.langchain4j.dev` | "The minimum supported JDK version is 17." |
+
+> The published `langchain4j-core-1.18.0.pom` on Central is **flattened** — no parent, no
+> `<build>` section, no compiler configuration. Reading the released POM alone cannot answer
+> this question; the answer is in the upstream source POM and in the bytecode.
+
+**Transitive dependencies impose no higher floor.** `jackson-databind:2.22.1`,
+`jackson-core:2.22.1`, `jackson-annotations:2.22`, `slf4j-api:2.0.18` and `jspecify:1.0.0`
+all carry Java 8 (major 52) base classes. Several are multi-release jars with 9/11/17/21
+overlays, which raise the version they *exploit*, never the version they *require*.
+
+#### Hands to other tasks
+
+- **[M0](milestones.md#m0--skeleton-and-ci)** — set `maven.compiler.release` to 17 and build
+  the CI matrix on JDK **17 and 21** per ADR-0019. The 17 leg is what stops the floor from
+  rotting; building only on 21 would not detect a Java 21 API creeping in.
+- **Re-check on every LangChain4j bump.** ADR-0018 makes the bump one line, which is exactly
+  why a raised upstream baseline could ride in unnoticed.
 
 ---
 
