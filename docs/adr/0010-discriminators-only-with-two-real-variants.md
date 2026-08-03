@@ -1,6 +1,6 @@
 # ADR-0010: Discriminated variants only where two real variants exist today
 
-- **Status:** Accepted
+- **Status:** Accepted — estimator-availability premise amended by [ADR-0021](0021-token-estimation-is-universal-but-two-cost-classes.md)
 - **Date:** 2026-07-26 *(record backfilled; the decision itself predates it)*
 - **Supersedes:** —
 
