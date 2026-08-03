@@ -1,6 +1,6 @@
 # ADR-0005: Abstract Factory per provider, discovered via `ServiceLoader`
 
-- **Status:** Accepted
+- **Status:** Accepted — core's dependency set amended by [ADR-0020](0020-core-depends-on-langchain4j-aggregate.md)
 - **Date:** 2026-07-26 *(record backfilled; the decision itself predates it)*
 - **Supersedes:** —
 

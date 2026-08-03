@@ -156,7 +156,7 @@ upstream deprecates the winner.
 
 ### Task 0.5 — Confirm interface names
 
-**Status:** Not started — unblocked by Task 0.1 (pinned `1.18.0`)
+**Status:** Done — checked 2026-08-03 against the `1.18.0` artifacts; one mismatch found and corrected
 
 Against the pinned version, confirm the exact names and packages of every type the public
 API touches: `ChatModel`, `StreamingChatModel`, `ModerationModel`
@@ -173,6 +173,50 @@ and every code sample in the eventual README.
 
 **Done when:** each name is confirmed against the artifact. Any mismatch is corrected
 across `CLAUDE.md` and the ADRs in the same change.
+
+#### Found
+
+Read from the `1.18.0` artifacts themselves, not from documentation.
+
+| Type | Fully-qualified name | Artifact |
+|---|---|---|
+| `ChatModel` | `dev.langchain4j.model.chat.ChatModel` | `langchain4j-core` |
+| `StreamingChatModel` | `dev.langchain4j.model.chat.StreamingChatModel` | `langchain4j-core` |
+| `ModerationModel` | `dev.langchain4j.model.moderation.ModerationModel` | `langchain4j-core` |
+| `TokenCountEstimator` | `dev.langchain4j.model.TokenCountEstimator` | `langchain4j-core` |
+| `ChatMemory` | `dev.langchain4j.memory.ChatMemory` | `langchain4j-core` |
+| `ChatMemoryStore` | `dev.langchain4j.store.memory.chat.ChatMemoryStore` | `langchain4j-core` |
+| **`ChatMemoryProvider`** | `dev.langchain4j.memory.chat.ChatMemoryProvider` | **`langchain4j` (aggregate)** |
+| `MessageWindowChatMemory`, `TokenWindowChatMemory` | `dev.langchain4j.memory.chat.*` | **`langchain4j` (aggregate)** |
+
+Two corrections fall out of that table.
+
+**1. `ChatMemoryProvider` is not in `langchain4j-core`.** This contradicted ADR-0005's
+two-dependency rule directly — ADR-0004 requires the type, ADR-0005 forbade the artifact
+carrying it. Resolved by [ADR-0020](../adr/0020-core-depends-on-langchain4j-aggregate.md):
+core takes a third dependency on the `langchain4j` aggregate, with `opennlp-tools` excluded.
+The exclusion was verified, not assumed — `opennlp` is referenced by exactly one class in
+that jar, `DocumentBySentenceSplitter`, which is out-of-scope RAG splitting.
+
+**2. `TokenCountEstimator` sits in `dev.langchain4j.model`**, not in a `.chat` or `.tokens`
+sub-package as the plan's prose implied.
+
+**`ChatLanguageModel` is gone, not deprecated.** No such type exists anywhere in `1.18.0`;
+the rename to `ChatModel` is complete. Any sample written from memory against the old name
+will not compile, which is the failure mode this task existed to prevent
+([ADR-0011](../adr/0011-independent-name-and-deferred-wrapper.md) anticipated the churn).
+
+Also confirmed, since the SPI touches them: the request/response types are
+`dev.langchain4j.model.chat.request.ChatRequest` / `ChatRequestParameters` /
+`DefaultChatRequestParameters` and `dev.langchain4j.model.chat.response.ChatResponse` /
+`StreamingChatResponseHandler`.
+
+#### Hands to other tasks
+
+- **[Task 0.6](#task-06--provider-capability-matrix)** — the two capability types are now
+  named exactly; 0.6 asks which providers implement them.
+- **M0** — core's POM has three dependencies, not two, and the exclusion must be re-verified
+  on every LangChain4j bump.
 
 ---
 

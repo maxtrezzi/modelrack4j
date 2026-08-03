@@ -64,7 +64,8 @@ by number, since the numbering only reflects the order of the original appendix.
 
 | ADR | Title | Status |
 |---|---|---|
-| [0005](0005-provider-factory-spi-via-serviceloader.md) | Abstract Factory per provider, discovered via `ServiceLoader` | Accepted |
+| [0005](0005-provider-factory-spi-via-serviceloader.md) | Abstract Factory per provider, discovered via `ServiceLoader` | Accepted — core's dependency set amended by ADR-0020 |
+| [0020](0020-core-depends-on-langchain4j-aggregate.md) | Core also depends on the `langchain4j` aggregate, for `ChatMemoryProvider` | Accepted |
 | [0007](0007-layered-hocon-via-typesafe-config.md) | Layered HOCON via Typesafe Config as a core dependency | Accepted |
 | [0006](0006-named-configurations-with-per-name-diffing.md) | Named configurations, one merged snapshot, per-name diffing | Accepted |
 | [0010](0010-discriminators-only-with-two-real-variants.md) | Discriminated variants only where two real variants exist today | Accepted |

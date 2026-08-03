@@ -128,8 +128,10 @@ from resolution. Parse each layer with `ConfigFactory.parseFile(...)` only, merg
 merged result. Resolving per file breaks mandatory `${VAR}` substitution in layered
 setups. This needs a dedicated regression test.
 
-**Core dependency isolation (ADR-0005).** `modelrack4j-core` depends ONLY on `langchain4j-core`
-and `com.typesafe:config`. Each provider lives in its own module
+**Core dependency isolation (ADR-0005, amended by ADR-0020).** `modelrack4j-core` depends on
+`langchain4j-core`, `com.typesafe:config`, and — for `ChatMemoryProvider` alone, which is
+*not* in `langchain4j-core` — the `dev.langchain4j:langchain4j` aggregate with
+`opennlp-tools` excluded. **No provider artifact, ever.** Each provider lives in its own module
 (`modelrack4j-provider-openai|anthropic|gemini|glm`) implementing the `ProviderFactory`
 SPI, discovered via `java.util.ServiceLoader` (`META-INF/services/...spi.ProviderFactory`).
 Providers differ in *capabilities* — moderation is roughly OpenAI-family only, token
