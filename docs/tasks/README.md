@@ -52,7 +52,7 @@ Phase 0 gates everything else; nothing below M0 should start before its blockers
 
 | Item | What | Status |
 |---|---|---|
-| [Task 0.1](phase-0-verification.md#task-01--pin-the-langchain4j-version) | Pin the LangChain4j version | **Done** — `1.18.0` |
+| [Task 0.1](phase-0-verification.md#task-01--pin-the-langchain4j-version) | Pin the LangChain4j version | **Done** — `1.19.0` |
 | [Task 0.2](phase-0-verification.md#task-02--verify-the-java-baseline) | Verify the Java baseline | **Done** — `release` 17 |
 | [Task 0.3](phase-0-verification.md#task-03--glm-module-status) | GLM module status | Not started |
 | [Task 0.4](phase-0-verification.md#task-04--which-gemini-module) | Which Gemini module | Not started |
@@ -71,7 +71,7 @@ Phase 0 gates everything else; nothing below M0 should start before its blockers
 | [D3](open-decisions.md#d3--token-window-memory-on-a-remote-estimator) | Token-window memory on a remote estimator | Needs decision |
 
 Unblocked right now: Tasks 0.3, 0.4, 0.7, 0.8, and decisions D2 and D3. Nothing in Phase 0
-is blocked — Task 0.1 pinned `1.18.0` and cleared everything that was waiting on it, Task 0.2
+is blocked — Task 0.1 pinned `1.19.0` and cleared everything that was waiting on it, Task 0.2
 settled the compile target at `release` 17, Task 0.5 confirmed the type names and found the
 one mismatch that ADR-0020 resolves, and Task 0.6 built the capability matrix and refuted the
 token-estimation expectation. M0 is gated only on finishing the rest.
