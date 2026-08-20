@@ -439,7 +439,8 @@ would exist and catch nothing.
 
 ### Task 0.7 — Name and coordinates
 
-**Status:** Partly done
+**Status:** Done — checked 2026-08-20 against Maven Central, GitHub and Sonatype's own
+namespace documentation
 
 The name `modelrack4j` is settled and collision-checked
 ([ADR-0011](../adr/0011-independent-name-and-deferred-wrapper.md)).
@@ -451,6 +452,42 @@ groupId are actually available before the skeleton fixes them into every POM.
 change later, which only works if they are available.
 
 **Done when:** both are confirmed available and the concrete owner segment is recorded.
+
+#### Found
+
+**Coordinates fixed: `io.github.maxtrezzi:modelrack4j-*`**
+([ADR-0025](../adr/0025-fix-coordinates-under-io-github-maxtrezzi.md)).
+
+| Check | Result |
+|---|---|
+| `io.github.maxtrezzi` on Central | **unused** — `g:"io.github.maxtrezzi"` returns 0; free-text `modelrack` returns 0 across all groups |
+| Artifact name `modelrack4j-*` | **no collision** anywhere on Central |
+| GitHub repository | `maxtrezzi/modelrack4j` exists — **user** account (not an organisation), Apache-2.0, default branch `main` |
+| Namespace eligibility | **automatic** — Sonatype Central grants `io.github.<github username>` on GitHub signup with no verification steps |
+
+> Central's directory browse for `/io/github/maxtrezzi/` returns 404, which per Task 0.1 is
+> **inconclusive** rather than negative. The two search queries are what establish the
+> namespace is unused; the 404 is not evidence.
+
+**The finding that shaped the decision.** Sonatype's documentation states: *"we only support
+the GitHub username that you used to sign up, so `io.github.<github organization name>` is
+not available as an automatically registered namespace."* So the obvious future tidy-up —
+create a `modelrack4j` organisation and move the groupId to match — costs manual verification
+**and** breaks every consumer POM. ADR-0025 therefore decouples the two: if the repository
+ever moves to an organisation, the groupId stays `io.github.maxtrezzi`.
+
+**Not claimed, only confirmed available.** No Sonatype account exists yet. Publishing remains
+deferred; this task establishes that the coordinates M0 bakes in will still be usable when it
+is not.
+
+#### Hands to other tasks
+
+- **[M0](milestones.md#m0--skeleton-and-ci)** — unblocked. Write
+  `io.github.maxtrezzi:modelrack4j-parent`, `-core` and `-provider-*` into the skeleton.
+- **[D2](open-decisions.md#d2--repository-visibility)** — unaffected, and now known to be
+  unaffected: namespace verification uses a *temporary* public repository holding a
+  verification key, not a public project repository. The repository is currently private,
+  which does not block publishing. D2 stays the owner's call on its own merits.
 
 ---
 

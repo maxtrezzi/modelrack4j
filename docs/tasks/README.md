@@ -58,7 +58,7 @@ Phase 0 gates everything else; nothing below M0 should start before its blockers
 | [Task 0.4](phase-0-verification.md#task-04--which-gemini-module) | Which Gemini module | **Done** — the stable one |
 | [Task 0.5](phase-0-verification.md#task-05--confirm-interface-names) | Confirm interface names | **Done** — one mismatch |
 | [Task 0.6](phase-0-verification.md#task-06--provider-capability-matrix) | Provider capability matrix | **Done** — expectation refuted |
-| [Task 0.7](phase-0-verification.md#task-07--name-and-coordinates) | Name and coordinates | Partly done |
+| [Task 0.7](phase-0-verification.md#task-07--name-and-coordinates) | Name and coordinates | **Done** — `io.github.maxtrezzi` |
 | [Task 0.8](phase-0-verification.md#task-08--watch-strategy-spike) | Watch strategy spike | **Partly done** — macOS unmeasured |
 | [M0](milestones.md#m0--skeleton-and-ci) | Skeleton and CI | Not started |
 | [M1](milestones.md#m1--core-without-watching) | Core without watching | Not started |
@@ -70,11 +70,19 @@ Phase 0 gates everything else; nothing below M0 should start before its blockers
 | [D2](open-decisions.md#d2--repository-visibility) | Repository visibility | Needs decision |
 | [D3](open-decisions.md#d3--token-window-memory-on-a-remote-estimator) | Token-window memory on a remote estimator | Needs decision |
 
-Unblocked right now: Task 0.7, the macOS half of Task 0.8, and decisions D2 and D3. Nothing in Phase 0
-is blocked — Task 0.1 pinned `1.19.0` and cleared everything that was waiting on it, Task 0.2
-settled the compile target at `release` 17, Task 0.5 confirmed the type names and found the
-one mismatch that ADR-0020 resolves, Task 0.6 built the capability matrix and refuted the
-token-estimation expectation, and Task 0.3 found the GLM module maintained after all —
-closing D1 unused and adding the second BOM import of ADR-0022, and Task 0.4 settled Gemini
-on the stable module. Phase 0's remaining work is Tasks 0.7 and 0.8. M0 is gated only on
-finishing the rest.
+**Phase 0 is complete except for one measurement, and M0 is unblocked.** Tasks 0.1–0.7 are
+done; Task 0.8 is done on Linux and open only on the macOS latency figure, which qualifies
+documentation rather than changing code and so gates neither M0 nor M3.
+
+What the phase settled: the pin at `1.19.0` and the two-BOM import it later needed, `release`
+17 as the compile target, the type names and the one mismatch ADR-0020 resolves, the
+capability matrix, GLM on the maintained community module, Gemini on the stable one, the
+coordinates `io.github.maxtrezzi:modelrack4j-*`, and — from the spike — the symlink watch
+strategy ADR-0013 got wrong.
+
+Three of the seven verification tasks **refuted the premise they were written with**: the GLM
+module was not removed, token estimation was not OpenAI-only, and resolving symlinks to their
+real path does not see a ConfigMap swap. That is the phase working as intended.
+
+Waiting on the owner: **D2** (repository visibility) and **D3** (token-window memory on a
+remote estimator, which blocks M2). Waiting on hardware: the macOS half of Task 0.8.

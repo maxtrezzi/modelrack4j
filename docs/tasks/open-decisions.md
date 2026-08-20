@@ -78,9 +78,20 @@ commit landed. Two things depend on it:
   [ADR-0011](../adr/0011-independent-name-and-deferred-wrapper.md)) — only materialises
   when someone outside the project can read them.
 
-Nothing has left the machine: there is no remote configured. The decision is genuinely open
-and reversible in one direction only — a repository can go from private to public, but what
-has been public cannot be made unseen.
+**Corrected 2026-08-20:** the "nothing has left the machine" premise this entry was written
+under no longer holds. A remote *is* configured — `github.com/maxtrezzi/modelrack4j`, created
+2026-07-26 — and the work to date has been merged through pull requests. It is **private**,
+confirmed in [Task 0.7](phase-0-verification.md#task-07--name-and-coordinates).
+
+That changes the framing, not the decision. The repository is on GitHub rather than only on
+this machine, so "public from day one" is no longer available as an option — the live choice
+is *public now* or *public at first release*. The one-way property still stands: private can
+become public, but what has been public cannot be made unseen.
+
+Task 0.7 also removed one thing that might have forced the answer: Maven Central publishing
+does **not** require this repository to be public, because namespace verification uses a
+separate temporary repository ([ADR-0025](../adr/0025-fix-coordinates-under-io-github-maxtrezzi.md)).
+JitPack and the readability of the ADRs remain the two real arguments.
 
 **On settling:** write an ADR, and if the answer is "public at first release", note what
 triggers the switch so it does not drift.
