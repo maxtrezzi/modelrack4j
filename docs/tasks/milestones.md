@@ -9,7 +9,7 @@ date. The v2 hot-swap wrapper is designed for but not built
 
 ### M0 — Skeleton and CI
 
-**Status:** Not started · **Entry:** Phase 0 tasks resolved
+**Status:** Done 2026-08-20 · **Entry:** Phase 0 tasks resolved
 
 - Complete the [Phase 0 verification tasks](phase-0-verification.md).
 - Multi-module Maven build compiles: parent POM with `dependencyManagement` and plugins,
@@ -18,6 +18,53 @@ date. The v2 hot-swap wrapper is designed for but not built
 - License header check, dependency-convergence enforcement, and a Javadoc build that
   passes — Central will require javadoc and sources jars later, and retrofitting a clean
   Javadoc build is worse than starting with one.
+
+#### Built
+
+`mvn clean verify` is green on **JDK 21 and 25 locally**; 17 is covered by CI
+([ADR-0026](../adr/0026-ci-matrix-is-floor-dev-jdk-and-current-lts.md)). Seven modules per
+the plan's layout, at `io.github.maxtrezzi:modelrack4j-*`
+([ADR-0025](../adr/0025-fix-coordinates-under-io-github-maxtrezzi.md)):
+parent, core, four providers, BOM, examples.
+
+**Verified rather than assumed:**
+
+| Claim | How it was checked |
+|---|---|
+| `release` 17 ([ADR-0019](../adr/0019-target-java-17.md)) | bytecode major **61** in the built core jar |
+| Core takes no provider artifact, and no `opennlp` ([ADR-0005](../adr/0005-provider-factory-spi-via-serviceloader.md), [ADR-0020](../adr/0020-core-depends-on-langchain4j-aggregate.md)) | `dependency:tree` — core resolves to `langchain4j-core`, the aggregate, `com.typesafe:config`, and nothing else |
+| Javadoc and sources jars attach | both present in `target/` alongside the main jar |
+
+**Three things the build caught that reasoning had not:**
+
+1. **The GLM module breaks dependency convergence.** Its `jjwt` pulls `jjwt-jackson`, which
+   pulls `jackson-databind` 2.12.7.1 against LangChain4j's 2.22.1. Nearest-wins happens to
+   pick 2.22.1 today, which is exactly why the rule is on — the outcome is depth-dependent
+   and would flip silently. Resolved with an exclusion local to the GLM module, so Jackson
+   versions still come only from the BOM and still move on a bump. This is the concrete form
+   of the weight [ADR-0022](../adr/0022-glm-via-the-community-module-and-its-bom.md) warned
+   about.
+2. **The license check scanned `brainstorm/`.** The root module's basedir is the repository
+   root, so the check found the local-only spike file — which exists on this machine and
+   never in CI, meaning the build would have behaved differently in the two places.
+   Explicitly excluded.
+3. **`@implNote` is a hard javadoc error outside the JDK.** `@apiNote`/`@implSpec`/`@implNote`
+   are only recognised implicitly when javadoc documents the JDK itself; elsewhere they must
+   be registered as custom tags. Registered project-wide, so the first Javadoc-carrying class
+   did not have to discover it.
+
+**Deliberately minimal source.** Provider and example modules have no sources yet — they are
+empty until M2/M4, and a module holding only a `package-info` makes Javadoc fail rather than
+skip. Core carries `UnknownConfigurationException`, whose contract
+[ADR-0014](../adr/0014-lifecycle-of-removed-names-and-superseded-bundles.md) already fixed,
+so the compile → javadoc → license → package pipeline is exercised by a real type rather than
+a placeholder. The SPI signature is M1's to define and is **not** pre-empted here.
+
+**Open, flagged rather than decided:** the copyright owner string in the file headers and
+POM metadata is `maxtrezzi`, taken from the repository's git identity.
+[ADR-0017](../adr/0017-apache-2-0-license.md) deliberately did not settle it. If a different
+legal name should appear, it is a find-and-replace across the headers, the header template
+and the POM `<developers>` block.
 
 ---
 

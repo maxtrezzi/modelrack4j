@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>io.github.maxtrezzi</groupId>
+    <artifactId>modelrack4j-parent</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+  </parent>
+
+  <artifactId>modelrack4j-provider-glm</artifactId>
+  <name>modelrack4j :: provider :: Zhipu GLM</name>
+  <description>ProviderFactory for Zhipu GLM. Community module, beta line (ADR-0022).</description>
+
+  <dependencies>
+    <dependency>
+      <groupId>io.github.maxtrezzi</groupId>
+      <artifactId>modelrack4j-core</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>dev.langchain4j</groupId>
+      <artifactId>langchain4j-community-zhipu-ai</artifactId>
+      <exclusions>
+        <!--
+          ADR-0022 noted this module is the heaviest of the four. Concretely: its jjwt
+          dependency pulls jjwt-jackson, which pulls jackson-databind 2.12.7.1 against the
+          2.22.1 LangChain4j resolves. Nearest-wins happens to pick 2.22.1 today, which is
+          precisely why the convergence rule is on — the outcome is depth-dependent and
+          would flip silently. Excluding the stale binding keeps every Jackson version
+          sourced from the LangChain4j BOM, so it still moves on a bump (ADR-0018) instead
+          of being pinned here.
+        -->
+        <exclusion>
+          <groupId>com.fasterxml.jackson.core</groupId>
+          <artifactId>jackson-databind</artifactId>
+        </exclusion>
+      </exclusions>
+    </dependency>
+  </dependencies>
+</project>

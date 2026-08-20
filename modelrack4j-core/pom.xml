@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>io.github.maxtrezzi</groupId>
+    <artifactId>modelrack4j-parent</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+  </parent>
+
+  <artifactId>modelrack4j-core</artifactId>
+  <name>modelrack4j :: core</name>
+  <description>Registry, layered HOCON config loading, validation and file watching.</description>
+
+  <dependencies>
+    <!-- ADR-0005: core takes no provider artifact, ever. -->
+    <dependency>
+      <groupId>dev.langchain4j</groupId>
+      <artifactId>langchain4j-core</artifactId>
+    </dependency>
+    <!--
+      ADR-0020: ChatMemoryProvider is NOT in langchain4j-core, so core also takes the
+      aggregate. opennlp-tools is excluded: it is referenced by one class in that jar,
+      DocumentBySentenceSplitter, which is out-of-scope RAG splitting (ADR-0003).
+    -->
+    <dependency>
+      <groupId>dev.langchain4j</groupId>
+      <artifactId>langchain4j</artifactId>
+      <exclusions>
+        <exclusion>
+          <groupId>org.apache.opennlp</groupId>
+          <artifactId>opennlp-tools</artifactId>
+        </exclusion>
+      </exclusions>
+    </dependency>
+    <!-- ADR-0007: layered HOCON. -->
+    <dependency>
+      <groupId>com.typesafe</groupId>
+      <artifactId>config</artifactId>
+    </dependency>
+  </dependencies>
+</project>

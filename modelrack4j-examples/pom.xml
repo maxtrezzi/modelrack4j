@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>io.github.maxtrezzi</groupId>
+    <artifactId>modelrack4j-parent</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+  </parent>
+
+  <artifactId>modelrack4j-examples</artifactId>
+  <name>modelrack4j :: examples</name>
+  <description>Runnable demos, including the SL/SH/CR scenario. Deliberately NOT published.</description>
+
+  <properties>
+    <!-- Per the module layout: examples are never published. -->
+    <maven.deploy.skip>true</maven.deploy.skip>
+    <maven.install.skip>true</maven.install.skip>
+  </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>io.github.maxtrezzi</groupId>
+      <artifactId>modelrack4j-core</artifactId>
+    </dependency>
+  </dependencies>
+</project>

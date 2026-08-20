@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>io.github.maxtrezzi</groupId>
+    <artifactId>modelrack4j-parent</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+  </parent>
+
+  <artifactId>modelrack4j-bom</artifactId>
+  <packaging>pom</packaging>
+  <name>modelrack4j :: bom</name>
+  <description>Bill of Materials: import this to version every modelrack4j artifact from one coordinate.</description>
+
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>io.github.maxtrezzi</groupId>
+        <artifactId>modelrack4j-core</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.github.maxtrezzi</groupId>
+        <artifactId>modelrack4j-provider-openai</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.github.maxtrezzi</groupId>
+        <artifactId>modelrack4j-provider-anthropic</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.github.maxtrezzi</groupId>
+        <artifactId>modelrack4j-provider-gemini</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.github.maxtrezzi</groupId>
+        <artifactId>modelrack4j-provider-glm</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+</project>
