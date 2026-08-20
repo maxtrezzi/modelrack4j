@@ -15,7 +15,8 @@ has to be repeated.
 
 ### Task 0.1 — Pin the LangChain4j version
 
-**Status:** Done — checked 2026-07-28 against Maven Central
+**Status:** Done — pinned `1.19.0`; first checked 2026-07-28, re-verified and re-pinned
+2026-08-20, both against Maven Central
 
 Find the current stable LangChain4j release on Maven Central and pin it in the root POM as
 `<langchain4j.version>`.
@@ -27,7 +28,8 @@ answered until this one is. Nothing in M0 can build without it.
 
 #### Found
 
-**Pinned version: `1.18.0`**, the current stable release. Published **2026-07-17**,
+**Version pinned at this check: `1.18.0`**, then the current stable release — superseded by
+the [re-pin below](#re-verified-and-re-pinned--2026-08-20). Published **2026-07-17**,
 confirmed twice — Central's `Last-Modified` on the artifact and the upstream GitHub
 release's `published_at`. It was eleven days old when checked, not fresh off the press.
 
@@ -56,7 +58,8 @@ artifacts across both lines and keeps the two in step on every bump. Recorded as
 
 - **[Task 0.2](#task-02--verify-the-java-baseline), [0.5](#task-05--confirm-interface-names),
   [0.6](#task-06--provider-capability-matrix)** — unblocked; the version they each asked
-  "for which version?" about is `1.18.0`.
+  "for which version?" about is `1.19.0` since the re-pin below, which changed none of
+  their answers.
 - **[Task 0.4](#task-04--which-gemini-module)** — a heavy input, but not the answer:
   `-google-ai-gemini` is stable while the newer `-google-genai` is still beta after 28
   betas. 0.4 asks what upstream *recommends*, which this does not establish.
@@ -66,11 +69,47 @@ artifacts across both lines and keeps the two in step on every bump. Recorded as
   **inconclusive** rather than negative — Central does not reliably serve directory
   listings. 0.3 still has to check the community repository properly.
 
+#### Re-verified and re-pinned — 2026-08-20
+
+**The pin is now `1.19.0`**, published **2026-08-14**. `1.18.0` had been superseded twice
+while unused: `1.18.1` on 2026-07-29, then `1.19.0`. `langchain4j-bom`'s
+`maven-metadata.xml` gives `<latest>` and `<release>` as `1.19.0`; dates are `Last-Modified`
+on the artifacts, per the caveat above.
+
+This is the one-line BOM-coordinate bump [ADR-0018](../adr/0018-manage-langchain4j-versions-via-bom.md)
+was designed to make routine, so that ADR stands as written — only the specific version in
+its Decision section is superseded by this entry. No ADR is amended, because nothing the
+pin gates moved.
+
+**The two-line structure is unchanged.** `langchain4j-bom:1.19.0` declares
+`langchain4j.stable.version` = `1.19.0` and `langchain4j.beta.version` = `1.19.0-beta29`.
+`langchain4j`, `-core`, `-open-ai`, `-anthropic` and `-google-ai-gemini` all resolve at
+plain `1.19.0` (HTTP 200 on the POM); `langchain4j-google-genai` is still beta-only, now
+`1.19.0-beta29`. Task 0.4's stable-vs-beta input therefore reads the same as before.
+
+Everything the pin gates was re-checked against the `1.19.0` artifacts:
+
+| Gated by the pin | Re-checked against | Result |
+|---|---|---|
+| [Task 0.2](#task-02--verify-the-java-baseline) — Java baseline | bytecode of `langchain4j-core-1.19.0` and `langchain4j-1.19.0` | major **61** (= Java 17) on all 673 classes, no `META-INF/versions` overlays — `release` 17 stands |
+| [Task 0.5](#task-05--confirm-interface-names) — interface names | both jars' entry listings | all eight types unmoved; `ChatMemoryProvider`, `MessageWindowChatMemory`, `TokenWindowChatMemory` still aggregate-only; `TokenCountEstimator` still in `dev.langchain4j.model`; `ChatLanguageModel` still absent |
+| [ADR-0020](../adr/0020-core-depends-on-langchain4j-aggregate.md) — the `opennlp` exclusion | `langchain4j-1.19.0.pom` | `org.apache.opennlp:opennlp-tools` still a compile-scope dependency of the aggregate, so the exclusion is still required |
+| [Task 0.6](#task-06--provider-capability-matrix) — capability matrix | `-open-ai`, `-anthropic`, `-google-ai-gemini` jars | unchanged: `OpenAiModerationModel` + `OpenAiTokenCountEstimator`; Anthropic and Gemini each ship an estimator and no moderation model |
+
+**Not re-checked:** `langchain4j-google-genai:1.19.0-beta29` was confirmed to exist but its
+capability row was not re-read, and Task 0.2's re-check covered the two artifacts core
+depends on rather than all five. Both are on the beta line or already-verified providers,
+and neither gates M0 — but they are gaps in this re-verification, not silence.
+
+**Re-check this on every bump.** Task 0.2's "Hands to other tasks" already says so; this
+entry is what that looks like when done.
+
 ---
 
 ### Task 0.2 — Verify the Java baseline
 
-**Status:** Done — checked 2026-08-03 against the artifacts, upstream POM and upstream docs
+**Status:** Done — checked 2026-08-03 against the artifacts, upstream POM and upstream docs;
+re-verified at `1.19.0` on 2026-08-20 ([Task 0.1](#re-verified-and-re-pinned--2026-08-20))
 
 Determine the Java version required by the pinned LangChain4j release — from its POM or
 release notes, not from assumption — and set `maven.compiler.release` to match.
@@ -156,7 +195,8 @@ upstream deprecates the winner.
 
 ### Task 0.5 — Confirm interface names
 
-**Status:** Done — checked 2026-08-03 against the `1.18.0` artifacts; one mismatch found and corrected
+**Status:** Done — checked 2026-08-03 against the `1.18.0` artifacts; one mismatch found and
+corrected; re-verified at `1.19.0` on 2026-08-20 ([Task 0.1](#re-verified-and-re-pinned--2026-08-20))
 
 Against the pinned version, confirm the exact names and packages of every type the public
 API touches: `ChatModel`, `StreamingChatModel`, `ModerationModel`
@@ -222,7 +262,8 @@ Also confirmed, since the SPI touches them: the request/response types are
 
 ### Task 0.6 — Provider capability matrix
 
-**Status:** Done — checked 2026-08-03 against the `1.18.0` artifacts; token-estimation expectation refuted
+**Status:** Done — checked 2026-08-03 against the `1.18.0` artifacts; token-estimation
+expectation refuted; re-verified at `1.19.0` on 2026-08-20 ([Task 0.1](#re-verified-and-re-pinned--2026-08-20))
 
 For the pinned version, determine which providers actually ship a `ModerationModel`
 (expected: the OpenAI family only) and which ship a `TokenCountEstimator` (expected:
