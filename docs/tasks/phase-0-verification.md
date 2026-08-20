@@ -235,7 +235,8 @@ teeth, and ADR-0022 resolves it: the root POM imports **two** BOMs, bumped toget
 
 ### Task 0.4 — Which Gemini module
 
-**Status:** Not started
+**Status:** Done — checked 2026-08-20 against Maven Central, the artifacts, upstream docs and
+issue #4383; there are three modules, not two
 
 Two modules exist — `langchain4j-google-ai-gemini` and the newer `langchain4j-google-genai`.
 Determine which upstream currently recommends, choose one, and record why.
@@ -244,6 +245,55 @@ Determine which upstream currently recommends, choose one, and record why.
 
 **Done when:** the choice is made and the reason written down, so it can be revisited if
 upstream deprecates the winner.
+
+#### Found
+
+**Chosen: `langchain4j-google-ai-gemini`**, the stable module
+([ADR-0023](../adr/0023-gemini-via-the-stable-google-ai-gemini-module.md)).
+
+**There are three modules, and the third is why this looked confusing:**
+
+| Module | Line | Transport | Docs status |
+|---|---|---|---|
+| **`langchain4j-google-ai-gemini`** | **stable `1.19.0`** | own HTTP client on `langchain4j-http-client-jdk` — **no Google SDK** | primary Gemini integration; no deprecation notice |
+| `langchain4j-google-genai` | beta `1.19.0-beta29` | `com.google.genai:google-genai:1.63.0` | *"currently marked as **Experimental**. The API and implementation are subject to change"* |
+| `langchain4j-vertex-ai-gemini` | beta `1.19.0-beta29` | Vertex AI SDK | no deprecation notice on its page |
+
+**The "migrate to `-google-genai`" advice is real but about a different module.** Google
+stopped supporting the Vertex AI SDK after June 2026; upstream issue langchain4j/langchain4j#4383
+proposed a new Gen AI SDK module and *"gradually deprecate Vertex AI–specific bindings"*, and
+was closed 2026-05-15. `-google-genai` is that replacement — **for `-vertex-ai-gemini`**.
+
+**It does not reach `-google-ai-gemini`, which has no Google SDK in it.** Its compile deps are
+`langchain4j-core`, `langchain4j-http-client[-jdk]` and Jackson; it speaks the Gemini
+Developer API over REST directly. Verified from its POM, not inferred.
+
+> **This is the trap to remember.** A web search for "which LangChain4j Gemini module" returns
+> "migrate to google-genai" with confident supporting detail, and applying it here would swap a
+> stable module for an Experimental one on the strength of a deprecation that does not touch it.
+
+**Evidence the stable module is current, not legacy:** 60 releases, shipping in lockstep with
+mainline (`1.17.0` 2026-06-26, `1.18.0` 2026-07-17, `1.19.0` 2026-08-14), documenting
+`gemini-3-pro-preview`, and **zero `@Deprecated` markers** across all three Gemini artifacts.
+
+**Capability parity**, so the choice is reversible: both ship `ChatModel`,
+`StreamingChatModel` and a `TokenCountEstimator`. `-google-genai` additionally drags in the
+Google SDK and `jackson-module-kotlin` — and so the Kotlin standard library.
+
+**They target different APIs.** `-google-ai-gemini` is the Gemini Developer API (API key);
+`-google-genai` wraps a unified SDK also covering Vertex AI, which needs Google Cloud
+credentials and a project — not the API-key-shaped config this library expresses.
+
+#### Hands to other tasks
+
+- **[M4](milestones.md#m4--gemini-and-glm)** — unblocked on the Gemini side.
+  `GeminiProviderFactory` builds on the stable module; token estimation stays `REMOTE`
+  per [ADR-0021](../adr/0021-token-estimation-is-universal-but-two-cost-classes.md).
+- **[Task 0.6](#task-06--provider-capability-matrix)** — its `-google-genai` row describes a
+  module this project does not use. The row stays as recorded fact; the used module is the
+  `-google-ai-gemini` row.
+- **Re-check on every bump**, per ADR-0023's two revisit triggers: `-google-genai` leaving
+  Experimental, or `-google-ai-gemini` gaining a deprecation notice.
 
 ---
 
