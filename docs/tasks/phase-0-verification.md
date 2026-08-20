@@ -456,7 +456,8 @@ change later, which only works if they are available.
 
 ### Task 0.8 — Watch strategy spike
 
-**Status:** Not started
+**Status:** Partly done — behaviours 1–3 observed on Linux 2026-08-20 and written up;
+**behaviour 4 (macOS latency) is not measurable on this machine** and remains open
 
 A spike, not a design task: run code and observe real behaviour before implementing the
 watcher. `WatchService` registers on directories, not files, and several deployment
@@ -483,3 +484,73 @@ amending and the README's real-time claim needs qualifying.
 
 **Done when:** all four behaviours are observed and written down, with the macOS latency
 figure recorded as a number.
+
+#### Found
+
+Run on **Linux 7.0.11**, `sun.nio.fs.LinuxWatchService` (inotify), Temurin **25.0.3**. The
+harness is a single-file JDK program kept in the local-only `brainstorm/spikes/`; the method
+is described below in enough detail to rebuild it, and the M3 regression tests are its
+permanent form.
+
+**1. Filename filtering — works.** `WatchEvent.context()` is the filename relative to the
+watched directory, never a path, so filtering is a string comparison. Writing three files
+into one watched directory produced events distinguishable by name with no ambiguity.
+
+**2. Temp-file-then-rename — confirmed, and it surfaces as `ENTRY_CREATE`.** ADR-0013's
+premise holds:
+
+| Write pattern | Events observed |
+|---|---|
+| in-place rewrite | `ENTRY_MODIFY app.conf` — **1 or 2 events, varying between runs** |
+| temp-file-then-rename | `ENTRY_CREATE app.conf.tmp`, `ENTRY_MODIFY app.conf.tmp`, `ENTRY_DELETE app.conf.tmp`, **`ENTRY_CREATE app.conf`** |
+
+Two things follow. Treating CREATE and MODIFY identically is necessary, as ADR-0013 said. And
+the *same* filename filter that ADR-0024 removes for symlinks is what discards the three
+`.tmp` events here — it is load-bearing in the ordinary case.
+
+**3. ConfigMap symlink swap — ADR-0013 was wrong twice.** Full three-level layout
+(`..gen1/app.conf`, `..data` → `..gen1`, `app.conf` → `..data/app.conf`), swapped by staging
+`..gen2`, creating `..data_tmp` and `ATOMIC_MOVE`-ing it over `..data`:
+
+| Strategy | Events observed |
+|---|---|
+| Watch the **real path's** parent, resolved at registration (what ADR-0013 decided) | **none at all** |
+| Watch the directory containing the **symlink** | `ENTRY_CREATE ..2026_08_20_gen2`, `ENTRY_CREATE ..data_tmp`, `ENTRY_DELETE ..data_tmp`, `ENTRY_CREATE ..data` |
+
+**No event names `app.conf`.** So ADR-0013's "filter events by filename" would have discarded
+all four and missed the swap even under the strategy that sees it. Both halves are corrected
+by [ADR-0024](../adr/0024-watch-the-symlink-s-directory-not-its-real-path.md). After the swap
+the visible path still resolved, its real path had moved to `..gen2`, and its content read as
+generation 2 — so the change is detectable, and only the *trigger* was missing.
+
+**4. Latency — measured here, but not on the platform the task asks about.** On Linux, over
+20 samples of write → event observed:
+
+| min | median | max |
+|---|---|---|
+| 0.37 ms | **0.50 ms** | 0.63 ms |
+
+**5. Debounce sizing (added to the spike).** Events for one logical write arrive in a burst
+spread over **≤ 2.53 ms** (in-place: 1–2 events; rename: 4 events). ADR-0013's ~300 ms
+debounce is roughly 100× the observed spread on Linux — comfortably safe, and the varying
+event count per write confirms the debounce is required rather than merely tidy.
+
+#### Still open — macOS
+
+**The macOS figure cannot be produced from this machine, which is Linux.** The task asks for
+it as a number and this entry does not have one, so the task stays *Partly done* rather than
+being closed with the gap papered over. What is blocked by it:
+
+- ADR-0013's macOS caveat is still un-measured, so the README's latency note can state the
+  Linux figure only.
+- [ADR-0002](../adr/0002-scope-to-langchain4j-llm-configuration.md)'s push-based claim is
+  confirmed on Linux and unverified on macOS.
+
+It needs a macOS machine or a CI runner. **M3 is not blocked** — the three behaviours that
+determine the watcher's *design* are settled, and the macOS number qualifies documentation
+rather than changing the implementation.
+
+> **Incidental finding: `CLAUDE.md`'s toolchain note was out of date.** It recorded JDK 21;
+> this machine runs Temurin **25.0.3**. Corrected in the same change. It does not affect
+> [ADR-0019](../adr/0019-target-java-17.md) — the compile target stays `release` 17 and the
+> CI matrix decision is unchanged — but "build on a newer JDK" now means 25 locally.
