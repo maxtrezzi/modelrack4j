@@ -101,7 +101,7 @@ Integration tests are skipped by default and require real API keys from the envi
 everything else must pass offline with no keys (that is what `FakeProviderFactory` in core
 test scope is for).
 
-Toolchain on this machine: JDK 21 (Temurin), Maven 3.8.7. The language floor is Java 17
+Toolchain on this machine: JDK 25.0.3 (Temurin), Maven 3.8.7. The language floor is Java 17
 (records are used throughout); confirm LangChain4j's own requirement and set
 `maven.compiler.release` accordingly.
 

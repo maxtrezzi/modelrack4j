@@ -59,7 +59,7 @@ Phase 0 gates everything else; nothing below M0 should start before its blockers
 | [Task 0.5](phase-0-verification.md#task-05--confirm-interface-names) | Confirm interface names | **Done** — one mismatch |
 | [Task 0.6](phase-0-verification.md#task-06--provider-capability-matrix) | Provider capability matrix | **Done** — expectation refuted |
 | [Task 0.7](phase-0-verification.md#task-07--name-and-coordinates) | Name and coordinates | Partly done |
-| [Task 0.8](phase-0-verification.md#task-08--watch-strategy-spike) | Watch strategy spike | Not started |
+| [Task 0.8](phase-0-verification.md#task-08--watch-strategy-spike) | Watch strategy spike | **Partly done** — macOS unmeasured |
 | [M0](milestones.md#m0--skeleton-and-ci) | Skeleton and CI | Not started |
 | [M1](milestones.md#m1--core-without-watching) | Core without watching | Not started |
 | [M2](milestones.md#m2--openai-and-anthropic) | OpenAI and Anthropic | Not started |
@@ -70,7 +70,7 @@ Phase 0 gates everything else; nothing below M0 should start before its blockers
 | [D2](open-decisions.md#d2--repository-visibility) | Repository visibility | Needs decision |
 | [D3](open-decisions.md#d3--token-window-memory-on-a-remote-estimator) | Token-window memory on a remote estimator | Needs decision |
 
-Unblocked right now: Tasks 0.7, 0.8, and decisions D2 and D3. Nothing in Phase 0
+Unblocked right now: Task 0.7, the macOS half of Task 0.8, and decisions D2 and D3. Nothing in Phase 0
 is blocked — Task 0.1 pinned `1.19.0` and cleared everything that was waiting on it, Task 0.2
 settled the compile target at `release` 17, Task 0.5 confirmed the type names and found the
 one mismatch that ADR-0020 resolves, Task 0.6 built the capability matrix and refuted the
