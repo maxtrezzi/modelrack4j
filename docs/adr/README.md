@@ -59,6 +59,7 @@ by number, since the numbering only reflects the order of the original appendix.
 | [0003](0003-bundle-holds-config-shaped-inputs-only.md) | A bundle holds the config-shaped inputs only | Accepted |
 | [0011](0011-independent-name-and-deferred-wrapper.md) | Independent name; the hot-swap wrapper deferred to v2 | Accepted |
 | [0017](0017-apache-2-0-license.md) | License under Apache 2.0, with no NOTICE file | Accepted |
+| [0025](0025-fix-coordinates-under-io-github-maxtrezzi.md) | Fix the coordinates at `io.github.maxtrezzi:modelrack4j-*` | Accepted |
 
 **Structure and configuration**
 
