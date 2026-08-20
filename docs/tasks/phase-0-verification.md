@@ -158,7 +158,8 @@ overlays, which raise the version they *exploit*, never the version they *requir
 
 ### Task 0.3 — GLM module status
 
-**Status:** Not started
+**Status:** Done — checked 2026-08-20 against Maven Central, the community repository and
+upstream issue #3606; the premise was wrong and the module is maintained
 
 Establish whether a maintained LangChain4j module for Zhipu GLM exists. History to verify:
 `langchain4j-community-zhipu-ai` moved to the community repository around 1.0.0-alpha1 and
@@ -176,6 +177,59 @@ the owner only needs to rule on the fallback if this task finds no maintained mo
 
 **Done when:** the module's status is confirmed from the upstream repository and the route
 chosen.
+
+#### Found
+
+**The module was never removed, and it is current.** `dev.langchain4j:langchain4j-community-zhipu-ai`
+is at **`1.19.0-beta29`**, published **2026-08-19** — the day before this check — and it
+tracks the mainline release train version for version, all 31 releases from `1.0.0-alpha1`
+to today. It lives at `models/langchain4j-community-zhipu-ai/` in the `langchain4j-community`
+repository. **Route: use it** ([ADR-0022](../adr/0022-glm-via-the-community-module-and-its-bom.md)).
+
+**The premise in this task was wrong, and the reason is worth keeping.** Upstream issue
+langchain4j/langchain4j#3606 asked why the module was "removed in 1.3.0". The project lead
+answered it the same day, 2025-08-28: *"They were not removed, they are released under
+`1.3.0-beta9` version."* Community modules ship **only** beta-suffixed versions, so a plain
+`1.3.0` 404s and looks like a deletion. Identical in shape to `langchain4j-google-genai`
+having no plain `1.18.0` (Task 0.1) — the third time this repo has met the beta-suffix trap.
+
+> **Two dead ends, recorded so they are not repeated.** The group id is **`dev.langchain4j`**,
+> not `dev.langchain4j.community` — the latter 404s, which is what made Task 0.1's browse
+> attempt "inconclusive". And `search.maven.org`'s `latestVersion` field reported
+> `1.0.0-beta5`, which is **stale by 30 releases** and would have confirmed the abandonment
+> story outright. `maven-metadata.xml` is the source of truth; the search index is not.
+
+**What it ships**, read from the `1.19.0-beta29` jar:
+
+| Capability | Present? |
+|---|---|
+| `ChatModel` | ✅ `ZhipuAiChatModel`, with a native `ZhipuAiChatRequestParameters` |
+| `StreamingChatModel` | ✅ `ZhipuAiStreamingChatModel` |
+| `ModerationModel` | ❌ |
+| `TokenCountEstimator` | ❌ |
+
+Also ships `ZhipuAiEmbeddingModel` and `ZhipuAiImageModel`, both out of scope
+([ADR-0003](../adr/0003-bundle-holds-config-shaped-inputs-only.md)). Bytecode is major 61
+(Java 17), consistent with Task 0.2. Compile dependencies: `langchain4j-core` at the
+**stable** `1.19.0` — the beta suffix describes the wrapper, not the core it binds to —
+plus `langchain4j-http-client-jdk`, `io.jsonwebtoken:jjwt` and `com.google.guava:guava`.
+
+**It is not in `langchain4j-bom`** — zero matches across that BOM's 116 artifacts. A separate
+`langchain4j-community-bom` manages it, at the same `1.19.0-beta29`. That is the finding with
+teeth, and ADR-0022 resolves it: the root POM imports **two** BOMs, bumped together.
+
+#### Hands to other tasks
+
+- **[D1](open-decisions.md#d1--glm-route-if-no-maintained-module-exists)** — closes without a
+  ruling. It was only live if no maintained module existed, and one does.
+- **[Task 0.6](#task-06--provider-capability-matrix)** — gains a fifth row: GLM has neither
+  capability. It is the first genuine `ABSENT` for
+  [ADR-0021](../adr/0021-token-estimation-is-universal-but-two-cost-classes.md)'s
+  three-valued token-estimation enum, which until now had no non-hypothetical case.
+- **[M4](milestones.md#m4--gemini-and-glm)** — unblocked on the GLM side.
+  `GlmProviderFactory.validate()` rejects `moderation` and `memory.type = token-window`.
+- **[Task 0.4](#task-04--which-gemini-module)** — indirectly informed: beta-suffixed does not
+  mean unmaintained, which is a live input to the `-google-genai` question.
 
 ---
 

@@ -7,21 +7,24 @@ one closes by writing an ADR (see [ADR-0001](../adr/0001-record-decisions-as-adr
 
 ### D1 — GLM route if no maintained module exists
 
-**Status:** Needs decision · **Blocked by:** [Task 0.3](phase-0-verification.md#task-03--glm-module-status)
+**Status:** Closed 2026-08-20 without a ruling — never became live ·
+**Settled by:** [Task 0.3](phase-0-verification.md#task-03--glm-module-status)
 
-Only live if Task 0.3 finds no maintained LangChain4j module for Zhipu GLM. In that case
-the fallback is a `GlmProviderFactory` built on `langchain4j-open-ai` pointed at Zhipu's
-OpenAI-compatible endpoint.
+Task 0.3 found `langchain4j-community-zhipu-ai` maintained and current at `1.19.0-beta29`;
+the "removed in 1.3.0" report was a beta-suffix misreading, answered by the project lead on
+the upstream issue itself. The native module is used and the fallback below is not taken —
+[ADR-0022](../adr/0022-glm-via-the-community-module-and-its-bom.md), which also records the
+second BOM import the module requires and the beta-line dependency it entails.
 
-The trade-off to accept or reject: it works, but GLM-specific parameters are unreachable
-through the OpenAI-shaped API, and the library would be depending on an endpoint
-compatibility guarantee it does not control.
+M4 is no longer blocked on this. The provider set is unchanged, so
+[ADR-0005](../adr/0005-provider-factory-spi-via-serviceloader.md) needs no amendment.
 
-**Blocks:** M4.
-
-**On settling:** write an ADR recording the route and the trade-off, and amend
-[ADR-0005](../adr/0005-provider-factory-spi-via-serviceloader.md) if the provider set
-changes.
+**As posed, now the rejected alternative.** Had no maintained module existed, the fallback
+was a `GlmProviderFactory` built on `langchain4j-open-ai` pointed at Zhipu's
+OpenAI-compatible endpoint: it works, but GLM-specific parameters are unreachable through
+the OpenAI-shaped API, and the library would be depending on an endpoint compatibility
+guarantee it does not control. Kept here because ADR-0022 forecloses it deliberately — the
+beta suffix on the native module is not a reason to revisit this.
 
 ---
 
