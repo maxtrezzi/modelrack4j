@@ -30,7 +30,15 @@ beta suffix on the native module is not a reason to revisit this.
 
 ### D3 — Token-window memory on a remote estimator
 
-**Status:** Needs decision · **Raised by:** [Task 0.6](phase-0-verification.md#task-06--provider-capability-matrix)
+**Status:** Settled 2026-08-21 — **opt-in** ·
+**Raised by:** [Task 0.6](phase-0-verification.md#task-06--provider-capability-matrix) ·
+**Settled by:** [ADR-0027](../adr/0027-remote-token-counting-is-opt-in.md)
+
+The owner chose the opt-in option below. `memory.type = token-window` on a `REMOTE`-estimator
+provider fails validation unless `memory.allow-remote-token-counting = true` is set; the
+default is `false`, and the failure message must name the flag. `ABSENT` (GLM) is not
+escapable. On `LOCAL` providers the key is permitted and inert, so a config layer spanning
+several providers need not be split. M2 unblocked.
 
 [ADR-0021](../adr/0021-token-estimation-is-universal-but-two-cost-classes.md) established
 that all four providers ship a `TokenCountEstimator`, but only OpenAI's counts locally.

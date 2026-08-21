@@ -68,7 +68,7 @@ Phase 0 gates everything else; nothing below M0 should start before its blockers
 | [M5](milestones.md#m5--release-readiness) | Release readiness — **v1 done** | Not started |
 | [D1](open-decisions.md#d1--glm-route-if-no-maintained-module-exists) | GLM route if no maintained module | **Closed** — never became live |
 | [D2](open-decisions.md#d2--repository-visibility) | Repository visibility | Needs decision |
-| [D3](open-decisions.md#d3--token-window-memory-on-a-remote-estimator) | Token-window memory on a remote estimator | Needs decision |
+| [D3](open-decisions.md#d3--token-window-memory-on-a-remote-estimator) | Token-window memory on a remote estimator | **Settled** — opt-in flag |
 
 **Phase 0 is complete except for one measurement, and M0 is done — the build is green.** Tasks 0.1–0.7 are
 done; Task 0.8 is done on Linux and open only on the macOS latency figure, which qualifies
@@ -84,8 +84,7 @@ Three of the seven verification tasks **refuted the premise they were written wi
 module was not removed, token estimation was not OpenAI-only, and resolving symlinks to their
 real path does not see a ConfigMap swap. That is the phase working as intended.
 
-**M1 is next** — core without watching. **D3 blocks M2**, so it is the decision worth
-settling first.
+**M1 is next** — core without watching. D3 is settled (opt-in), so **M2 is unblocked** too.
 
-Waiting on the owner: **D2** (repository visibility) and **D3** (token-window memory on a
-remote estimator). Waiting on hardware: the macOS half of Task 0.8.
+Waiting on the owner: **D2** (repository visibility). Waiting on hardware: the macOS half
+of Task 0.8.
