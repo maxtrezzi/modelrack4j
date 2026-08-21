@@ -1,0 +1,3 @@
+io.github.maxtrezzi.modelrack4j.testing.FakeLocalProviderFactory
+io.github.maxtrezzi.modelrack4j.testing.FakeRemoteProviderFactory
+io.github.maxtrezzi.modelrack4j.testing.FakeAbsentProviderFactory
