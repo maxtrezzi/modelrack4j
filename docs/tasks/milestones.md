@@ -70,7 +70,7 @@ and the POM `<developers>` block.
 
 ### M1 — Core without watching
 
-**Status:** Not started · **Entry:** M0
+**Status:** Done 2026-08-21 · **Entry:** M0
 
 - HOCON loading with explicit layer ordering, merged before resolution — the trap in
   [ADR-0007](../adr/0007-layered-hocon-via-typesafe-config.md), with its own regression
@@ -80,6 +80,59 @@ and the POM `<developers>` block.
 - Registry that loads once, no watching, no thread.
 - `FakeProviderFactory` in test scope, and the core test suite green with no network and no
   API keys.
+
+#### Built
+
+**32 tests, green on JDK 21 and 25, with no network and no API keys.**
+
+| Class | Tests | Covers |
+|---|---|---|
+| `LayeredResolutionTest` | 5 | the [ADR-0007](../adr/0007-layered-hocon-via-typesafe-config.md) trap |
+| `LlmConfigTest` | 13 | record validation and value equality |
+| `LlmRegistryTest` | 14 | build, lookup, discovery, capability rules |
+
+**The layering trap has its own regression suite**, as ADR-0007 required. The load-bearing
+case: a defaults layer whose `api-key` is `${MODELRACK4J_ABSENT_VAR}` — an environment
+variable deliberately never set — overridden by a customer layer. Merged-then-resolved this
+works, because the substitution node is gone by the time anything resolves. Resolved per file
+it throws. There is also a cross-layer reference test, where a lower layer refers to a key
+only a higher layer defines.
+
+Confirmed while writing it, rather than assumed: `Config.resolve()` **does** fall back to
+environment variables under default options, so `${VAR}` reads the environment and fails
+loudly when unset. That is what mandatory substitution is for, and one test pins each
+direction.
+
+**Invalid configuration is unrepresentable.** `LlmConfig` validates in its compact
+constructor, so an instance that exists is valid. `MemoryConfig` is a **sealed interface**
+with a record per variant rather than one record carrying unused fields — `max-messages` and
+`max-tokens` cannot both be set, because no type has both.
+
+**ADR-0027's rules are implemented in core**, driven by the capability the factory reports, so
+no provider module restates them. All five edges have tests, including the one that is easy
+to lose: the rejection message must name `allow-remote-token-counting`, or opt-in silently
+becomes reject. That assertion is the contract, not decoration.
+
+**`FakeProviderFactory` is three fakes, not one** — `fake-local`, `fake-remote`, `fake-absent`
+— mirroring the real capability spread from [ADR-0021](../adr/0021-token-estimation-is-universal-but-two-cost-classes.md)
+and ADR-0022, so the capability rules are tested against all three classes rather than one.
+
+**Two deliberate departures from the plan's sketch, both narrow:**
+
+1. **`ProviderFactory` gains `tokenEstimation()`.** The plan's SPI had only
+   `createTokenCountEstimator`, which is a two-valued answer. ADR-0021 requires three, and
+   ADR-0027's rule cannot be expressed without telling `LOCAL` from `REMOTE`.
+2. **No `watch(boolean)` on the builder yet.** M1 has no watcher, and shipping a method that
+   throws would be worse than adding it in M3, which is source-compatible.
+
+**Defaults live in `modelrack4j-reference.conf`, not `reference.conf`.** HOCON merges
+`reference.conf` automatically only for fixed paths, and configuration names are user-chosen,
+so the loader merges the defaults block into each named block explicitly. The file says so at
+the top, since the naming looks like a mistake otherwise.
+
+**Not in M1, and not started:** watching and reload (M3), the snapshot/diff machinery
+([ADR-0012](../adr/0012-reload-atomicity-is-snapshot-wide.md)), the provenance/`origin()`
+debug API, and any real provider — the four provider modules are still empty.
 
 ---
 
