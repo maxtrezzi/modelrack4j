@@ -137,16 +137,14 @@ public record LlmConfig(
                             + " Supported values are message-window and token-window");
         }
         String type = memory.getString("type");
-        switch (type) {
-            case "message-window":
-                return Optional.of(new MemoryConfig.MessageWindow(memory.getInt("max-messages")));
-            case "token-window":
-                return Optional.of(new MemoryConfig.TokenWindow(
-                        memory.getInt("max-tokens"),
-                        memory.hasPath("allow-remote-token-counting")
-                                && memory.getBoolean("allow-remote-token-counting")));
-            default:
-                throw MemoryConfig.unknownType(type);
-        }
+        return switch (type) {
+            case "message-window" ->
+                    Optional.of(new MemoryConfig.MessageWindow(memory.getInt("max-messages")));
+            case "token-window" -> Optional.of(new MemoryConfig.TokenWindow(
+                    memory.getInt("max-tokens"),
+                    memory.hasPath("allow-remote-token-counting")
+                            && memory.getBoolean("allow-remote-token-counting")));
+            default -> throw MemoryConfig.unknownType(type);
+        };
     }
 }

@@ -66,7 +66,15 @@ public sealed interface MemoryConfig {
      * @return {@code "message-window"} or {@code "token-window"}
      */
     default String typeName() {
-        return this instanceof MessageWindow ? "message-window" : "token-window";
+        if (this instanceof MessageWindow) {
+            return "message-window";
+        }
+        if (this instanceof TokenWindow) {
+            return "token-window";
+        }
+        // The ternary this replaced would have labelled a new variant "token-window",
+        // which is worse than failing: it would be quietly wrong in error messages.
+        throw new IllegalStateException("Unhandled memory variant: " + getClass().getName());
     }
 
     /**

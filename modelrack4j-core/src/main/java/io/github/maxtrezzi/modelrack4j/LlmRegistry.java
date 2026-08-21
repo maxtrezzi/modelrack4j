@@ -205,11 +205,12 @@ public final class LlmRegistry implements AutoCloseable {
          * provider module has to restate them.
          */
         private static void validateCapabilities(LlmConfig config, ProviderFactory factory) {
-            if (config.memory().isEmpty()
-                    || !(config.memory().get() instanceof MemoryConfig.TokenWindow)) {
+            Optional<MemoryConfig> configured = config.memory();
+            if (configured.isEmpty()
+                    || !(configured.get() instanceof MemoryConfig.TokenWindow window)) {
+                // Only token-window memory depends on a provider capability.
                 return;
             }
-            MemoryConfig.TokenWindow window = (MemoryConfig.TokenWindow) config.memory().get();
             TokenEstimation estimation = Objects.requireNonNull(
                     factory.tokenEstimation(),
                     "tokenEstimation returned null for provider " + config.provider());
@@ -237,23 +238,29 @@ public final class LlmRegistry implements AutoCloseable {
                 return Optional.empty();
             }
             MemoryConfig memory = config.memory().get();
-            if (memory instanceof MemoryConfig.MessageWindow) {
-                int maxMessages = ((MemoryConfig.MessageWindow) memory).maxMessages();
+            if (memory instanceof MemoryConfig.MessageWindow window) {
+                int maxMessages = window.maxMessages();
                 return Optional.of(memoryId -> MessageWindowChatMemory.builder()
                         .id(memoryId)
                         .maxMessages(maxMessages)
                         .build());
             }
-
-            int maxTokens = ((MemoryConfig.TokenWindow) memory).maxTokens();
-            TokenCountEstimator estimator = factory.createTokenCountEstimator(config)
-                    .orElseThrow(() -> new ConfigValidationException("llm." + config.name()
-                            + " uses memory.type = token-window, but provider '"
-                            + config.provider() + "' supplied no token count estimator"));
-            return Optional.of(memoryId -> TokenWindowChatMemory.builder()
-                    .id(memoryId)
-                    .maxTokens(maxTokens, estimator)
-                    .build());
+            if (memory instanceof MemoryConfig.TokenWindow window) {
+                int maxTokens = window.maxTokens();
+                TokenCountEstimator estimator = factory.createTokenCountEstimator(config)
+                        .orElseThrow(() -> new ConfigValidationException("llm." + config.name()
+                                + " uses memory.type = token-window, but provider '"
+                                + config.provider() + "' supplied no token count estimator"));
+                return Optional.of(memoryId -> TokenWindowChatMemory.builder()
+                        .id(memoryId)
+                        .maxTokens(maxTokens, estimator)
+                        .build());
+            }
+            // MemoryConfig is sealed, but Java 17 has no pattern switch, so the compiler
+            // does not check this chain for exhaustiveness. A new variant must fail loudly
+            // here rather than fall through to a ClassCastException.
+            throw new IllegalStateException(
+                    "Unhandled memory variant: " + memory.getClass().getName());
         }
 
         private static Map<String, ProviderFactory> discoverFactories() {
