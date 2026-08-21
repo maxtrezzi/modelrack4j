@@ -1,0 +1,283 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>io.github.maxtrezzi</groupId>
+  <artifactId>modelrack4j-parent</artifactId>
+  <version>0.1.0-SNAPSHOT</version>
+  <packaging>pom</packaging>
+
+  <name>modelrack4j</name>
+  <description>
+    Named, ready-to-use bundles of LangChain4j objects from layered HOCON configuration,
+    with validated hot reload. Unofficial and independent of the LangChain4j project.
+  </description>
+  <url>https://github.com/maxtrezzi/modelrack4j</url>
+  <inceptionYear>2026</inceptionYear>
+
+  <licenses>
+    <license>
+      <name>The Apache License, Version 2.0</name>
+      <url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
+      <distribution>repo</distribution>
+    </license>
+  </licenses>
+
+  <developers>
+    <developer>
+      <id>maxtrezzi</id>
+      <name>maxtrezzi</name>
+      <url>https://github.com/maxtrezzi</url>
+    </developer>
+  </developers>
+
+  <scm>
+    <connection>scm:git:https://github.com/maxtrezzi/modelrack4j.git</connection>
+    <developerConnection>scm:git:git@github.com:maxtrezzi/modelrack4j.git</developerConnection>
+    <url>https://github.com/maxtrezzi/modelrack4j</url>
+  </scm>
+
+  <modules>
+    <module>modelrack4j-core</module>
+    <module>modelrack4j-provider-openai</module>
+    <module>modelrack4j-provider-anthropic</module>
+    <module>modelrack4j-provider-gemini</module>
+    <module>modelrack4j-provider-glm</module>
+    <module>modelrack4j-bom</module>
+    <module>modelrack4j-examples</module>
+  </modules>
+
+  <properties>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+
+    <!-- ADR-0019: the language floor is 17. Build on a newer JDK; `release` is the guarantee. -->
+    <maven.compiler.release>17</maven.compiler.release>
+
+    <!--
+      ADR-0018 + ADR-0022: upstream publishes TWO release trains from one release, and this
+      project imports a BOM for each. These two lines are deliberately adjacent: bump them
+      TOGETHER. Moving one and not the other resolves cleanly while mixing trains, which is
+      exactly the silent drift the BOM import exists to prevent.
+    -->
+    <langchain4j.version>1.19.0</langchain4j.version>
+    <langchain4j.community.version>1.19.0-beta29</langchain4j.community.version>
+
+    <typesafe-config.version>1.4.9</typesafe-config.version>
+    <junit.version>6.1.3</junit.version>
+    <assertj.version>3.27.7</assertj.version>
+
+    <maven-compiler-plugin.version>3.15.0</maven-compiler-plugin.version>
+    <maven-surefire-plugin.version>3.5.6</maven-surefire-plugin.version>
+    <maven-javadoc-plugin.version>3.12.0</maven-javadoc-plugin.version>
+    <maven-source-plugin.version>3.4.0</maven-source-plugin.version>
+    <maven-enforcer-plugin.version>3.6.3</maven-enforcer-plugin.version>
+    <license-maven-plugin.version>5.1.1</license-maven-plugin.version>
+  </properties>
+
+  <dependencyManagement>
+    <dependencies>
+      <!-- ADR-0018: the stable train. Module POMs declare LangChain4j deps WITHOUT a version. -->
+      <dependency>
+        <groupId>dev.langchain4j</groupId>
+        <artifactId>langchain4j-bom</artifactId>
+        <version>${langchain4j.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+      <!-- ADR-0022: the community train, for the GLM module, which has no stable equivalent. -->
+      <dependency>
+        <groupId>dev.langchain4j</groupId>
+        <artifactId>langchain4j-community-bom</artifactId>
+        <version>${langchain4j.community.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+
+      <dependency>
+        <groupId>com.typesafe</groupId>
+        <artifactId>config</artifactId>
+        <version>${typesafe-config.version}</version>
+      </dependency>
+
+      <dependency>
+        <groupId>org.junit</groupId>
+        <artifactId>junit-bom</artifactId>
+        <version>${junit.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+      <dependency>
+        <groupId>org.assertj</groupId>
+        <artifactId>assertj-core</artifactId>
+        <version>${assertj.version}</version>
+        <scope>test</scope>
+      </dependency>
+
+      <dependency>
+        <groupId>io.github.maxtrezzi</groupId>
+        <artifactId>modelrack4j-core</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.assertj</groupId>
+      <artifactId>assertj-core</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <pluginManagement>
+      <plugins>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-compiler-plugin</artifactId>
+          <version>${maven-compiler-plugin.version}</version>
+          <configuration>
+            <compilerArgs>
+              <arg>-Xlint:all,-serial</arg>
+            </compilerArgs>
+          </configuration>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-surefire-plugin</artifactId>
+          <version>${maven-surefire-plugin.version}</version>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-source-plugin</artifactId>
+          <version>${maven-source-plugin.version}</version>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-javadoc-plugin</artifactId>
+          <version>${maven-javadoc-plugin.version}</version>
+          <configuration>
+            <!--
+              @apiNote/@implSpec/@implNote are only recognised implicitly when javadoc is
+              documenting the JDK itself. Outside it they are custom tags and must be
+              registered, or every use is a hard error.
+            -->
+            <tags>
+              <tag>
+                <name>apiNote</name>
+                <placement>a</placement>
+                <head>API Note:</head>
+              </tag>
+              <tag>
+                <name>implSpec</name>
+                <placement>a</placement>
+                <head>Implementation Requirements:</head>
+              </tag>
+              <tag>
+                <name>implNote</name>
+                <placement>a</placement>
+                <head>Implementation Note:</head>
+              </tag>
+            </tags>
+          </configuration>
+        </plugin>
+      </plugins>
+    </pluginManagement>
+
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-enforcer-plugin</artifactId>
+        <version>${maven-enforcer-plugin.version}</version>
+        <executions>
+          <execution>
+            <id>enforce-build-rules</id>
+            <phase>validate</phase>
+            <goals><goal>enforce</goal></goals>
+            <configuration>
+              <rules>
+                <requireMavenVersion><version>[3.8.7,)</version></requireMavenVersion>
+                <requireJavaVersion><version>[17,)</version></requireJavaVersion>
+                <!--
+                  M0: a BOM that quietly changes a transitive version must surface at build
+                  time rather than at runtime (ADR-0018).
+                -->
+                <dependencyConvergence/>
+              </rules>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+
+      <plugin>
+        <groupId>com.mycila</groupId>
+        <artifactId>license-maven-plugin</artifactId>
+        <version>${license-maven-plugin.version}</version>
+        <configuration>
+          <licenseSets>
+            <licenseSet>
+              <header>${maven.multiModuleProjectDirectory}/build/license-header.txt</header>
+              <includes>
+                <include>**/*.java</include>
+              </includes>
+              <excludes>
+                <!--
+                  brainstorm/ is local-only and git-ignored, so it exists on a developer
+                  machine and never in CI. Without this exclude the root module's check
+                  scans it and the build behaves differently in the two places.
+                -->
+                <exclude>brainstorm/**</exclude>
+                <exclude>**/target/**</exclude>
+              </excludes>
+            </licenseSet>
+          </licenseSets>
+          <properties>
+            <owner>maxtrezzi</owner>
+          </properties>
+          <mapping>
+            <java>SLASHSTAR_STYLE</java>
+          </mapping>
+        </configuration>
+        <executions>
+          <execution>
+            <id>check-license-headers</id>
+            <phase>validate</phase>
+            <goals><goal>check</goal></goals>
+          </execution>
+        </executions>
+      </plugin>
+
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-javadoc-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>attach-javadocs</id>
+            <phase>package</phase>
+            <goals><goal>jar</goal></goals>
+          </execution>
+        </executions>
+      </plugin>
+
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-source-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>attach-sources</id>
+            <phase>package</phase>
+            <goals><goal>jar</goal></goals>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>

@@ -1,0 +1,60 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: JDK ${{ matrix.jdk }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # ADR-0019 requires 17 and 21: 17 because it is the claimed floor and nothing else
+        # proves the floor holds, 21 because it was the development JDK. Development has
+        # since moved to 25 (ADR-0026), so 25 is the third leg — the matrix is the floor,
+        # the dev JDK, and the current LTS.
+        jdk: ['17', '21', '25']
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK ${{ matrix.jdk }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.jdk }}
+          cache: maven
+
+      # verify, not package: the enforcer's convergence rule, the license-header check and
+      # the Javadoc build all have to be part of what "green" means (M0).
+      - name: Build
+        run: mvn -B --no-transfer-progress clean verify
+
+  offline:
+    name: offline, no API keys
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      # Everything except the -Pintegration profile must pass with no provider keys in the
+      # environment. This job exists so that a test which quietly depends on one fails here
+      # rather than in a contributor's fork.
+      - name: Build with no provider credentials
+        env:
+          OPENAI_API_KEY: ''
+          ANTHROPIC_API_KEY: ''
+          GEMINI_API_KEY: ''
+          ZHIPU_API_KEY: ''
+        run: mvn -B --no-transfer-progress clean verify
