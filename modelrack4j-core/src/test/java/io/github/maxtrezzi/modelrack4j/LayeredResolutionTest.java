@@ -136,6 +136,21 @@ class LayeredResolutionTest {
                 .hasMessageContaining("nope.conf");
     }
 
+    @Test
+    @DisplayName("config files are read as UTF-8 regardless of the platform default charset")
+    void configFilesAreReadAsUtf8() throws IOException {
+        // Java 17 predates JEP 400, so the platform default charset still follows the
+        // locale. HOCON mandates UTF-8, and this pins that the library actually gets it:
+        // the bytes are written as UTF-8 explicitly and must survive the round trip.
+        Path file = dir.resolve("utf8.conf");
+        Files.write(file, ("llm { SL { provider = fake-local, api-key = \"k\""
+                + ", model-name = \"modèle-ünïcode-模型\" } }").getBytes(StandardCharsets.UTF_8));
+
+        var registry = LlmRegistry.builder().configFiles(List.of(file)).build();
+
+        assertThat(registry.get("SL").config().modelName()).isEqualTo("modèle-ünïcode-模型");
+    }
+
     private Path write(String name, String content) throws IOException {
         Path file = dir.resolve(name);
         Files.writeString(file, content, StandardCharsets.UTF_8);
