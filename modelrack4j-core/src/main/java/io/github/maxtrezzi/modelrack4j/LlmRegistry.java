@@ -22,6 +22,7 @@ import dev.langchain4j.memory.chat.ChatMemoryProvider;
 import dev.langchain4j.memory.chat.MessageWindowChatMemory;
 import dev.langchain4j.memory.chat.TokenWindowChatMemory;
 import dev.langchain4j.model.TokenCountEstimator;
+import dev.langchain4j.model.chat.ChatModel;
 import io.github.maxtrezzi.modelrack4j.spi.ProviderFactory;
 import io.github.maxtrezzi.modelrack4j.spi.TokenEstimation;
 import java.nio.file.Path;
@@ -182,7 +183,7 @@ public final class LlmRegistry implements AutoCloseable {
             if (factory == null) {
                 List<String> available = new ArrayList<>(factories.keySet());
                 Collections.sort(available);
-                throw new ConfigValidationException("llm." + config.name()
+                throw new ConfigValidationException(path(config)
                         + ".provider is '" + config.provider() + "', for which no provider"
                         + " module is on the classpath. Available providers: "
                         + (available.isEmpty() ? "(none)" : String.join(", ", available)));
@@ -191,11 +192,16 @@ public final class LlmRegistry implements AutoCloseable {
             validateCapabilities(config, factory);
             factory.validate(config);
 
+            ChatModel chatModel = factory.createChatModel(config);
+            if (chatModel == null) {
+                throw new ConfigValidationException(path(config) + ": provider '"
+                        + config.provider() + "' produced no chat model, which every bundle"
+                        + " must have.");
+            }
+
             return new LlmBundle(
                     config,
-                    Objects.requireNonNull(
-                            factory.createChatModel(config),
-                            "createChatModel returned null for llm." + config.name()),
+                    chatModel,
                     config.streaming()
                             ? requireProduced(factory.createStreamingChatModel(config), config,
                                     "streaming = true", "streaming chat model")
@@ -213,10 +219,15 @@ public final class LlmRegistry implements AutoCloseable {
          * Silently dropping it would defeat the fail-fast contract: the configuration would
          * look honoured and the object would not be there.
          */
+        /** Anchors a message to the block the user wrote, e.g. {@code llm.SL}. */
+        private static String path(LlmConfig config) {
+            return ROOT_PATH + "." + config.name();
+        }
+
         private static <T> Optional<T> requireProduced(
                 Optional<T> produced, LlmConfig config, String requestedBy, String what) {
             if (produced == null || produced.isEmpty()) {
-                throw new ConfigValidationException("llm." + config.name() + " sets "
+                throw new ConfigValidationException(path(config) + " sets "
                         + requestedBy + ", but provider '" + config.provider()
                         + "' produced no " + what + ".");
             }
@@ -234,12 +245,15 @@ public final class LlmRegistry implements AutoCloseable {
                 // Only token-window memory depends on a provider capability.
                 return;
             }
-            TokenEstimation estimation = Objects.requireNonNull(
-                    factory.tokenEstimation(),
-                    "tokenEstimation returned null for provider " + config.provider());
+            TokenEstimation estimation = factory.tokenEstimation();
+            if (estimation == null) {
+                throw new ConfigValidationException(path(config) + ": provider '"
+                        + config.provider() + "' reported no token estimation capability, so"
+                        + " whether token-window memory is affordable cannot be decided.");
+            }
 
             if (estimation == TokenEstimation.ABSENT) {
-                throw new ConfigValidationException("llm." + config.name()
+                throw new ConfigValidationException(path(config)
                         + " uses memory.type = token-window, but provider '" + config.provider()
                         + "' ships no token count estimator, so token-window memory cannot be"
                         + " built. Use memory.type = message-window instead.");
@@ -247,7 +261,7 @@ public final class LlmRegistry implements AutoCloseable {
             // The message names the flag on purpose: a validation error that hides its own
             // escape hatch turns opt-in into outright rejection.
             if (estimation == TokenEstimation.REMOTE && !window.allowRemoteTokenCounting()) {
-                throw new ConfigValidationException("llm." + config.name()
+                throw new ConfigValidationException(path(config)
                         + " uses memory.type = token-window, but provider '" + config.provider()
                         + "' counts tokens by calling its API, so every memory eviction makes a"
                         + " billed, rate-limited network request. Set"
@@ -271,7 +285,7 @@ public final class LlmRegistry implements AutoCloseable {
             if (memory instanceof MemoryConfig.TokenWindow window) {
                 int maxTokens = window.maxTokens();
                 TokenCountEstimator estimator = factory.createTokenCountEstimator(config)
-                        .orElseThrow(() -> new ConfigValidationException("llm." + config.name()
+                        .orElseThrow(() -> new ConfigValidationException(path(config)
                                 + " uses memory.type = token-window, but provider '"
                                 + config.provider() + "' supplied no token count estimator"));
                 return Optional.of(memoryId -> TokenWindowChatMemory.builder()

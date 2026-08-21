@@ -231,6 +231,17 @@ class LlmRegistryTest {
     }
 
     @Test
+    @DisplayName("a factory returning null reports a config error, not a bare NullPointerException")
+    void factoryReturningNullIsReportedAsAConfigError() {
+        assertThatThrownBy(() -> registryOf(
+                "llm { SL { provider = fake-null, api-key = \"k\", model-name = \"m\" } }"))
+                .isInstanceOf(ConfigValidationException.class)
+                .hasMessageContaining("llm.SL")
+                .hasMessageContaining("fake-null")
+                .hasMessageContaining("produced no chat model");
+    }
+
+    @Test
     @DisplayName("a named block that is not an object fails as a config error, not a parser error")
     void nonObjectBlockIsRejected() {
         assertThatThrownBy(() -> registryOf("llm { SL = 5 }"))
