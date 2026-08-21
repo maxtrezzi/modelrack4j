@@ -104,7 +104,8 @@ class LlmRegistryTest {
                 .hasMessageContaining("'nope'")
                 .hasMessageContaining("fake-absent")
                 .hasMessageContaining("fake-local")
-                .hasMessageContaining("fake-remote");
+                .hasMessageContaining("fake-remote")
+                .hasMessageContaining("fake-incomplete");
     }
 
     @Test
@@ -215,6 +216,45 @@ class LlmRegistryTest {
     }
 
     @Test
+    @DisplayName("a requested capability the provider does not produce fails instead of vanishing")
+    void requestedCapabilityMustBeProduced() {
+        assertThatThrownBy(() -> registryOf("llm { SL { provider = fake-incomplete"
+                + ", api-key = \"k\", model-name = \"m\", streaming = true } }"))
+                .isInstanceOf(ConfigValidationException.class)
+                .hasMessageContaining("streaming = true")
+                .hasMessageContaining("produced no streaming chat model");
+
+        assertThatThrownBy(() -> registryOf("llm { SL { provider = fake-incomplete"
+                + ", api-key = \"k\", model-name = \"m\", moderation { enabled = true } } }"))
+                .isInstanceOf(ConfigValidationException.class)
+                .hasMessageContaining("produced no moderation model");
+    }
+
+    @Test
+    @DisplayName("a named block that is not an object fails as a config error, not a parser error")
+    void nonObjectBlockIsRejected() {
+        assertThatThrownBy(() -> registryOf("llm { SL = 5 }"))
+                .isInstanceOf(ConfigValidationException.class)
+                .hasMessageContaining("llm.SL")
+                .hasMessageContaining("NUMBER");
+    }
+
+    @Test
+    @DisplayName("a name containing a quote is handled, not built into a broken path expression")
+    void awkwardNamesAreHandled() throws IOException {
+        // Concatenated rather than a text block: the point of the test is the exact escaping.
+        String hocon = "llm {\n"
+                + "  \"we\\\"ird\" { provider = fake-local, api-key = \"k\", model-name = \"m\" }\n"
+                + "  \"SL.EU\"     { provider = fake-local, api-key = \"k\", model-name = \"m\" }\n"
+                + "}\n";
+
+        var registry = registryOf(hocon);
+
+        assertThat(registry.names()).containsExactly("SL.EU", "we\"ird");
+        assertThat(registry.get("we\"ird").chatModel()).isNotNull();
+    }
+
+    @Test
     @DisplayName("an unknown memory type lists the supported ones")
     void unknownMemoryTypeIsRejected() {
         assertThatThrownBy(() -> registryOf("""
@@ -227,8 +267,12 @@ class LlmRegistryTest {
                 .hasMessageContaining("token-window");
     }
 
+    private int fileCounter;
+
     private LlmRegistry registryOf(String hocon) throws IOException {
-        Path file = dir.resolve("test-" + Math.abs(hocon.hashCode()) + ".conf");
+        // A counter, not a hash: Math.abs(Integer.MIN_VALUE) is still negative, and a hash
+        // collision between two cases in one test would silently reuse a file.
+        Path file = dir.resolve("test-" + (++fileCounter) + ".conf");
         Files.writeString(file, hocon, StandardCharsets.UTF_8);
         return LlmRegistry.builder().configFiles(List.of(file)).build();
     }

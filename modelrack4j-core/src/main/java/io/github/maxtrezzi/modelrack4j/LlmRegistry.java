@@ -17,6 +17,7 @@ package io.github.maxtrezzi.modelrack4j;
 
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigObject;
+import com.typesafe.config.ConfigValue;
 import dev.langchain4j.memory.chat.ChatMemoryProvider;
 import dev.langchain4j.memory.chat.MessageWindowChatMemory;
 import dev.langchain4j.memory.chat.TokenWindowChatMemory;
@@ -34,6 +35,7 @@ import java.util.Optional;
 import java.util.ServiceLoader;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 
 /**
  * Holds one ready-to-use {@link LlmBundle} per configured name.
@@ -154,10 +156,17 @@ public final class LlmRegistry implements AutoCloseable {
             ConfigObject root = resolved.getObject(ROOT_PATH);
 
             Map<String, LlmBundle> built = new TreeMap<>();
-            for (String name : new TreeMap<>(root).keySet()) {
-                Config block = resolved.getConfig(ROOT_PATH + "." + quote(name))
-                        .withFallback(defaults);
-                LlmConfig config = LlmConfig.fromBlock(name, block);
+            // Sorted so that when several blocks are invalid, which one is reported is
+            // stable between runs instead of following map iteration order.
+            for (String name : new TreeSet<>(root.keySet())) {
+                ConfigValue value = root.get(name);
+                if (!(value instanceof ConfigObject block)) {
+                    throw new ConfigValidationException("llm." + name
+                            + " must be a configuration block, but is of type "
+                            + value.valueType() + " (" + value.origin().description() + ")");
+                }
+                LlmConfig config =
+                        LlmConfig.fromBlock(name, block.toConfig().withFallback(defaults));
                 built.put(name, buildBundle(config, factories));
             }
 
@@ -166,10 +175,6 @@ public final class LlmRegistry implements AutoCloseable {
                         "The '" + ROOT_PATH + "' block is empty: no configurations to build");
             }
             return new LlmRegistry(Collections.unmodifiableMap(built));
-        }
-
-        private static String quote(String name) {
-            return "\"" + name + "\"";
         }
 
         private static LlmBundle buildBundle(LlmConfig config, Map<String, ProviderFactory> factories) {
@@ -192,12 +197,30 @@ public final class LlmRegistry implements AutoCloseable {
                             factory.createChatModel(config),
                             "createChatModel returned null for llm." + config.name()),
                     config.streaming()
-                            ? factory.createStreamingChatModel(config)
+                            ? requireProduced(factory.createStreamingChatModel(config), config,
+                                    "streaming = true", "streaming chat model")
                             : Optional.empty(),
                     config.moderationEnabled()
-                            ? factory.createModerationModel(config)
+                            ? requireProduced(factory.createModerationModel(config), config,
+                                    "moderation.enabled = true", "moderation model")
                             : Optional.empty(),
                     buildMemoryProvider(config, factory));
+        }
+
+        /**
+         * Fails when the configuration asked for a capability and the factory produced
+         * nothing, rather than handing back a bundle quietly missing what was requested.
+         * Silently dropping it would defeat the fail-fast contract: the configuration would
+         * look honoured and the object would not be there.
+         */
+        private static <T> Optional<T> requireProduced(
+                Optional<T> produced, LlmConfig config, String requestedBy, String what) {
+            if (produced == null || produced.isEmpty()) {
+                throw new ConfigValidationException("llm." + config.name() + " sets "
+                        + requestedBy + ", but provider '" + config.provider()
+                        + "' produced no " + what + ".");
+            }
+            return produced;
         }
 
         /**

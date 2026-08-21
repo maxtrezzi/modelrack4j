@@ -33,7 +33,7 @@ import java.util.Objects;
  */
 final class ConfigLoader {
 
-    /** Path under which the library's documented defaults live in {@code reference.conf}. */
+    /** Path holding the documented defaults inside {@code modelrack4j-reference.conf}. */
     private static final String DEFAULTS_PATH = "modelrack4j.defaults";
 
     private ConfigLoader() {
@@ -72,7 +72,6 @@ final class ConfigLoader {
         for (int i = layers.size() - 2; i >= 0; i--) {
             merged = merged.withFallback(layers.get(i));
         }
-        merged = merged.withFallback(referenceConfig());
 
         try {
             // Exactly once, on the merged result. Default resolve options fall back to
