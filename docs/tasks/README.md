@@ -65,7 +65,7 @@ Phase 0 gates everything else; nothing below M0 should start before its blockers
 | [M2](milestones.md#m2--openai-and-anthropic) | OpenAI and Anthropic | **Done** — 52 tests green |
 | [M3](milestones.md#m3--hot-reload) | Hot reload | **Done** — 69 tests green |
 | [M4](milestones.md#m4--gemini-and-glm) | Gemini and GLM | **Done** — 87 tests green |
-| [M5](milestones.md#m5--release-readiness) | Release readiness — **v1 done** | Not started |
+| [M5](milestones.md#m5--release-readiness) | Release readiness — **v1 done** | **Done** — README, CHANGELOG, artifacts verified |
 | [D1](open-decisions.md#d1--glm-route-if-no-maintained-module-exists) | GLM route if no maintained module | **Closed** — never became live |
 | [D2](open-decisions.md#d2--repository-visibility) | Repository visibility | Needs decision |
 | [D3](open-decisions.md#d3--token-window-memory-on-a-remote-estimator) | Token-window memory on a remote estimator | **Settled** — opt-in flag |
@@ -84,14 +84,21 @@ Three of the seven verification tasks **refuted the premise they were written wi
 module was not removed, token estimation was not OpenAI-only, and resolving symlinks to their
 real path does not see a ConfigMap swap. That is the phase working as intended.
 
-**M5 is next, and it is the last one — v1 is done at M5.** Everything needed to publish,
-without publishing: the README (including the capability matrix M4 completed and the
-don't-cache warning), the CHANGELOG, and full POM metadata. All four providers are built, and
-hot reload is in and tested against a real `WatchService`.
+**v1 is complete.** M0 through M5 are done: layered configuration, capability-aware
+validation, four providers, hot reload atomic across the whole snapshot, and — as of M5 — a
+README and CHANGELOG, with the installed `0.1.0-SNAPSHOT` artifacts proven consumable by a
+throwaway project outside the reactor.
 
-Two things worth closing before M5 rather than during it: **D2**, and running
-`mvn -Pintegration verify` once with real keys — the profile's guards are verified, but no IT
-has ever actually reached a provider.
+**Nothing is scheduled after it.** M6 (GPG signing, Central Portal publishing) is deliberately
+unscheduled: it is triggered by the library proving itself in the owner's first real project,
+not by a date.
 
-Waiting on the owner: **D2** (repository visibility). Waiting on hardware: the macOS half
-of Task 0.8.
+Three things are open, and none of them is code:
+
+- **[D2](open-decisions.md#d2--repository-visibility)** — needs the owner. The only open
+  decision.
+- **`mvn -Pintegration verify` has never reached a live API.** Both guards are verified across
+  all four providers; the payload has never run. Worth doing once, and it is now the last
+  claim in the README that rests on unexercised code.
+- **The macOS half of [Task 0.8](phase-0-verification.md#task-08--watch-strategy-spike)** —
+  needs hardware. The README states the gap rather than papering over it.

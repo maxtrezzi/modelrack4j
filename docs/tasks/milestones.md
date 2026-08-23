@@ -374,7 +374,7 @@ GLM row this milestone finally filled in; M5 renders it rather than re-deriving 
 
 ### M5 — Release readiness
 
-**Status:** Not started · **Entry:** M3 and M4
+**Status:** Done 2026-08-23 · **Entry:** M3 and M4
 
 Everything needed to publish, without publishing.
 
@@ -390,3 +390,59 @@ Everything needed to publish, without publishing.
 
 **v1 is done here.** M6 — GPG signing, Central Portal publishing, namespace verification —
 is deliberately separate and not scheduled.
+
+#### Built
+
+**Most of this milestone was already done, and the useful part was finding out which.** M0
+set up the POM metadata, the license-header check, and the sources and javadoc jars, because
+retrofitting a clean Javadoc build is worse than starting with one. Re-checked here rather
+than assumed: all six publishable modules install with `-sources` and `-javadoc` jars
+attached, and `modelrack4j-examples` installs nothing at all — it skips both `install` and
+`deploy`, which is what "deliberately NOT published" in its POM description has to mean to
+be true.
+
+So M5 came down to the two documents that did not exist, plus one behaviour the act of
+writing them exposed.
+
+**The README is verified, not drafted.** Its quick start was compiled and run from a
+throwaway consumer project **outside the reactor**, resolving `0.1.0-SNAPSHOT` from `~/.m2`
+through the BOM import exactly as the README tells a reader to. That is the only thing which
+actually proves the installed artifacts are consumable, and it exercises `ServiceLoader`
+discovery from a plain classpath rather than from a Maven module. It printed:
+
+```
+names: [CR, SH, SL]
+CR: provider=openai    model=gpt-5-mini          streaming=false moderation=true  memory=false
+SH: provider=anthropic model=claude-sonnet-4-6   streaming=true  moderation=false memory=false
+SL: provider=anthropic model=claude-sonnet-4-6   streaming=false moderation=false memory=true
+```
+
+— which is the README's own bundle table, produced by the README's own configuration.
+
+**Writing the reload section found a silent failure mode, now fixed
+([ADR-0031](../adr/0031-a-rejected-reload-is-always-logged.md)).** With `watch(true)` and no
+`onReloadFailure` listener, a broken config file produced *no output of any kind*. The
+rejection was correct and the previous snapshot stayed live — but every later edit to that
+file then failed the same way, so the user's symptom was "reloading stopped working", with
+nothing to read. `reload()` now logs the rejection at WARN with its cause, unconditionally.
+Confirmed the same way as the quick start, from the consumer project with a real SLF4J
+binding and no listener registered: the WARN line appears, the stack trace with it, and
+`get("SL")` still returns the previous model. [ADR-0029](../adr/0029-reload-callbacks-are-quiet-contained-and-not-a-heartbeat.md)
+is amended rather than superseded — what a *callback* means is unchanged.
+
+**The `CHANGELOG` is Keep a Changelog with one addition**: an explicit pre-1.0 note that a
+breaking change may land in a `0.x` minor, since the alternative is a reader assuming SemVer
+guarantees the project has not made yet.
+
+**Two things the README states as gaps rather than smoothing over:**
+
+1. **macOS latency is still unmeasured**, so the latency section gives the Linux figures,
+   says the macOS implementation is polling-based, and tells the reader to measure it
+   themselves rather than quoting a number from hearsay. This was M5's one bullet that could
+   not be closed; [Task 0.8](phase-0-verification.md#task-08--watch-strategy-spike) stays
+   *Partly done* and keeps it.
+2. **`-Pintegration` has still never reached a live API.** Both guards are verified across
+   all four providers, and the payload has never run.
+
+**Not done here, deliberately:** anything that publishes. No GPG plugin, no Central Portal
+configuration, no `deploy` execution — that is M6, and it is unscheduled by design.
