@@ -83,13 +83,17 @@ and the POM `<developers>` block.
 
 #### Built
 
-**32 tests, green on JDK 21 and 25, with no network and no API keys.**
+**37 tests, green on JDK 21 and 25, with no network and no API keys.**
 
 | Class | Tests | Covers |
 |---|---|---|
-| `LayeredResolutionTest` | 5 | the [ADR-0007](../adr/0007-layered-hocon-via-typesafe-config.md) trap |
+| `LayeredResolutionTest` | 6 | the [ADR-0007](../adr/0007-layered-hocon-via-typesafe-config.md) trap, and UTF-8 decoding |
 | `LlmConfigTest` | 13 | record validation and value equality |
-| `LlmRegistryTest` | 14 | build, lookup, discovery, capability rules |
+| `LlmRegistryTest` | 18 | build, lookup, discovery, capability rules, SPI misbehaviour |
+
+The count grew after M1 was first written: a review pass against the Java 17 profile and a
+full review against the plugin added the UTF-8, awkward-name, non-object-block,
+capability-not-produced and null-returning-factory cases.
 
 **The layering trap has its own regression suite**, as ADR-0007 required. The load-bearing
 case: a defaults layer whose `api-key` is `${MODELRACK4J_ABSENT_VAR}` — an environment
