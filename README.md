@@ -90,7 +90,7 @@ llm {
   SL {                                        # short, cheap, deterministic
     provider    = anthropic
     api-key     = ${ANTHROPIC_API_KEY}
-    model-name  = "claude-sonnet-4-6"
+    model-name  = "claude-sonnet-5"
     temperature = 0.2
     memory { type = message-window, max-messages = 20 }
   }
@@ -98,7 +98,7 @@ llm {
   SH {                                        # same model, streamed, more creative
     provider    = anthropic
     api-key     = ${ANTHROPIC_API_KEY}
-    model-name  = "claude-sonnet-4-6"
+    model-name  = "claude-sonnet-5"
     temperature = 0.9
     streaming   = true
   }
@@ -106,7 +106,7 @@ llm {
   CR {                                        # the critic, and the one that moderates
     provider    = openai
     api-key     = ${OPENAI_API_KEY}
-    model-name  = "gpt-5-mini"
+    model-name  = "gpt-5.1"
     temperature = 0.7
     moderation { enabled = true }
   }
@@ -206,6 +206,14 @@ Every named block lives under the `llm` root. Names are yours: `SL`, `CR`,
 | `memory.allow-remote-token-counting` | boolean | `false` | see [Memory](#memory) |
 | `moderation.enabled` | boolean | `false` | builds a `ModerationModel` |
 
+**Model names are strings, and nothing here validates them.** `model-name` is passed
+straight to the provider's builder. LangChain4j ships model-name *enums*, but they are a
+convenience rather than a whitelist, and being compiled at release time they lag the
+providers — a model released after LangChain4j 1.19.0 works perfectly well through this
+library. The examples above use `claude-sonnet-5`, which no enum in the pinned jar lists,
+alongside `gpt-5.1`, which one does. The trade is that a typo surfaces as the provider's own
+error on the first request rather than at load time.
+
 Omitting a key is meaningful: no `temperature` means the provider's default, no `memory`
 block means no `ChatMemoryProvider` is built at all, no `moderation` block means no
 moderation model. The defaults above are the ones in
@@ -227,7 +235,7 @@ LlmRegistry.builder()
 ```hocon
 # defaults.conf — the key exists, but nothing can supply it here
 llm {
-  SL { provider = anthropic, model-name = "claude-sonnet-4-6", api-key = ${ANTHROPIC_API_KEY} }
+  SL { provider = anthropic, model-name = "claude-sonnet-5", api-key = ${ANTHROPIC_API_KEY} }
 }
 
 # local.conf — a developer with no key, pointing at a local gateway
