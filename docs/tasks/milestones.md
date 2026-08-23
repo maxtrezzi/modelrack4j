@@ -142,7 +142,7 @@ debug API, and any real provider — the four provider modules are still empty.
 
 ### M2 — OpenAI and Anthropic
 
-**Status:** Not started · **Entry:** M1
+**Status:** Done 2026-08-23 · **Entry:** M1
 
 - `modelrack4j-provider-openai` and `modelrack4j-provider-anthropic`, each registering
   through `ServiceLoader` ([ADR-0005](../adr/0005-provider-factory-spi-via-serviceloader.md)).
@@ -151,6 +151,59 @@ debug API, and any real provider — the four provider modules are still empty.
 - Build-only tests: configuration in, correctly parameterised model object out.
 - Integration tests behind a Maven profile, skipped by default, keys from the environment.
 - Examples module runs the three-model scenario against real APIs.
+
+#### Built
+
+**52 unit tests, green on JDK 21 and 25, all offline with no API keys** — core 37,
+`-provider-openai` 7, `-provider-anthropic` 8. LangChain4j builders do not contact the
+provider, so a dummy credential is enough to assert real parameterisation.
+
+Both factories register through `ServiceLoader`, and each module has an end-to-end test that
+builds a bundle through `LlmRegistry` rather than calling the factory directly — that is the
+only thing which actually proves the `META-INF/services` wiring.
+
+**Capabilities are asserted, not trusted.** The [Task 0.6](phase-0-verification.md#task-06--provider-capability-matrix)
+matrix is now enforced in code and pinned by tests: OpenAI reports `LOCAL` and supplies
+moderation; Anthropic reports `REMOTE`, supplies no moderation model, and its `validate()`
+rejects a config that enables it. The [ADR-0027](../adr/0027-remote-token-counting-is-opt-in.md)
+opt-in rule is exercised against a *real* remote counter for the first time.
+
+**Two provider-specific traps found while wiring the builders:**
+
+1. **OpenAI's moderation endpoint takes its own model, not the chat model.** Forwarding
+   `model-name` into `OpenAiModerationModel` would send a request the API rejects, so the
+   factory deliberately does not pass it and lets LangChain4j supply the moderation model.
+   This is invisible offline — every build-only test would still pass — so it is commented at
+   the call site.
+2. **Local token counting needs a tokenizer the bundled jtokkit recognises.**
+   `new OpenAiTokenCountEstimator("no-such-model")` throws
+   `IllegalArgumentException: Model ... is unknown to jtokkit`, verified. Wrapped as a
+   `ConfigValidationException` naming the model and pointing at `message-window`, because
+   otherwise it surfaces during memory eviction rather than at build time. Practical exposure
+   is small — `gpt-4o`, `gpt-4.1`, `gpt-5`, `gpt-5.1`, `o3` and `gpt-4-turbo` all resolve.
+
+**Model names come from LangChain4j's own enums** (`AnthropicChatModelName`,
+`OpenAiChatModelName` at 1.19.0), not from recollection: `claude-sonnet-4-6`, `gpt-5-mini`.
+
+**Integration tests are doubly guarded, and both guards were verified:**
+
+| Command | Failsafe | Result |
+|---|---|---|
+| `mvn verify` | does not run at all | no `failsafe-reports` produced |
+| `mvn -Pintegration verify`, no keys | runs | both ITs **skipped**, build passes |
+
+The second guard matters: `@EnabledIfEnvironmentVariable` means running the profile with only
+one provider configured skips the other instead of failing.
+
+**The examples module is wired as a consumer would wire it** — it depends on core *and* both
+provider modules, because core alone knows no providers. `ThreeModelCouncil` asks the registry
+for each bundle at the point of use rather than caching it in a field, which is the habit the
+holder API exists to encourage.
+
+**Carried forward to M5's README:** LangChain4j silently ignores moderation on the
+`AiServices` streaming path (upstream issue #2779). This library only builds the objects, but
+the limitation has to be documented where a user configuring `streaming = true` alongside
+`moderation.enabled = true` will see it.
 
 ---
 
