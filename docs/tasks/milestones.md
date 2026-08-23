@@ -296,17 +296,79 @@ documentation, not the design.
 
 ### M4 — Gemini and GLM
 
-**Status:** Not started · **Entry:** M2 (see ordering note)
+**Status:** Done 2026-08-23 · **Entry:** M2
 
 - Gemini module per [Task 0.4](phase-0-verification.md#task-04--which-gemini-module).
 - GLM module per [Task 0.3](phase-0-verification.md#task-03--glm-module-status) and
   decision [D1](open-decisions.md#d1--glm-route-if-no-maintained-module-exists).
 - Provider capability matrix in the README, from Task 0.6.
 
-> **Open ordering question.** M4 depends on M2, not on M3. If the first consuming
-> application needs genuine cross-*vendor* diversity — several models from different
-> vendors cooperating — it needs M4, and it may not need hot reload at all. Confirm with
-> the owner whether M4 should be pulled ahead of M3.
+> **Ordering question, now closed.** M4 depended on M2, not on M3, and the entry asked
+> whether it should be pulled ahead. It was not: M3 shipped first, and M4 followed
+> immediately, so no consuming application waited on either.
+
+#### Built
+
+**87 unit tests, green on JDK 21 and 25, all offline with no API keys** — core 54,
+`-provider-openai` 7, `-provider-anthropic` 8, `-provider-gemini` 8, `-provider-glm` 10. All
+four provider modules now register through `ServiceLoader`, and each has an end-to-end test
+that builds a bundle through `LlmRegistry` rather than calling its factory directly — the
+only thing that actually proves the `META-INF/services` wiring.
+
+**Every capability claim was read out of the artifact before any code was written**, by
+listing the jars' classes. That is how the two gaps below were found rather than discovered
+at runtime:
+
+| Provider | Chat | Streaming | Moderation | Token estimation |
+|---|---|---|---|---|
+| `openai` | ✅ | ✅ | ✅ | **local** |
+| `anthropic` | ✅ | ✅ | ❌ | remote |
+| `gemini` | ✅ | ✅ | ❌ | remote |
+| `glm` | ✅ | ✅ | ❌ | **none** |
+
+**GLM is the first provider that makes `TokenEstimation.ABSENT` a live value.** Until now
+ABSENT existed for a case no real provider occupied. Token-window memory is *unavailable*
+there rather than expensive, so [ADR-0027](../adr/0027-remote-token-counting-is-opt-in.md)'s
+opt-in flag must not smuggle it through — the flag covers a cost, not an absence.
+`tokenWindowIsRefusedOutright` sets the flag and asserts the rejection anyway.
+
+**Three GLM-specific traps, all found by reading the artifact:**
+
+1. **The builder key is `model`, not `modelName`.** The schema's `model-name` maps across in
+   the factory. A test asserts the name actually arrived, because a wrong builder key
+   compiles fine and produces a model configured with the provider's default.
+2. **There is no single request timeout** — four separate ones, and two of them,
+   `callTimeout` and `writeTimeout`, are deprecated and marked for removal. Settled as
+   [ADR-0030](../adr/0030-one-timeout-in-the-schema.md): the schema keeps one `timeout` key
+   and each provider maps it, so GLM applies it to the two that are not deprecated. GLM
+   consequently has no whole-call bound, which the ADR records as an accepted cost.
+3. **`ZhipuAiChatModel.provider()` returns `ModelProvider.OTHER`.** An application routing on
+   `ChatModel.provider()` cannot tell GLM from any other community module, so its test
+   asserts on the model class and the resolved model name instead. Pinned so the day it
+   changes upstream is visible.
+
+**Gemini was the straightforward one** and needed no such handling: the builder shape matches
+OpenAI's and Anthropic's exactly, and the stable module choice from
+[ADR-0023](../adr/0023-gemini-via-the-stable-google-ai-gemini-module.md) held.
+
+**One honest gap.** M2's entry recorded that model names came from LangChain4j's own enums
+rather than from recollection. That is still true for GLM — `glm-4.6` is from
+`ChatCompletionModel` — but **`langchain4j-google-ai-gemini` ships no model-name enum**, so
+`gemini-2.5-flash` could not be checked against the artifact. It is the one string in this
+milestone that only a live call can verify, and the IT says so at the point of use.
+
+**Both integration-test guards were re-verified with four modules present**, because the
+second one is the one that breaks quietly: `mvn -Pintegration verify` with no keys set runs
+failsafe and **skips all four ITs**, build passing. Running the profile with one provider
+configured therefore skips the other three rather than failing.
+
+**Still never run against a live API.** Adding two more providers to the profile does not
+change that. Worth doing once before M5 closes v1.
+
+**Deferred into M5 with the README that holds it:** M4's third bullet asks for the capability
+matrix in the README, and there is no README yet — M5 creates it. The matrix itself is done
+and lives in [Task 0.6](phase-0-verification.md#task-06--provider-capability-matrix), whose
+GLM row this milestone finally filled in; M5 renders it rather than re-deriving it.
 
 ---
 

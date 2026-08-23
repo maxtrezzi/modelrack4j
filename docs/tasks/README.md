@@ -64,7 +64,7 @@ Phase 0 gates everything else; nothing below M0 should start before its blockers
 | [M1](milestones.md#m1--core-without-watching) | Core without watching | **Done** — 37 tests green |
 | [M2](milestones.md#m2--openai-and-anthropic) | OpenAI and Anthropic | **Done** — 52 tests green |
 | [M3](milestones.md#m3--hot-reload) | Hot reload | **Done** — 69 tests green |
-| [M4](milestones.md#m4--gemini-and-glm) | Gemini and GLM | Not started |
+| [M4](milestones.md#m4--gemini-and-glm) | Gemini and GLM | **Done** — 87 tests green |
 | [M5](milestones.md#m5--release-readiness) | Release readiness — **v1 done** | Not started |
 | [D1](open-decisions.md#d1--glm-route-if-no-maintained-module-exists) | GLM route if no maintained module | **Closed** — never became live |
 | [D2](open-decisions.md#d2--repository-visibility) | Repository visibility | Needs decision |
@@ -84,10 +84,14 @@ Three of the seven verification tasks **refuted the premise they were written wi
 module was not removed, token estimation was not OpenAI-only, and resolving symlinks to their
 real path does not see a ConfigMap swap. That is the phase working as intended.
 
-**M4 is next** — Gemini and GLM, the two remaining provider modules. M3 built hot reload on
-the spike's findings rather than on ADR-0013's original reasoning, and the ConfigMap case is
-now a regression test that fails within seconds if anyone restores the filename filter
-[ADR-0024](../adr/0024-watch-the-symlink-s-directory-not-its-real-path.md) removed.
+**M5 is next, and it is the last one — v1 is done at M5.** Everything needed to publish,
+without publishing: the README (including the capability matrix M4 completed and the
+don't-cache warning), the CHANGELOG, and full POM metadata. All four providers are built, and
+hot reload is in and tested against a real `WatchService`.
+
+Two things worth closing before M5 rather than during it: **D2**, and running
+`mvn -Pintegration verify` once with real keys — the profile's guards are verified, but no IT
+has ever actually reached a provider.
 
 Waiting on the owner: **D2** (repository visibility). Waiting on hardware: the macOS half
 of Task 0.8.

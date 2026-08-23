@@ -367,7 +367,8 @@ Also confirmed, since the SPI touches them: the request/response types are
 ### Task 0.6 — Provider capability matrix
 
 **Status:** Done — checked 2026-08-03 against the `1.18.0` artifacts; token-estimation
-expectation refuted; re-verified at `1.19.0` on 2026-08-20 ([Task 0.1](#re-verified-and-re-pinned--2026-08-20))
+expectation refuted; re-verified at `1.19.0` on 2026-08-20 ([Task 0.1](#re-verified-and-re-pinned--2026-08-20));
+GLM row added at M4 on 2026-08-23
 
 For the pinned version, determine which providers actually ship a `ModerationModel`
 (expected: the OpenAI family only) and which ship a `TokenCountEstimator` (expected:
@@ -419,6 +420,37 @@ Recorded as [ADR-0021](../adr/0021-token-estimation-is-universal-but-two-cost-cl
 the SPI's token-estimation capability is three-valued (`ABSENT`/`LOCAL`/`REMOTE`), not
 boolean. A boolean would return true for all four and bless every configuration — the check
 would exist and catch nothing.
+
+#### Completed at M4 — the GLM row the matrix never had
+
+The table above covers the four modules Task 0.6 was written against, and
+`langchain4j-community-zhipu-ai` is not one of them: at the time it was still an open
+question ([D1](open-decisions.md#d1--glm-route-if-no-maintained-module-exists)) whether GLM
+would come from a community module at all. Read from the `1.19.0-beta29` artifact on
+2026-08-23, by listing its classes:
+
+| Provider | `ModerationModel` | `TokenCountEstimator` | Counting mechanism |
+|---|---|---|---|
+| `langchain4j-community-zhipu-ai` | ❌ | ❌ **none at all** | — |
+
+**GLM is the first provider with no estimator of any kind**, which makes it the first one
+where `TokenEstimation.ABSENT` is a live value rather than a defensive branch. Token-window
+memory is *unavailable* there, not merely expensive, so
+[ADR-0027](../adr/0027-remote-token-counting-is-opt-in.md)'s opt-in flag must not smuggle it
+through — the flag covers a cost, not an absence. A test asserts exactly that.
+
+The module ships `ZhipuAiChatModel`, `ZhipuAiStreamingChatModel`, `ZhipuAiEmbeddingModel` and
+`ZhipuAiImageModel`; the last two are out of scope ([ADR-0003](../adr/0003-bundle-holds-config-shaped-inputs-only.md)).
+Its `shared.SensitiveFilter` looks like moderation from its name and is not — it is a plain
+DTO with `getRole`/`setRole`, unrelated to `ModerationModel`.
+
+**One further fact, not a capability but worth recording:** `ZhipuAiChatModel.provider()`
+returns `ModelProvider.OTHER`. An application routing on `ChatModel.provider()` cannot tell a
+GLM model from any other community module's, so the registry name is the only reliable
+discriminator. Pinned by a test.
+
+**Gemini re-checked at `1.19.0` while building M4** and unchanged: no moderation,
+`GoogleAiGeminiTokenCountEstimator` present and remote.
 
 #### Hands to other tasks
 
