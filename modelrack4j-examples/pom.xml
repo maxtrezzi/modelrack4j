@@ -25,5 +25,26 @@
       <groupId>io.github.maxtrezzi</groupId>
       <artifactId>modelrack4j-core</artifactId>
     </dependency>
+    <!--
+      Providers are on the runtime classpath so ServiceLoader can find them. This is exactly
+      what a consumer does: core alone knows no providers at all.
+    -->
+    <dependency>
+      <groupId>io.github.maxtrezzi</groupId>
+      <artifactId>modelrack4j-provider-openai</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>io.github.maxtrezzi</groupId>
+      <artifactId>modelrack4j-provider-anthropic</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <!-- Demos print through SLF4J's simple binding; the library itself binds nothing. -->
+    <dependency>
+      <groupId>org.slf4j</groupId>
+      <artifactId>slf4j-simple</artifactId>
+      <version>2.0.18</version>
+      <scope>runtime</scope>
+    </dependency>
   </dependencies>
 </project>
