@@ -153,9 +153,13 @@ public final class LlmRegistry implements AutoCloseable {
     /**
      * Registers a listener called once per rejected reload.
      *
-     * <p>A rejected reload changes nothing: the previous snapshot stays live in full. This
-     * is the only signal that the configuration on disk is currently broken, so an
-     * application that cares should at least log it.
+     * <p>A rejected reload changes nothing: the previous snapshot stays live in full. Every
+     * rejection is also logged at WARN by this class's logger, whether or not a listener is
+     * registered, so a broken file on disk is never silent; register a listener to do
+     * something about it beyond logging — alert, expose a health signal, page someone.
+     *
+     * <p>Listeners run on the watcher thread. An exception thrown by one is logged and
+     * affects neither the other listeners nor later reloads.
      *
      * @param listener called with the rejected reload's cause
      * @throws NullPointerException if the listener is null
@@ -190,7 +194,7 @@ public final class LlmRegistry implements AutoCloseable {
      *
      * @implNote Called only from the watcher thread, so reloads never overlap and the
      *     compare-then-swap below needs no lock. It never throws: a rejected reload is
-     *     reported to the failure listeners and leaves the live snapshot alone.
+     *     logged, reported to the failure listeners, and leaves the live snapshot alone.
      */
     void reload() {
         Map<String, LlmBundle> previous = bundles;
@@ -198,6 +202,11 @@ public final class LlmRegistry implements AutoCloseable {
         try {
             staged = loader.load(previous);
         } catch (RuntimeException e) {
+            // ADR-0031: logged whether or not anyone listens. Without this, a typo in a
+            // config file makes every later edit stop taking effect with no trace anywhere,
+            // and the failure has no caller to be thrown at.
+            log.warn("modelrack4j reload rejected; the previous configuration stays live: {}",
+                    e.getMessage(), e);
             notify(failureListeners, new ReloadFailure(configFiles, e), "failure");
             return;
         }

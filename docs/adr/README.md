@@ -91,7 +91,8 @@ by number, since the numbering only reflects the order of the original appendix.
 | [0024](0024-watch-the-symlink-s-directory-not-its-real-path.md) | Watch the symlink's own directory; filename filtering cannot gate a ConfigMap swap | Accepted |
 | [0014](0014-lifecycle-of-removed-names-and-superseded-bundles.md) | Lifecycle of removed names and superseded bundles | Accepted |
 | [0009](0009-holder-api-primary-listeners-optional.md) | Holder API primary, listeners optional | Accepted |
-| [0029](0029-reload-callbacks-are-quiet-contained-and-not-a-heartbeat.md) | A reload callback means something changed — nothing else | Accepted |
+| [0029](0029-reload-callbacks-are-quiet-contained-and-not-a-heartbeat.md) | A reload callback means something changed — nothing else | Accepted — failure path amended by ADR-0031 |
+| [0031](0031-a-rejected-reload-is-always-logged.md) | A rejected reload is logged whether or not anyone is listening | Accepted |
 
 **Process**
 

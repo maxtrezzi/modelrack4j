@@ -1,6 +1,6 @@
 # ADR-0029: A reload callback means something changed — nothing else
 
-- **Status:** Accepted
+- **Status:** Accepted — failure path amended by [ADR-0031](0031-a-rejected-reload-is-always-logged.md)
 - **Date:** 2026-08-23
 - **Supersedes:** —
 - **Amends:** —
