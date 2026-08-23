@@ -72,6 +72,7 @@ by number, since the numbering only reflects the order of the original appendix.
 | [0010](0010-discriminators-only-with-two-real-variants.md) | Discriminated variants only where two real variants exist today | Accepted — estimator-availability premise amended by ADR-0021 |
 | [0004](0004-expose-chatmemoryprovider.md) | Expose `ChatMemoryProvider`, not a bare `ChatMemory` | Accepted — estimator-availability premise amended by ADR-0021 |
 | [0021](0021-token-estimation-is-universal-but-two-cost-classes.md) | Token estimation is universal; the capability that varies is its cost | Accepted |
+| [0027](0027-remote-token-counting-is-opt-in.md) | Token-window memory on a remote estimator is opt-in | Accepted |
 | [0018](0018-manage-langchain4j-versions-via-bom.md) | Manage LangChain4j versions by importing its BOM | Accepted — one import becomes two, per ADR-0022 |
 | [0022](0022-glm-via-the-community-module-and-its-bom.md) | Take GLM from the community module, and import its BOM alongside the main one | Accepted |
 | [0023](0023-gemini-via-the-stable-google-ai-gemini-module.md) | Take Gemini from `langchain4j-google-ai-gemini`, the stable module | Accepted |
