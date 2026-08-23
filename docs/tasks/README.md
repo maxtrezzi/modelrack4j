@@ -61,7 +61,7 @@ Phase 0 gates everything else; nothing below M0 should start before its blockers
 | [Task 0.7](phase-0-verification.md#task-07--name-and-coordinates) | Name and coordinates | **Done** — `io.github.maxtrezzi` |
 | [Task 0.8](phase-0-verification.md#task-08--watch-strategy-spike) | Watch strategy spike | **Partly done** — macOS unmeasured |
 | [M0](milestones.md#m0--skeleton-and-ci) | Skeleton and CI | **Done** — build green |
-| [M1](milestones.md#m1--core-without-watching) | Core without watching | **Done** — 32 tests green |
+| [M1](milestones.md#m1--core-without-watching) | Core without watching | **Done** — 37 tests green |
 | [M2](milestones.md#m2--openai-and-anthropic) | OpenAI and Anthropic | Not started |
 | [M3](milestones.md#m3--hot-reload) | Hot reload | Not started |
 | [M4](milestones.md#m4--gemini-and-glm) | Gemini and GLM | Not started |
