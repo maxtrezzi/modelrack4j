@@ -61,7 +61,7 @@ Phase 0 gates everything else; nothing below M0 should start before its blockers
 | [Task 0.7](phase-0-verification.md#task-07--name-and-coordinates) | Name and coordinates | **Done** — `io.github.maxtrezzi` |
 | [Task 0.8](phase-0-verification.md#task-08--watch-strategy-spike) | Watch strategy spike | **Partly done** — macOS unmeasured |
 | [M0](milestones.md#m0--skeleton-and-ci) | Skeleton and CI | **Done** — build green |
-| [M1](milestones.md#m1--core-without-watching) | Core without watching | Not started |
+| [M1](milestones.md#m1--core-without-watching) | Core without watching | **Done** — 37 tests green |
 | [M2](milestones.md#m2--openai-and-anthropic) | OpenAI and Anthropic | Not started |
 | [M3](milestones.md#m3--hot-reload) | Hot reload | Not started |
 | [M4](milestones.md#m4--gemini-and-glm) | Gemini and GLM | Not started |
@@ -84,7 +84,8 @@ Three of the seven verification tasks **refuted the premise they were written wi
 module was not removed, token estimation was not OpenAI-only, and resolving symlinks to their
 real path does not see a ConfigMap swap. That is the phase working as intended.
 
-**M1 is next** — core without watching. D3 is settled (opt-in), so **M2 is unblocked** too.
+**M2 is next** — OpenAI and Anthropic provider modules, unblocked by D3 settling as opt-in.
+M1 landed core: loading, validation, the SPI, and a registry that builds once.
 
 Waiting on the owner: **D2** (repository visibility). Waiting on hardware: the macOS half
 of Task 0.8.
