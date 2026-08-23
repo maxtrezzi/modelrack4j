@@ -12,6 +12,9 @@ a restart.
 > of the LangChain4j project. It depends on LangChain4j; it does not speak for it. That is
 > also why no artifact here uses the `langchain4j-` prefix.
 
+📖 **[The manual](docs/manual/README.md)** — a [tutorial](docs/manual/part-1-tutorial.md) that
+starts from nothing, and a [reference](docs/manual/part-2-reference.md) for everything else.
+
 **Status: pre-release, `0.1.0-SNAPSHOT`.** Not published to Maven Central yet — build and
 install it locally (see [Building](#building-from-source)). The API is 0.x and may still
 change; see [CHANGELOG.md](CHANGELOG.md).
@@ -461,6 +464,8 @@ CI runs JDK 17 (the floor), 21 and 25.
 
 ## Documentation
 
+- **[`docs/manual/`](docs/manual/README.md)** — the manual: a tutorial built on the runnable
+  examples, then a reference for the schema, the API, reload semantics and troubleshooting.
 - **[`docs/adr/`](docs/adr/README.md)** — why the library is shaped this way. Every design
   constraint above has an ADR behind it with the alternatives that were rejected.
 - **[`docs/tasks/`](docs/tasks/README.md)** — what is done and what is next.

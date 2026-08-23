@@ -17,6 +17,8 @@ will not be held back for a major bump until the API settles at `1.0.0`.
   configuration is for, surfaced through `LlmConfig.description()`. Nothing in the library
   reads it. A present-but-blank description is rejected; `description = null` in a higher
   layer clears one set lower down.
+- A manual in `docs/manual/`: a tutorial built on the runnable examples, and a reference for
+  the schema, the API, reload semantics, the provider matrix and troubleshooting.
 - `ConsoleChat`, an interactive example: a menu of every configured model, chat with the one
   you pick, `/menu` to switch, `/exit` to leave. Watches its configuration files, so editing
   one while it runs changes the menu underneath you.

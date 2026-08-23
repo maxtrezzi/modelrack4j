@@ -28,6 +28,7 @@ import java.util.List;
  * spends money. Run it with the bundled configuration:
  *
  * <pre>{@code
+ * mvn install                                     # exec:java reads ~/.m2, not the reactor
  * mvn -q -pl modelrack4j-examples exec:java \
  *     -Dexec.mainClass=io.github.maxtrezzi.modelrack4j.examples.ThreeModelCouncil \
  *     -Dexec.args=modelrack4j-examples/src/main/resources/council.conf

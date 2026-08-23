@@ -118,3 +118,54 @@ serves the whole greeting, with a comment saying why a second call does not belo
 
 Twice in two days on the same three lines suggests the shape is the hazard, not the
 attention: `get()` reads mutable shared state and looks exactly like reading a field.
+
+---
+
+### P3 — The manual
+
+**Status:** Done 2026-08-23 · **Branch:** `task/p3-manual`
+
+A developer and user manual in `docs/manual/`: [Part 1](../manual/part-1-tutorial.md), a
+tutorial built on the two runnable examples, and [Part 2](../manual/part-2-reference.md), the
+reference.
+
+**Why it is separate from the README.** The README answers *what is this* in five minutes and
+has to stay that length. Nothing answered *how do I actually use it*, and nothing at all
+documented the schema completely — the key table in the README is a summary, and the Javadoc
+is organised by type rather than by task.
+
+#### Built
+
+Part 1 runs from an empty directory to a console chat that hot-reloads, in ten steps:
+install, first config, first conversation, adding a model **while it runs**, memory and
+streaming, three deliberate validation failures, a deliberately broken file, layering, the
+three-model council, and finally the dependency and ten lines of Java for the reader's own
+project.
+
+Part 2 is the reference: concepts, the complete key table, layering rules, memory and the
+token-cost rule, the full API surface, exactly what a reload guarantees, the watcher's
+behaviour and measured latency, the logging table, the provider matrix with per-provider
+notes, the SPI, threading and lifecycle, scope boundaries, an eleven-row troubleshooting
+table, and versioning.
+
+**Every command and every output block in Part 1 was run before it was written.** The outputs
+are captures, not reconstructions — including the three validation failures, whose exact
+messages are quoted, and the reload sequence. Where output depends on a model's answer the
+page says so rather than inventing a plausible one.
+
+#### Found — two things, both from running the documented commands
+
+1. **The examples' own `mvn exec:java` instruction was incomplete and would fail.**
+   `exec:java` resolves `modelrack4j-core` from `~/.m2`, not from the reactor, so without a
+   prior `mvn install` it runs against whatever stale jar is there — which surfaced as
+   `NoSuchMethodError: LlmConfig.description()` from the version installed before
+   [P2](#p2--a-short-description-per-configuration). The Javadoc on both examples now shows
+   the `install` step, and the tutorial explains why, since the error message names nothing
+   that would lead you there.
+2. **`exec-maven-plugin` was unpinned.** Being invoked only from the command line, it was
+   never declared, so plugin-prefix resolution took whatever was newest on Central — a
+   different build on two machines and on two days. Pinned at `3.6.3` in the parent's
+   `pluginManagement`.
+
+Both are the kind of defect that only appears when someone runs the instructions instead of
+reading them.

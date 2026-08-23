@@ -43,6 +43,7 @@ import java.util.concurrent.TimeUnit;
  * {@code ANTHROPIC_API_KEY} and {@code OPENAI_API_KEY}, and it spends money:
  *
  * <pre>{@code
+ * mvn install                                     # exec:java reads ~/.m2, not the reactor
  * mvn -q -pl modelrack4j-examples exec:java \
  *     -Dexec.mainClass=io.github.maxtrezzi.modelrack4j.examples.ConsoleChat \
  *     -Dexec.args=modelrack4j-examples/src/main/resources/council.conf
