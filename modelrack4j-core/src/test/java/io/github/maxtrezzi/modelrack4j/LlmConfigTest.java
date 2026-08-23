@@ -84,6 +84,38 @@ class LlmConfigTest {
                 .hasMessageContaining("max-tokens");
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"", "   "})
+    @DisplayName("a present but blank description is rejected, and the message says how to clear one")
+    void blankDescriptionIsRejected(String blank) {
+        // The message is part of the contract: `description = null` is the documented way for
+        // a higher layer to remove a description a lower layer set, and nothing else says so
+        // at the point of failure.
+        assertThatThrownBy(() -> config().withDescription(blank).build())
+                .isInstanceOf(ConfigValidationException.class)
+                .hasMessageContaining("description")
+                .hasMessageContaining("null");
+    }
+
+    @Test
+    @DisplayName("a description is optional and carried through when present")
+    void descriptionIsOptional() {
+        assertThat(config().build().description()).isEmpty();
+        assertThat(config().withDescription("the cheap one").build().description())
+                .contains("the cheap one");
+    }
+
+    @Test
+    @DisplayName("changing only the description makes it a different configuration")
+    void descriptionParticipatesInEquality() {
+        // ADR-0032: the diff is record equality, and the description is part of the record, so
+        // editing it rebuilds that bundle. Cheap, and it keeps ADR-0006's rule to one sentence.
+        assertThat(config().withDescription("first").build())
+                .isNotEqualTo(config().withDescription("second").build());
+        assertThat(config().withDescription("same").build())
+                .isEqualTo(config().withDescription("same").build());
+    }
+
     @Test
     @DisplayName("equal values are equal configs — the basis of per-name reload diffing")
     void valueEqualityHolds() {
@@ -115,10 +147,16 @@ class LlmConfigTest {
 
     /** A valid configuration that each test bends in exactly one direction. */
     private static final class Fixture {
+        private Optional<String> description = Optional.empty();
         private String apiKey = "key";
         private String modelName = "model";
         private Optional<Double> temperature = Optional.empty();
         private Duration timeout = Duration.ofSeconds(60);
+
+        Fixture withDescription(String value) {
+            this.description = Optional.ofNullable(value);
+            return this;
+        }
 
         Fixture withApiKey(String value) {
             this.apiKey = value;
@@ -141,8 +179,8 @@ class LlmConfigTest {
         }
 
         LlmConfig build() {
-            return new LlmConfig("SL", "fake-local", apiKey, modelName, temperature, timeout,
-                    false, false, false, Optional.empty(), false);
+            return new LlmConfig("SL", description, "fake-local", apiKey, modelName, temperature,
+                    timeout, false, false, false, Optional.empty(), false);
         }
     }
 }

@@ -127,6 +127,28 @@ class LayeredResolutionTest {
     }
 
     @Test
+    @DisplayName("a higher layer clears a lower layer's description with null")
+    void nullClearsAValueSetLowerDown() throws IOException {
+        // The error message for a blank description tells the user to do this, so the
+        // mechanism it points at has to actually work: HOCON's null removes the key, and
+        // `hasPath` is then false rather than the value being present and empty.
+        Path low = write("low.conf", """
+                llm { SL { provider = fake-local, api-key = "k", model-name = "m"
+                           description = "inherited from the defaults layer" } }
+                """);
+        Path high = write("high.conf", """
+                llm { SL { description = null } }
+                """);
+
+        var registry = LlmRegistry.builder().configFiles(List.of(low, high)).build();
+
+        assertThat(registry.get("SL").config().description()).isEmpty();
+        assertThat(LlmRegistry.builder().configFiles(List.of(low)).build()
+                        .get("SL").config().description())
+                .contains("inherited from the defaults layer");
+    }
+
+    @Test
     @DisplayName("an unreadable layer is reported by path")
     void missingFileIsReported() {
         Path missing = dir.resolve("nope.conf");
