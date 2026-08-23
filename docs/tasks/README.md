@@ -63,7 +63,7 @@ Phase 0 gates everything else; nothing below M0 should start before its blockers
 | [M0](milestones.md#m0--skeleton-and-ci) | Skeleton and CI | **Done** — build green |
 | [M1](milestones.md#m1--core-without-watching) | Core without watching | **Done** — 37 tests green |
 | [M2](milestones.md#m2--openai-and-anthropic) | OpenAI and Anthropic | **Done** — 52 tests green |
-| [M3](milestones.md#m3--hot-reload) | Hot reload | Not started |
+| [M3](milestones.md#m3--hot-reload) | Hot reload | **Done** — 69 tests green |
 | [M4](milestones.md#m4--gemini-and-glm) | Gemini and GLM | Not started |
 | [M5](milestones.md#m5--release-readiness) | Release readiness — **v1 done** | Not started |
 | [D1](open-decisions.md#d1--glm-route-if-no-maintained-module-exists) | GLM route if no maintained module | **Closed** — never became live |
@@ -84,10 +84,10 @@ Three of the seven verification tasks **refuted the premise they were written wi
 module was not removed, token estimation was not OpenAI-only, and resolving symlinks to their
 real path does not see a ConfigMap swap. That is the phase working as intended.
 
-**M3 is next** — hot reload, gated by the Task 0.8 spike, which already refuted ADR-0013's
-symlink strategy and produced [ADR-0024](../adr/0024-watch-the-symlink-s-directory-not-its-real-path.md)
-in its place. M2 landed the first two real providers, so the capability matrix is now enforced
-in code rather than recorded in a table.
+**M4 is next** — Gemini and GLM, the two remaining provider modules. M3 built hot reload on
+the spike's findings rather than on ADR-0013's original reasoning, and the ConfigMap case is
+now a regression test that fails within seconds if anyone restores the filename filter
+[ADR-0024](../adr/0024-watch-the-symlink-s-directory-not-its-real-path.md) removed.
 
 Waiting on the owner: **D2** (repository visibility). Waiting on hardware: the macOS half
 of Task 0.8.

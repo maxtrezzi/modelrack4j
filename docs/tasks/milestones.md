@@ -209,7 +209,7 @@ the limitation has to be documented where a user configuring `streaming = true` 
 
 ### M3 — Hot reload
 
-**Status:** Not started · **Entry:** M2, and
+**Status:** Done 2026-08-23 · **Entry:** M2, and
 [Task 0.8](phase-0-verification.md#task-08--watch-strategy-spike) complete
 
 Task 0.8 comes first — the spike exists so this milestone is built on measured behaviour
@@ -227,6 +227,70 @@ rather than assumption.
 - Async test suite green: debounce collapsing rapid writes into one reload,
   temp-file-then-rename, symlink target swap, name added, name removed, and one invalid
   block swapping nothing while firing exactly one failure callback.
+
+#### Built
+
+**69 unit tests, green on JDK 21 and 25, all offline with no API keys** — core 54,
+`-provider-openai` 7, `-provider-anthropic` 8. The 17 new ones drive a real `WatchService`
+against real files in a `@TempDir`: the behaviours that matter here belong to the filesystem,
+and a mock would assert the assumptions instead of testing them.
+
+**Reload is one volatile write.** `SnapshotLoader` either returns a complete map of name to
+bundle or throws, so the staging area [ADR-0012](../adr/0012-reload-atomicity-is-snapshot-wide.md)
+requires is the natural shape of the code rather than something bolted on. The live snapshot
+is a single `volatile Map` field; publishing is one assignment. There is no lock anywhere in
+the reload path, because the watcher thread is the only writer.
+
+**The watcher has the two modes ADR-0024 specified, and both are pinned by a test that fails
+when the mode is wrong.** Restoring the filename filter for symlinked paths — the "obvious
+tidy-up" that ADR-0024 warns about — was tried deliberately: `configMapSymlinkSwapIsSeen`
+times out, which is the silent-never-reloads failure reproduced in ten seconds instead of in
+production.
+
+**What the reload tests actually hold down:**
+
+| Test | Guards |
+|---|---|
+| `rapidWritesCollapseIntoOneReload` | five writes, one reload |
+| `tempFileThenRenameIsSeen` | the ordinary save, arriving as CREATE, with the `.tmp` events discarded |
+| `configMapSymlinkSwapIsSeen` | the three-level layout swapped by atomic rename ([ADR-0024](../adr/0024-watch-the-symlink-s-directory-not-its-real-path.md)) |
+| `invalidBlockSwapsNothing` | one bad block holds back a correct edit in the same save; one failure, same bundle instance still live |
+| `unchangedBundlesAreCarriedOver` | `isSameAs`, not `isEqualTo` — the untouched bundle is the *same object* ([ADR-0006](../adr/0006-named-configurations-with-per-name-diffing.md)) |
+| `getIsSafeDuringReload` | four reader threads across ten reloads never see a bundle whose config belongs to another block |
+| `lostDirectoryIsReregistered` | a directory deleted, recreated, and *then* edited again |
+
+**One of those tests passed for the wrong reason and had to be rewritten.**
+`lostDirectoryIsReregistered` originally deleted the directory, recreated it with new
+content, and asserted the new content arrived. It passed in 105 ms — far too fast to have
+waited for the one-second re-registration retry. The deletion's *own* event was enough to
+trigger the reload, and by the time the debounce expired the replacement file was already on
+disk, so the assertion held without the recovery path ever running. It now edits the file a
+second time after the first reload settles, which only succeeds on a live registration; it
+takes 1.2 s, and disabling re-registration makes it fail. A test that cannot fail is worse
+than no test, because it is counted.
+
+**Two decisions came out of building it**, neither of which the earlier ADRs answered:
+
+1. **[ADR-0028](../adr/0028-core-logs-through-slf4j-api.md)** — the watcher runs on its own
+   thread and several of its outcomes have no caller to throw at, so core now declares
+   `slf4j-api`. This amends the closed dependency set of
+   [ADR-0020](../adr/0020-core-depends-on-langchain4j-aggregate.md); the rule that actually
+   matters, **no provider artifact ever**, is untouched. The jar was already there
+   transitively — what changed is the declaration and the pin.
+2. **[ADR-0029](../adr/0029-reload-callbacks-are-quiet-contained-and-not-a-heartbeat.md)** —
+   a callback means something changed. A reload resolving to the identical snapshot swaps
+   nothing and notifies nobody, a listener that throws cannot stop future reloads, and a
+   recovered directory counts as a change.
+
+**New public API**, all source-compatible additions: `Builder.watch(boolean)` and
+`Builder.debounce(Duration)`, `onReload` / `onReloadFailure`, and the two records they carry,
+`ReloadChange` and `ReloadFailure`. The debounce knob is deliberate — the 300 ms default is
+~100x the event burst measured on Linux, but the figure is a measurement on one platform, and
+a slower filesystem should not require a fork.
+
+**Carried forward to M5's README:** the reload latency note can still quote the Linux figure
+only. Task 0.8's macOS measurement is unchanged by this milestone — it qualifies the
+documentation, not the design.
 
 ---
 
