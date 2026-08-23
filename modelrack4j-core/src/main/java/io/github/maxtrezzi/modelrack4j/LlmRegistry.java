@@ -15,37 +15,29 @@
  */
 package io.github.maxtrezzi.modelrack4j;
 
-import com.typesafe.config.Config;
-import com.typesafe.config.ConfigObject;
-import com.typesafe.config.ConfigValue;
-import dev.langchain4j.memory.chat.ChatMemoryProvider;
-import dev.langchain4j.memory.chat.MessageWindowChatMemory;
-import dev.langchain4j.memory.chat.TokenWindowChatMemory;
-import dev.langchain4j.model.TokenCountEstimator;
-import dev.langchain4j.model.chat.ChatModel;
-import io.github.maxtrezzi.modelrack4j.spi.ProviderFactory;
-import io.github.maxtrezzi.modelrack4j.spi.TokenEstimation;
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Path;
-import java.util.ArrayList;
+import java.time.Duration;
 import java.util.Collections;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
-import java.util.ServiceLoader;
 import java.util.Set;
-import java.util.TreeMap;
-import java.util.TreeSet;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.Consumer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
- * Holds one ready-to-use {@link LlmBundle} per configured name.
+ * Holds one ready-to-use {@link LlmBundle} per configured name, and keeps them current.
  *
  * <p>Build it once at startup and ask it for a bundle whenever you need one:
  *
  * <pre>{@code
  * LlmRegistry registry = LlmRegistry.builder()
  *         .configFiles(List.of(defaults, product, customer))   // lowest -> highest
+ *         .watch(true)                                         // reload on edit
  *         .build();
  *
  * ChatModel model = registry.get("SL").chatModel();
@@ -53,24 +45,56 @@ import java.util.TreeSet;
  *
  * <p><strong>Ask the registry every time; do not cache the bundle.</strong> The registry is
  * the holder, and {@link #get(String)} always returns the current bundle for a name. Code
- * that fetches a bundle at startup and keeps it will keep working and will never see a
- * configuration change — the single most common mistake with reloadable configuration.
+ * that fetches a bundle at startup and keeps it in a field will keep working and will never
+ * see a configuration change — the single most common mistake with reloadable configuration.
  *
  * <p>Building is fail-fast and all-or-nothing: every named block is parsed, validated and
  * built before the registry exists, so a registry that was returned has no broken bundles in
  * it.
  *
- * @implNote This class does not watch for file changes. Reload arrives in a later release;
- *     until then a registry holds the configuration as it was when built.
+ * <h2>Reload</h2>
+ *
+ * <p>With {@link Builder#watch(boolean) watching} enabled, edits to any configured layer are
+ * picked up without a restart. A reload is atomic across the <em>whole</em> snapshot: every
+ * changed block is rebuilt in a staging area, and only once all of them succeed is a single
+ * reference swapped. If any block fails to parse, validate or build, nothing is swapped —
+ * the previous snapshot stays live in full and {@link #onReloadFailure} fires once. There is
+ * no state in which one name's new configuration is visible next to another's old one.
+ *
+ * <p>Unchanged blocks are not rebuilt: the diff is record equality on the parsed
+ * configuration, and a name whose block did not change keeps the very bundle instance it
+ * had.
+ *
+ * @implNote {@link #get(String)} and {@link #names()} are safe to call from any thread at
+ *     any time, including during a reload. Listeners run on the watcher thread, one reload
+ *     at a time; a listener that blocks delays the next reload.
  */
 public final class LlmRegistry implements AutoCloseable {
 
-    /** Root path holding the named blocks. */
-    private static final String ROOT_PATH = "llm";
+    private static final Logger log = LoggerFactory.getLogger(LlmRegistry.class);
 
-    private final Map<String, LlmBundle> bundles;
+    /** The default quiet period, ~100x the event burst measured for one write (Task 0.8). */
+    private static final Duration DEFAULT_DEBOUNCE = Duration.ofMillis(300);
 
-    private LlmRegistry(Map<String, LlmBundle> bundles) {
+    private final List<Path> configFiles;
+    private final SnapshotLoader loader;
+    private final List<Consumer<ReloadChange>> reloadListeners = new CopyOnWriteArrayList<>();
+    private final List<Consumer<ReloadFailure>> failureListeners =
+            new CopyOnWriteArrayList<>();
+
+    /** The published snapshot. Reads are lock-free; the only writer is the reload thread. */
+    private volatile Map<String, LlmBundle> bundles;
+
+    /**
+     * Null when watching is off, and again once closed. Volatile because {@link #close()}
+     * may be called from a different thread than the one that built the registry.
+     */
+    private volatile ConfigWatcher watcher;
+
+    private LlmRegistry(List<Path> configFiles, SnapshotLoader loader,
+            Map<String, LlmBundle> bundles) {
+        this.configFiles = configFiles;
+        this.loader = loader;
         this.bundles = bundles;
     }
 
@@ -88,7 +112,8 @@ public final class LlmRegistry implements AutoCloseable {
      *
      * @param name the configuration name, as written in the config file
      * @return the bundle bound to that name
-     * @throws UnknownConfigurationException if no bundle is bound to the name
+     * @throws UnknownConfigurationException if no bundle is bound to the name, either
+     *     because it was never configured or because a reload removed it
      */
     public LlmBundle get(String name) {
         LlmBundle bundle = bundles.get(Objects.requireNonNull(name, "name"));
@@ -101,27 +126,111 @@ public final class LlmRegistry implements AutoCloseable {
     /**
      * Returns every configured name, in sorted order.
      *
-     * @return an unmodifiable set of the names currently held
+     * @return an unmodifiable snapshot of the names currently held
      */
     public Set<String> names() {
         return Collections.unmodifiableSet(bundles.keySet());
     }
 
     /**
-     * Releases resources held by the registry itself.
+     * Registers a listener called once per successful reload.
      *
-     * @implNote Bundles are deliberately not closed. In-flight requests may still hold one,
-     *     and LangChain4j model objects are immutable and complete normally.
+     * <p>The listener is secondary: {@link #get(String)} already returns the current bundle,
+     * so nothing has to be re-fetched or swapped in response. Use this to log the change, to
+     * warm a cache, or to react to a name appearing or disappearing.
+     *
+     * <p>Listeners run on the watcher thread after the swap, so {@link #get(String)} inside
+     * one already sees the new snapshot. An exception thrown by a listener is logged and
+     * does not affect the reload, the other listeners, or later reloads.
+     *
+     * @param listener called with what the reload changed
+     * @throws NullPointerException if the listener is null
+     */
+    public void onReload(Consumer<ReloadChange> listener) {
+        reloadListeners.add(Objects.requireNonNull(listener, "listener"));
+    }
+
+    /**
+     * Registers a listener called once per rejected reload.
+     *
+     * <p>A rejected reload changes nothing: the previous snapshot stays live in full. This
+     * is the only signal that the configuration on disk is currently broken, so an
+     * application that cares should at least log it.
+     *
+     * @param listener called with the rejected reload's cause
+     * @throws NullPointerException if the listener is null
+     */
+    public void onReloadFailure(Consumer<ReloadFailure> listener) {
+        failureListeners.add(Objects.requireNonNull(listener, "listener"));
+    }
+
+    /**
+     * Stops watching, if watching was enabled.
+     *
+     * <p>Waits for a reload already in flight to finish, so no listener runs after this
+     * returns. Calling it more than once is harmless, and a registry that is closed keeps
+     * serving the snapshot it last published.
+     *
+     * @implNote Bundles are deliberately not closed, including bundles a reload superseded.
+     *     An in-flight request may still hold one, and LangChain4j model instances are
+     *     immutable and complete normally; they become collectable once no caller holds a
+     *     reference.
      */
     @Override
     public void close() {
-        // Nothing to release yet: there is no watcher thread until reload lands.
+        ConfigWatcher running = watcher;
+        watcher = null;
+        if (running != null) {
+            running.close();
+        }
+    }
+
+    /**
+     * Re-reads every layer and publishes the result if it differs.
+     *
+     * @implNote Called only from the watcher thread, so reloads never overlap and the
+     *     compare-then-swap below needs no lock. It never throws: a rejected reload is
+     *     reported to the failure listeners and leaves the live snapshot alone.
+     */
+    void reload() {
+        Map<String, LlmBundle> previous = bundles;
+        Map<String, LlmBundle> staged;
+        try {
+            staged = loader.load(previous);
+        } catch (RuntimeException e) {
+            notify(failureListeners, new ReloadFailure(configFiles, e), "failure");
+            return;
+        }
+
+        ReloadChange change = ReloadChange.between(previous, staged);
+        if (change.isEmpty()) {
+            // A wakeup that turned out to change nothing: an unrelated file in a watched
+            // directory, or a save that rewrote the same bytes. Publishing here would hand
+            // out new instances of identical bundles for no reason.
+            return;
+        }
+
+        bundles = staged;   // THE swap: one write, whole snapshot, nothing torn
+        notify(reloadListeners, change, "reload");
+    }
+
+    private static <T> void notify(List<Consumer<T>> listeners, T event, String what) {
+        for (Consumer<T> listener : listeners) {
+            try {
+                listener.accept(event);
+            } catch (RuntimeException e) {
+                log.error("modelrack4j {} listener threw; the reload itself is unaffected",
+                        what, e);
+            }
+        }
     }
 
     /** Collects the inputs for a registry and builds it. */
     public static final class Builder {
 
         private List<Path> configFiles = List.of();
+        private boolean watch;
+        private Duration debounce = DEFAULT_DEBOUNCE;
 
         private Builder() {
         }
@@ -139,185 +248,67 @@ public final class LlmRegistry implements AutoCloseable {
         }
 
         /**
-         * Parses, validates and builds every configured bundle.
+         * Enables reloading when a configured layer changes.
+         *
+         * <p>Off by default. When on, the registry starts one daemon thread that watches the
+         * directories holding the configured files; {@link LlmRegistry#close()} stops it.
+         *
+         * @param watch whether to watch for changes
+         * @return this builder
+         */
+        public Builder watch(boolean watch) {
+            this.watch = watch;
+            return this;
+        }
+
+        /**
+         * Sets how long the configured files must be quiet before a reload runs.
+         *
+         * <p>Defaults to 300 ms. One save produces a burst of filesystem events rather than
+         * one, and an editor writing through a temporary file briefly leaves no config file
+         * in place at all; the quiet period collapses the burst into a single reload and
+         * lets a rename settle. Shortening it below the time a writer takes to finish
+         * produces reloads of half-written files, which are rejected and reported as
+         * failures.
+         *
+         * @param debounce the quiet period, positive
+         * @return this builder
+         * @throws IllegalArgumentException if the duration is zero or negative
+         */
+        public Builder debounce(Duration debounce) {
+            Objects.requireNonNull(debounce, "debounce");
+            if (debounce.isZero() || debounce.isNegative()) {
+                throw new IllegalArgumentException(
+                        "debounce must be positive, but was " + debounce);
+            }
+            this.debounce = debounce;
+            return this;
+        }
+
+        /**
+         * Parses, validates and builds every configured bundle, then starts watching if
+         * watching was enabled.
          *
          * @return the registry
-         * @throws ConfigValidationException if any layer is unreadable, any block is invalid,
-         *     or any provider rejects its configuration
+         * @throws ConfigValidationException if any layer is unreadable, any block is
+         *     invalid, or any provider rejects its configuration
+         * @throws UncheckedIOException if watching is enabled and a configured directory
+         *     cannot be watched
          */
         public LlmRegistry build() {
-            Config resolved = ConfigLoader.load(configFiles);
-            if (!resolved.hasPath(ROOT_PATH)) {
-                throw new ConfigValidationException(
-                        "No '" + ROOT_PATH + "' block found in any configuration layer");
-            }
-
-            Map<String, ProviderFactory> factories = discoverFactories();
-            Config defaults = ConfigLoader.defaults();
-            ConfigObject root = resolved.getObject(ROOT_PATH);
-
-            Map<String, LlmBundle> built = new TreeMap<>();
-            // Sorted so that when several blocks are invalid, which one is reported is
-            // stable between runs instead of following map iteration order.
-            for (String name : new TreeSet<>(root.keySet())) {
-                ConfigValue value = root.get(name);
-                if (!(value instanceof ConfigObject block)) {
-                    throw new ConfigValidationException("llm." + name
-                            + " must be a configuration block, but is of type "
-                            + value.valueType() + " (" + value.origin().description() + ")");
-                }
-                LlmConfig config =
-                        LlmConfig.fromBlock(name, block.toConfig().withFallback(defaults));
-                built.put(name, buildBundle(config, factories));
-            }
-
-            if (built.isEmpty()) {
-                throw new ConfigValidationException(
-                        "The '" + ROOT_PATH + "' block is empty: no configurations to build");
-            }
-            return new LlmRegistry(Collections.unmodifiableMap(built));
-        }
-
-        private static LlmBundle buildBundle(LlmConfig config, Map<String, ProviderFactory> factories) {
-            ProviderFactory factory = factories.get(config.provider());
-            if (factory == null) {
-                List<String> available = new ArrayList<>(factories.keySet());
-                Collections.sort(available);
-                throw new ConfigValidationException(path(config)
-                        + ".provider is '" + config.provider() + "', for which no provider"
-                        + " module is on the classpath. Available providers: "
-                        + (available.isEmpty() ? "(none)" : String.join(", ", available)));
-            }
-
-            validateCapabilities(config, factory);
-            factory.validate(config);
-
-            ChatModel chatModel = factory.createChatModel(config);
-            if (chatModel == null) {
-                throw new ConfigValidationException(path(config) + ": provider '"
-                        + config.provider() + "' produced no chat model, which every bundle"
-                        + " must have.");
-            }
-
-            return new LlmBundle(
-                    config,
-                    chatModel,
-                    config.streaming()
-                            ? requireProduced(factory.createStreamingChatModel(config), config,
-                                    "streaming = true", "streaming chat model")
-                            : Optional.empty(),
-                    config.moderationEnabled()
-                            ? requireProduced(factory.createModerationModel(config), config,
-                                    "moderation.enabled = true", "moderation model")
-                            : Optional.empty(),
-                    buildMemoryProvider(config, factory));
-        }
-
-        /**
-         * Fails when the configuration asked for a capability and the factory produced
-         * nothing, rather than handing back a bundle quietly missing what was requested.
-         * Silently dropping it would defeat the fail-fast contract: the configuration would
-         * look honoured and the object would not be there.
-         */
-        /** Anchors a message to the block the user wrote, e.g. {@code llm.SL}. */
-        private static String path(LlmConfig config) {
-            return ROOT_PATH + "." + config.name();
-        }
-
-        private static <T> Optional<T> requireProduced(
-                Optional<T> produced, LlmConfig config, String requestedBy, String what) {
-            if (produced == null || produced.isEmpty()) {
-                throw new ConfigValidationException(path(config) + " sets "
-                        + requestedBy + ", but provider '" + config.provider()
-                        + "' produced no " + what + ".");
-            }
-            return produced;
-        }
-
-        /**
-         * Applies the capability rules that depend only on what the factory reports, so no
-         * provider module has to restate them.
-         */
-        private static void validateCapabilities(LlmConfig config, ProviderFactory factory) {
-            Optional<MemoryConfig> configured = config.memory();
-            if (configured.isEmpty()
-                    || !(configured.get() instanceof MemoryConfig.TokenWindow window)) {
-                // Only token-window memory depends on a provider capability.
-                return;
-            }
-            TokenEstimation estimation = factory.tokenEstimation();
-            if (estimation == null) {
-                throw new ConfigValidationException(path(config) + ": provider '"
-                        + config.provider() + "' reported no token estimation capability, so"
-                        + " whether token-window memory is affordable cannot be decided.");
-            }
-
-            if (estimation == TokenEstimation.ABSENT) {
-                throw new ConfigValidationException(path(config)
-                        + " uses memory.type = token-window, but provider '" + config.provider()
-                        + "' ships no token count estimator, so token-window memory cannot be"
-                        + " built. Use memory.type = message-window instead.");
-            }
-            // The message names the flag on purpose: a validation error that hides its own
-            // escape hatch turns opt-in into outright rejection.
-            if (estimation == TokenEstimation.REMOTE && !window.allowRemoteTokenCounting()) {
-                throw new ConfigValidationException(path(config)
-                        + " uses memory.type = token-window, but provider '" + config.provider()
-                        + "' counts tokens by calling its API, so every memory eviction makes a"
-                        + " billed, rate-limited network request. Set"
-                        + " memory.allow-remote-token-counting = true to accept that cost.");
-            }
-        }
-
-        private static Optional<ChatMemoryProvider> buildMemoryProvider(
-                LlmConfig config, ProviderFactory factory) {
-            if (config.memory().isEmpty()) {
-                return Optional.empty();
-            }
-            MemoryConfig memory = config.memory().get();
-            if (memory instanceof MemoryConfig.MessageWindow window) {
-                int maxMessages = window.maxMessages();
-                return Optional.of(memoryId -> MessageWindowChatMemory.builder()
-                        .id(memoryId)
-                        .maxMessages(maxMessages)
-                        .build());
-            }
-            if (memory instanceof MemoryConfig.TokenWindow window) {
-                int maxTokens = window.maxTokens();
-                TokenCountEstimator estimator = factory.createTokenCountEstimator(config)
-                        .orElseThrow(() -> new ConfigValidationException(path(config)
-                                + " uses memory.type = token-window, but provider '"
-                                + config.provider() + "' supplied no token count estimator"));
-                return Optional.of(memoryId -> TokenWindowChatMemory.builder()
-                        .id(memoryId)
-                        .maxTokens(maxTokens, estimator)
-                        .build());
-            }
-            // MemoryConfig is sealed, but Java 17 has no pattern switch, so the compiler
-            // does not check this chain for exhaustiveness. A new variant must fail loudly
-            // here rather than fall through to a ClassCastException.
-            throw new IllegalStateException(
-                    "Unhandled memory variant: " + memory.getClass().getName());
-        }
-
-        private static Map<String, ProviderFactory> discoverFactories() {
-            Map<String, ProviderFactory> byId = new LinkedHashMap<>();
-            for (ProviderFactory factory : ServiceLoader.load(ProviderFactory.class)) {
-                String id = factory.providerId();
-                if (id == null || id.isBlank()) {
-                    throw new ConfigValidationException(
-                            "Provider factory " + factory.getClass().getName()
-                                    + " returned a blank providerId");
-                }
-                ProviderFactory previous = byId.putIfAbsent(id, factory);
-                if (previous != null) {
-                    throw new ConfigValidationException("Two provider factories both claim"
-                            + " providerId '" + id + "': " + previous.getClass().getName()
-                            + " and " + factory.getClass().getName()
-                            + ". Remove one of the provider modules from the classpath.");
+            SnapshotLoader loader = new SnapshotLoader(configFiles);
+            LlmRegistry registry =
+                    new LlmRegistry(configFiles, loader, loader.load(Map.of()));
+            if (watch) {
+                try {
+                    registry.watcher =
+                            ConfigWatcher.start(configFiles, debounce, registry::reload);
+                } catch (IOException e) {
+                    throw new UncheckedIOException(
+                            "Cannot watch the configuration files: " + e.getMessage(), e);
                 }
             }
-            return byId;
+            return registry;
         }
     }
 }

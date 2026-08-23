@@ -40,5 +40,20 @@
       <groupId>com.typesafe</groupId>
       <artifactId>config</artifactId>
     </dependency>
+    <!--
+      Already on the classpath through langchain4j-core, but the watcher logs directly, and
+      a dependency that is used is a dependency that is declared. API only: binding is the
+      application's choice, as it already is for LangChain4j itself.
+    -->
+    <dependency>
+      <groupId>org.slf4j</groupId>
+      <artifactId>slf4j-api</artifactId>
+    </dependency>
+
+    <dependency>
+      <groupId>org.awaitility</groupId>
+      <artifactId>awaitility</artifactId>
+      <scope>test</scope>
+    </dependency>
   </dependencies>
 </project>

@@ -66,7 +66,8 @@ by number, since the numbering only reflects the order of the original appendix.
 | ADR | Title | Status |
 |---|---|---|
 | [0005](0005-provider-factory-spi-via-serviceloader.md) | Abstract Factory per provider, discovered via `ServiceLoader` | Accepted — core's dependency set amended by ADR-0020 |
-| [0020](0020-core-depends-on-langchain4j-aggregate.md) | Core also depends on the `langchain4j` aggregate, for `ChatMemoryProvider` | Accepted |
+| [0020](0020-core-depends-on-langchain4j-aggregate.md) | Core also depends on the `langchain4j` aggregate, for `ChatMemoryProvider` | Accepted — dependency set amended by ADR-0028 |
+| [0028](0028-core-logs-through-slf4j-api.md) | The watcher logs, and core takes slf4j-api to do it | Accepted |
 | [0007](0007-layered-hocon-via-typesafe-config.md) | Layered HOCON via Typesafe Config as a core dependency | Accepted |
 | [0006](0006-named-configurations-with-per-name-diffing.md) | Named configurations, one merged snapshot, per-name diffing | Accepted |
 | [0010](0010-discriminators-only-with-two-real-variants.md) | Discriminated variants only where two real variants exist today | Accepted — estimator-availability premise amended by ADR-0021 |
@@ -89,6 +90,7 @@ by number, since the numbering only reflects the order of the original appendix.
 | [0024](0024-watch-the-symlink-s-directory-not-its-real-path.md) | Watch the symlink's own directory; filename filtering cannot gate a ConfigMap swap | Accepted |
 | [0014](0014-lifecycle-of-removed-names-and-superseded-bundles.md) | Lifecycle of removed names and superseded bundles | Accepted |
 | [0009](0009-holder-api-primary-listeners-optional.md) | Holder API primary, listeners optional | Accepted |
+| [0029](0029-reload-callbacks-are-quiet-contained-and-not-a-heartbeat.md) | A reload callback means something changed — nothing else | Accepted |
 
 **Process**
 
