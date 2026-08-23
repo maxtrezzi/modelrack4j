@@ -31,6 +31,10 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * Talks to the real Gemini API, so it costs money and needs a credential.
  *
+ * <p>The model name is chosen for cost, not currency: this test sends a real request, so it
+ * asks for the cheap end of the range rather than the newest model. Nothing about the
+ * library depends on which model it is.
+ *
  * <p>Two independent guards, deliberately. Failsafe only runs {@code *IT} under
  * {@code -Pintegration}, and the annotation below skips the class when the key is absent, so
  * running the profile with only one provider configured skips the rest rather than failing.
