@@ -87,7 +87,8 @@ Requires **Java 17+**. Built against **LangChain4j 1.19.0**.
 ```hocon
 # council.conf
 llm {
-  SL {                                        # short, cheap, deterministic
+  SL {
+    description = "short, cheap, deterministic — the everyday answer"
     provider    = anthropic
     api-key     = ${ANTHROPIC_API_KEY}
     model-name  = "claude-sonnet-5"
@@ -95,7 +96,8 @@ llm {
     memory { type = message-window, max-messages = 20 }
   }
 
-  SH {                                        # same model, streamed, more creative
+  SH {
+    description = "the same model turned up, streamed for long answers"
     provider    = anthropic
     api-key     = ${ANTHROPIC_API_KEY}
     model-name  = "claude-sonnet-5"
@@ -103,7 +105,8 @@ llm {
     streaming   = true
   }
 
-  CR {                                        # the critic, and the one that moderates
+  CR {
+    description = "the critic, and the only one that moderates"
     provider    = openai
     api-key     = ${OPENAI_API_KEY}
     model-name  = "gpt-5.1"
@@ -196,6 +199,7 @@ Every named block lives under the `llm` root. Names are yours: `SL`, `CR`,
 
 | Key | Type | Default | Notes |
 |---|---|---|---|
+| `description` | string | *none* | a short human-readable note; see below |
 | `provider` | string | *required* | must match a `ProviderFactory` on the classpath |
 | `api-key` | string | *required* | use `${VAR}` |
 | `model-name` | string | *required* | the provider's own model identifier |
@@ -209,6 +213,17 @@ Every named block lives under the `llm` root. Names are yours: `SL`, `CR`,
 | `memory.max-tokens` | int | — | required by `token-window` |
 | `memory.allow-remote-token-counting` | boolean | `false` | see [Memory](#memory) |
 | `moderation.enabled` | boolean | `false` | builds a `ModerationModel` |
+
+**`description` is for whoever did not write the file.** Names like `SL` and `CR` are
+convenient to type and say nothing on their own, so a block can carry one line explaining
+what it is for. Nothing in the library reads it — it is there for your own operators, your
+own admin screens, and the console example's menu. Two rules worth knowing: a present but
+**blank** description is rejected as a mistake, and a higher layer clears one set lower down
+with `description = null`, which removes the key outright.
+
+Because it is part of `LlmConfig`, editing a description alone counts as a change and
+rebuilds that one bundle on reload. That is deliberate — see
+[ADR-0032](docs/adr/0032-description-is-part-of-the-config-record.md).
 
 **Model names are strings, and nothing here validates them.** `model-name` is passed
 straight to the provider's builder. LangChain4j ships model-name *enums*, but they are a

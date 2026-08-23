@@ -68,3 +68,53 @@ The streaming, moderation and memory paths have **never run against a live provi
 same gap the integration tests still have. With dummy keys the request is rejected at
 authentication, so what is proven is that the code takes the right branch and reports the
 failure without ending the session.
+
+---
+
+### P2 — A short description per configuration
+
+**Status:** Done 2026-08-23 · **Branch:** `task/p2-configuration-description`
+
+An optional `description` key on each named block, and the examples updated to show it.
+
+**Why.** Names are short because the application types them on every lookup, which leaves
+`SL`, `SH` and `CR` meaningless to everyone who did not write the file — including the
+console menu [P1](#p1--console-chat-example) had just added, where three initials were the
+only thing on offer.
+
+#### Built
+
+`LlmConfig` gains `Optional<String> description`, read from `description` in the block. The
+library never reads it: it exists for menus, admin screens and operators.
+
+**Two edges, both pinned by tests:**
+
+| Case | Behaviour |
+|---|---|
+| `description = ""` or `"   "` | rejected, and the message names `description = null` as the way to clear one |
+| `description = null` in a higher layer | clears a description set lower down — HOCON's null removes the key, so `hasPath` is false |
+
+The second is a claim the first one's error message *makes*, so it has its own test in
+`LayeredResolutionTest` rather than being assumed to work.
+
+**The design question was whether it belongs in the diff**, settled as
+[ADR-0032](../adr/0032-description-is-part-of-the-config-record.md): it is an ordinary record
+component, so editing prose alone rebuilds that one bundle. Excluding it would have meant
+hand-writing `equals` on a record, breaking [ADR-0006](../adr/0006-named-configurations-with-per-name-diffing.md)'s
+one-sentence rule, and — the part that decided it — leaving `config().description()`
+returning superseded text forever, which is a stale read with no signal.
+
+**Examples updated:** the console menu prints the description under each entry and in the
+chat greeting, `ThreeModelCouncil` prints it under each header, and `council.conf` carries
+one per block. In the README's quick start the descriptions replace the trailing `#` comments
+that were doing the same job less usefully.
+
+#### Found
+
+Adding the description to the console's greeting reintroduced the exact bug
+[P1](#p1--console-chat-example) had just fixed: a second `registry.get(name)` outside the
+guarded lookup. Caught before commit, and fixed properly this time — one guarded lookup now
+serves the whole greeting, with a comment saying why a second call does not belong there.
+
+Twice in two days on the same three lines suggests the shape is the hazard, not the
+attention: `get()` reads mutable shared state and looks exactly like reading a field.

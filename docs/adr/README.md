@@ -70,6 +70,7 @@ by number, since the numbering only reflects the order of the original appendix.
 | [0028](0028-core-logs-through-slf4j-api.md) | The watcher logs, and core takes slf4j-api to do it | Accepted |
 | [0007](0007-layered-hocon-via-typesafe-config.md) | Layered HOCON via Typesafe Config as a core dependency | Accepted |
 | [0006](0006-named-configurations-with-per-name-diffing.md) | Named configurations, one merged snapshot, per-name diffing | Accepted |
+| [0032](0032-description-is-part-of-the-config-record.md) | `description` is an ordinary part of the config record | Accepted |
 | [0010](0010-discriminators-only-with-two-real-variants.md) | Discriminated variants only where two real variants exist today | Accepted — estimator-availability premise amended by ADR-0021 |
 | [0004](0004-expose-chatmemoryprovider.md) | Expose `ChatMemoryProvider`, not a bare `ChatMemory` | Accepted — estimator-availability premise amended by ADR-0021 |
 | [0021](0021-token-estimation-is-universal-but-two-cost-classes.md) | Token estimation is universal; the capability that varies is its cost | Accepted |

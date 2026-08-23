@@ -35,6 +35,8 @@ import java.util.Optional;
  * during registry build against the provider's own factory.
  *
  * @param name the configuration name, as written in the config file, e.g. {@code SL}
+ * @param description a short human-readable note on what this configuration is for, or
+ *     empty when the file does not say
  * @param provider the provider id, matched against the factories on the classpath
  * @param apiKey the credential, never blank
  * @param modelName the provider's model identifier
@@ -48,6 +50,7 @@ import java.util.Optional;
  */
 public record LlmConfig(
         String name,
+        Optional<String> description,
         String provider,
         String apiKey,
         String modelName,
@@ -66,6 +69,7 @@ public record LlmConfig(
      */
     public LlmConfig {
         Objects.requireNonNull(name, "name");
+        Objects.requireNonNull(description, "description");
         Objects.requireNonNull(temperature, "temperature");
         Objects.requireNonNull(memory, "memory");
         requireText(name, name, "name");
@@ -74,6 +78,13 @@ public record LlmConfig(
         requireText(name, modelName, "model-name");
         Objects.requireNonNull(timeout, "timeout");
 
+        // Present-but-blank is a mistake rather than a way to say "no description": HOCON
+        // already has one, and `description = null` removes the key outright.
+        if (description.isPresent() && description.get().isBlank()) {
+            throw new ConfigValidationException("llm." + name
+                    + ".description is present but blank. Remove the key, or set it to null"
+                    + " to clear one set by a lower layer");
+        }
         if (timeout.isZero() || timeout.isNegative()) {
             throw new ConfigValidationException(
                     "llm." + name + ".timeout must be positive, was " + timeout);
@@ -108,6 +119,9 @@ public record LlmConfig(
         try {
             return new LlmConfig(
                     name,
+                    block.hasPath("description")
+                            ? Optional.of(block.getString("description"))
+                            : Optional.empty(),
                     block.getString("provider"),
                     block.getString("api-key"),
                     block.getString("model-name"),

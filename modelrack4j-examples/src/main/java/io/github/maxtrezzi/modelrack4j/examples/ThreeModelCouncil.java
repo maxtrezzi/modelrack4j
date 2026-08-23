@@ -69,6 +69,8 @@ public final class ThreeModelCouncil {
                 System.out.println();
                 System.out.println("=== " + name + " (" + bundle.config().provider()
                         + " / " + bundle.config().modelName() + ") ===");
+                bundle.config().description()
+                        .ifPresent(description -> System.out.println("  " + description));
                 System.out.println("  streaming available: "
                         + bundle.streamingChatModel().isPresent());
                 System.out.println("  moderation available: "

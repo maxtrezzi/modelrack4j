@@ -11,7 +11,15 @@ will not be held back for a major bump until the API settles at `1.0.0`.
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- An optional `description` key on each named block: one short line saying what the
+  configuration is for, surfaced through `LlmConfig.description()`. Nothing in the library
+  reads it. A present-but-blank description is rejected; `description = null` in a higher
+  layer clears one set lower down.
+- `ConsoleChat`, an interactive example: a menu of every configured model, chat with the one
+  you pick, `/menu` to switch, `/exit` to leave. Watches its configuration files, so editing
+  one while it runs changes the menu underneath you.
 
 ## [0.1.0] — unreleased
 

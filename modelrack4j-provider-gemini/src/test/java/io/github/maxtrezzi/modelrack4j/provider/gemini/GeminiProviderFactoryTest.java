@@ -149,7 +149,7 @@ class GeminiProviderFactoryTest {
     }
 
     private static LlmConfig config(Optional<Double> temperature, boolean moderation) {
-        return new LlmConfig("SL", "gemini", "test-key-not-used", MODEL, temperature,
-                Duration.ofSeconds(60), false, false, false, Optional.empty(), moderation);
+        return new LlmConfig("SL", Optional.empty(), "gemini", "test-key-not-used", MODEL,
+                temperature, Duration.ofSeconds(60), false, false, false, Optional.empty(), moderation);
     }
 }

@@ -162,6 +162,10 @@ public final class ConsoleChat {
                         bundle.config().provider(),
                         bundle.config().modelName(),
                         capabilitiesOf(bundle));
+                // Printed on its own line, and only when the file supplies one: a menu of
+                // names like SL and CR says nothing on its own to whoever did not write it.
+                bundle.config().description()
+                        .ifPresent(description -> System.out.println("         " + description));
             }
             System.out.print("choose 1-" + names.size() + " by number or name, or "
                     + EXIT_COMMAND + ": ");
@@ -212,22 +216,27 @@ public final class ConsoleChat {
     /** Runs one conversation until the user asks for the menu or for the exit. */
     private static Outcome chat(LlmRegistry registry, String name, BufferedReader console)
             throws IOException {
-        // Built once per visit, so leaving and coming back starts a fresh conversation.
-        // Empty when the configuration has no memory block, and then every turn is
-        // independent — which is what that configuration says should happen.
-        Optional<ChatMemory> memory;
+        LlmBundle entered;
         try {
-            memory = registry.get(name).chatMemoryProvider().map(provider -> provider.get(MEMORY_ID));
+            entered = registry.get(name);
         } catch (UnknownConfigurationException e) {
             // Removed between the menu being drawn and the choice being made. A narrow
             // window, but a watched file can change at any point, and the alternative here
-            // is a stack trace on the way into the chat.
+            // is a stack trace on the way into the chat. One guarded lookup serves the whole
+            // greeting: a second get() outside this catch would put the hazard straight back.
             System.out.println("  [" + name + " is no longer configured]");
             return Outcome.MENU;
         }
 
+        // Built once per visit, so leaving and coming back starts a fresh conversation.
+        // Empty when the configuration has no memory block, and then every turn is
+        // independent — which is what that configuration says should happen.
+        Optional<ChatMemory> memory =
+                entered.chatMemoryProvider().map(provider -> provider.get(MEMORY_ID));
+
         System.out.println();
         System.out.println("chatting with " + name
+                + entered.config().description().map(text -> " — " + text).orElse("")
                 + (memory.isPresent() ? "" : " (no memory configured: each turn is independent)"));
         System.out.println(MENU_COMMAND + " for the menu, " + EXIT_COMMAND + " to quit.");
 
