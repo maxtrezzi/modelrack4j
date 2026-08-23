@@ -148,7 +148,11 @@ try (LlmRegistry registry = LlmRegistry.builder()
 | `chatMemoryProvider()` | `Optional<ChatMemoryProvider>` | a `memory` block is configured |
 
 A runnable version of exactly this scenario lives in
-[`modelrack4j-examples`](modelrack4j-examples/src/main/java/io/github/maxtrezzi/modelrack4j/examples/ThreeModelCouncil.java).
+[`modelrack4j-examples`](modelrack4j-examples/src/main/java/io/github/maxtrezzi/modelrack4j/examples/ThreeModelCouncil.java),
+alongside [`ConsoleChat`](modelrack4j-examples/src/main/java/io/github/maxtrezzi/modelrack4j/examples/ConsoleChat.java)
+— an interactive menu of every configured model, with `/menu` to switch and `/exit` to
+leave. Leave it running and edit the config file: the menu changes underneath you, which is
+the fastest way to see what [hot reload](#hot-reload) actually does.
 
 ---
 

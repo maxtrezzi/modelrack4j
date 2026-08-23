@@ -19,6 +19,7 @@ that merely gets work done closes by being marked `Done`.
   assumptions these tasks confirm or refute.
 - [`milestones.md`](milestones.md) — M0–M5. What ships, in what order.
 - [`open-decisions.md`](open-decisions.md) — items blocked on the owner, not on work.
+- [`post-v1.md`](post-v1.md) — P1, P2, … work taken on after v1 closed.
 
 ## Conventions
 
@@ -66,6 +67,7 @@ Phase 0 gates everything else; nothing below M0 should start before its blockers
 | [M3](milestones.md#m3--hot-reload) | Hot reload | **Done** — 69 tests green |
 | [M4](milestones.md#m4--gemini-and-glm) | Gemini and GLM | **Done** — 87 tests green |
 | [M5](milestones.md#m5--release-readiness) | Release readiness — **v1 done** | **Done** — README, CHANGELOG, artifacts verified |
+| [P1](post-v1.md#p1--console-chat-example) | Console chat example | **Done** — reload seen live |
 | [D1](open-decisions.md#d1--glm-route-if-no-maintained-module-exists) | GLM route if no maintained module | **Closed** — never became live |
 | [D2](open-decisions.md#d2--repository-visibility) | Repository visibility | Needs decision |
 | [D3](open-decisions.md#d3--token-window-memory-on-a-remote-estimator) | Token-window memory on a remote estimator | **Settled** — opt-in flag |
