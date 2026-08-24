@@ -478,6 +478,12 @@ discover at runtime.
 - **GLM has no whole-call timeout.** Its client's `callTimeout` and `writeTimeout` are
   deprecated and marked for removal upstream, so the schema's single `timeout` is applied to
   connect and read only.
+- **Swapping a provider in config does not swap your error handling.** What a *failing* call
+  throws is the provider's, not this library's, and the types differ: an out-of-credit account
+  is `RateLimitException` on OpenAI and `ZhipuAiException` on GLM — the same condition, two
+  types. Catch `dev.langchain4j.exception.LangChain4jException` for handling that survives a
+  swap; anything finer is provider-specific. The guarantee covers construction, not invocation
+  ([ADR-0033](docs/adr/0033-provider-exceptions-pass-through-untranslated.md)).
 
 ### Adding a provider
 

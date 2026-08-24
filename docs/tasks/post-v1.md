@@ -306,3 +306,99 @@ to be declined after the work is done. It points at the README's out-of-scope li
 `docs/adr/` for the "would you take a PR for X?" questions those already answer, states that
 the default build must pass offline with no keys, and repeats the house rule that a test which
 cannot fail is worse than no test.
+
+---
+
+### P6 — The integration tests against live APIs
+
+**Status:** Done 2026-08-24 · **Branch:** `fix/it-model-ids`
+
+`mvn -Pintegration verify` had never reached a provider. Both of its guards were verified in
+[M4](milestones.md#m4--gemini-and-glm) — the profile, and the per-class key check — but the
+payload behind them had never executed, so every claim about the four provider factories
+rested on unit tests against fakes. This was the last thing in the project resting on code
+that nothing had ever run.
+
+#### Result
+
+All four pass, in one run of the documented command:
+
+```
+mvn -Pintegration verify                                     BUILD SUCCESS
+
+openai     gpt-5-mini          Tests run: 1, ... Skipped: 0    3.272 s
+anthropic  claude-sonnet-4-6   Tests run: 1, ... Skipped: 0    1.695 s
+gemini     gemini-3.6-flash    Tests run: 1, ... Skipped: 0    3.225 s
+glm        glm-5.3             Tests run: 1, ... Skipped: 0    2.441 s
+```
+
+`Skipped: 0` on every row is the part that matters: it distinguishes *ran and passed* from
+*silently skipped because a key was absent*, which is the failure mode the second guard makes
+possible and which looks identical in a build summary.
+
+#### Changed
+
+Two model IDs in integration tests, one line each. Nothing in `src/main` changed; no
+user-facing string ever named either model.
+
+- `gemini-2.5-flash` → `gemini-3.6-flash`
+- `glm-4.6` → `glm-5.3`
+
+#### What the failures taught, which is most of the value
+
+Three of the four failed before they passed, and **every failure landed past everything this
+library is responsible for.** In each case the config parsed, `${VAR}` resolved, validation
+passed, the `ServiceLoader` found the factory, the factory built a real client, and the
+provider authenticated the credential — then refused for its own reasons.
+
+1. **OpenAI — `insufficient_quota`.** An unfunded account. Diagnostically this was the most
+   useful failure of the three: it is a *post-authentication* error, so it proved mandatory
+   substitution had carried a real key all the way to an authenticated HTTP call. An
+   unresolved `${OPENAI_API_KEY}` throws `ConfigException.UnresolvedSubstitution` and never
+   reaches the network at all.
+
+2. **Gemini — `404`, model retired.** *"This model models/gemini-2.5-flash is no longer
+   available to new users."* [M4 predicted exactly this](milestones.md#m4--gemini-and-glm):
+   `langchain4j-google-ai-gemini` ships no model-name enum, so that string was recorded as the
+   one in the milestone that only a live call could verify. It was, and it had rotted. The
+   three providers whose IDs came from an upstream enum were the three that did not.
+
+3. **GLM — `余额不足或无可用资源包，请充值。`** Read as an unfunded account, and that reading
+   was wrong: the same key succeeded immediately on `glm-5.3`. The resource package covers
+   5.3 and not 4.6, so the balance error was **model-scoped, not account-scoped** — a
+   distinction the message does not draw and which cost one wrong diagnosis.
+
+#### Findings recorded elsewhere
+
+**Exception types are not portable across providers → [ADR-0033](../adr/0033-provider-exceptions-pass-through-untranslated.md).**
+OpenAI's out-of-credit arrives as `RateLimitException`; GLM's arrives as `ZhipuAiException`.
+The same real-world condition, two types, decided by which provider the configuration names.
+The ADR settles that they pass through untranslated and fixes the swap guarantee at its true
+width — construction, not invocation — and the README and manual now say so.
+
+**`glm-5.3` is not in the upstream enum.** `ChatCompletionModel` in
+`langchain4j-community-zhipu-ai-1.19.0-beta29` has `GLM_5_1`, `GLM_5`, `GLM_4_7`, `GLM_4_6`
+and no `GLM_5_3`. `GlmProviderFactory` passes `config.modelName()` through as a raw `String`,
+so this works — but GLM's model name is no longer enum-checked, and it joins Gemini's as a
+string only a live call can verify. M4's note is corrected in place.
+
+#### Left alone deliberately
+
+`GeminiProviderFactoryTest` and `GlmProviderFactoryTest` still name the old IDs. They never
+touch the network, and beside `api-key = "k"` the string is plainly a stand-in rather than
+exemplary configuration. Changing them would be churn in tests whose point is that any string
+passes through.
+
+#### Still open
+
+**The ITs run four providers but assert only `isNotBlank()`** — correct, since model output is
+not deterministic, but it means these tests prove *reachability*, not correctness of anything
+the model said.
+
+**`claude-sonnet-5` and `gpt-5.1`** — the IDs the README tells readers to copy — are still
+exercised only by `ProviderSwap`, not by any IT. The ITs deliberately name cheaper models, so
+running them does not cover the advertised ones.
+
+**A model ID can rot at any time**, and now two of the four are outside upstream's enums. That
+is a standing maintenance cost of the integration suite, not a defect: it is the suite doing
+its job.
