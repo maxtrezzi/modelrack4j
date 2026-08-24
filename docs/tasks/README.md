@@ -71,6 +71,7 @@ Phase 0 gates everything else; nothing below M0 should start before its blockers
 | [P2](post-v1.md#p2--a-short-description-per-configuration) | A short description per configuration | **Done** — ADR-0032 |
 | [P3](post-v1.md#p3--the-manual) | The manual: tutorial and reference | **Done** — every command run |
 | [P4](post-v1.md#p4--two-examples-for-the-two-undemonstrated-strengths) | Examples for the two undemonstrated strengths | **Done** — atomicity shown, and made to fail |
+| [P5](post-v1.md#p5--repository-hygiene-ignore-rules-and-a-contributing-guide) | Ignore rules and a contributing guide | **Done** — rules tested, one gap found |
 | [D1](open-decisions.md#d1--glm-route-if-no-maintained-module-exists) | GLM route if no maintained module | **Closed** — never became live |
 | [D2](open-decisions.md#d2--repository-visibility) | Repository visibility | Needs decision |
 | [D3](open-decisions.md#d3--token-window-memory-on-a-remote-estimator) | Token-window memory on a remote estimator | **Settled** — opt-in flag |

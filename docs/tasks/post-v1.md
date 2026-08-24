@@ -271,3 +271,38 @@ The examples module still depends on OpenAI and Anthropic only, so nothing exerc
 GLM. Adding them is easy; making a *demo* out of them is not, because mandatory `${VAR}`
 substitution is all-or-nothing per snapshot — a four-provider example file needs all four keys
 or nothing loads. Not worth solving for a demonstration.
+
+---
+
+### P5 — Repository hygiene: ignore rules and a contributing guide
+
+**Status:** Done 2026-08-24 · **Branch:** `docs/gitignore-and-contributing`
+
+Two items from the pre-publication verification, both small and both only mattering once the
+repository is visible ([D2](open-decisions.md#d2--repository-visibility)).
+
+#### Built
+
+**`.gitignore` now covers credential-bearing local files.** It previously listed only
+`brainstorm/`, `target/`, IDE directories and `.DS_Store`. Added `local.conf`,
+`*.local.conf`, `.env`, `.env.*`, `application-local.*` and `**/secrets.*` — deliberately
+wider than the files this project happens to use, because the library's entire domain is
+configuration files holding API keys.
+
+Also added `.claude/settings.local.json`, which was previously ignored **only by the author's
+global ignore file** (`~/.config/git/ignore`). That does not travel: on any other machine, or
+a fresh clone, it would appear untracked and could be committed. The shared
+`.claude/settings.json` is deliberately left committable.
+
+**The rules were tested rather than assumed, and one gap was found that way.** `git check-ignore`
+against twelve representative paths showed `*.local.conf` does **not** match a file named
+plainly `local.conf` — which is exactly the name [Part 1 step 8](../manual/part-1-tutorial.md)
+of the manual tells the reader to create for their developer override. Added as its own
+entry. Reading the pattern would not have caught it.
+
+**`CONTRIBUTING.md`, deliberately short.** Its job is defensive: to make "open an issue first"
+the obvious path, so an unsolicited large pull request that does not fit the scope never has
+to be declined after the work is done. It points at the README's out-of-scope list and at
+`docs/adr/` for the "would you take a PR for X?" questions those already answer, states that
+the default build must pass offline with no keys, and repeats the house rule that a test which
+cannot fail is worse than no test.

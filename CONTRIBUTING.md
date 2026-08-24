@@ -1,0 +1,53 @@
+# Contributing
+
+Thanks for looking. This is a small, opinionated library with a narrow scope, so the most
+useful thing you can do before writing code is **open an issue**.
+
+## Open an issue first
+
+Please do that for anything beyond an obvious typo — a bug report, a question, or a sketch of
+a change you are considering. A short conversation costs you ten minutes; a large unsolicited
+pull request that does not fit the scope costs us both far more, and is unpleasant to decline.
+
+That is the only real rule here.
+
+## Before proposing a feature
+
+Two documents will answer most "would you take a PR for X?" questions faster than an issue
+will:
+
+- **[Out of scope](README.md#out-of-scope)** — things this library will deliberately never do.
+  `AiServices`, tools, RAG, retry and fallback pools are all on that list, and the answer for
+  them is settled rather than undecided.
+- **[`docs/adr/`](docs/adr/README.md)** — every design decision, with the alternatives that
+  were rejected and why. If a change would contradict one of these, that is not a blocker, but
+  the discussion starts from the reasoning already recorded there rather than from scratch.
+
+## Building
+
+```bash
+mvn clean install                        # full build and tests
+mvn -pl modelrack4j-core -am test        # core only
+```
+
+**The default build must pass offline, with no API keys.** Tests that talk to a real provider
+are `*IT` classes behind `-Pintegration`, and each one skips itself when its own key is
+absent. A CI job runs the build with the credential environment scrubbed specifically to catch
+a test that quietly grew a dependency on a key.
+
+Java 17 is the floor; CI runs 17, 21 and 25.
+
+## Pull requests
+
+- One branch per change, never committed straight to `main`.
+- The build stays green: `mvn clean verify` before you push.
+- New behaviour comes with a test. A test that cannot fail is worse than no test — if it
+  guards against a specific fault, break the code and confirm it catches it.
+- If your change settles a design question, it needs an ADR. Copy
+  [`docs/adr/0000-template.md`](docs/adr/0000-template.md), take the next number, and add a row
+  to the index.
+
+## License
+
+By contributing, you agree that your contributions are licensed under the
+[Apache License 2.0](LICENSE), the same terms that cover the project.
