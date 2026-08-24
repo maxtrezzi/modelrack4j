@@ -227,6 +227,19 @@ the two answers**: run with dummy credentials, both requests reached their provi
 back rejected at authentication, which proves the whole path including the network — only a
 valid-key response is unproven, the same gap the integration tests still have.
 
+#### The manual, updated with them
+
+Its index claimed "the two runnable examples" and there are now four — the kind of line that
+goes stale silently. Replaced with a table of all four and what each costs to run, since the
+free one is the useful thing to know.
+
+Two real gaps closed at the same time. Part 1's step 4 now shows that the same edit which adds
+a model also **changes its provider** — three lines and a save, pointing at `ProviderSwap` for
+the unattended version. The tutorial had never demonstrated the library's headline claim.
+Part 2 gained an `Examples` section: one row per program, what it demonstrates, and what it
+needs, including the note that `AtomicSnapshot`'s zero is a measurement rather than a
+decoration because sabotaging the swap makes it report tens of thousands.
+
 #### Not done
 
 The examples module still depends on OpenAI and Anthropic only, so nothing exercises Gemini or

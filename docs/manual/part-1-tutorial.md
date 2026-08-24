@@ -187,6 +187,20 @@ Try the other direction too: delete the `SH` block while you are chatting with i
 `removed=[SH]` and the console drops you back to the menu, because the name it was using no
 longer exists.
 
+**The same edit changes the provider.** If you have a key for a second provider, change three
+lines of `SL` — `provider`, `api-key` and `model-name` — and save:
+
+```hocon
+    provider    = openai
+    api-key     = ${OPENAI_API_KEY}
+    model-name  = "gpt-5.1"
+```
+
+Your next question goes to a different company, through the same code, with no restart.
+Nothing in `ConsoleChat` names a provider or branches on one. `ProviderSwap` does exactly this
+unattended, asking the same question before and after the edit, if you would rather watch it
+than type it.
+
 This is the feature the rest of the library exists to make safe. Part 2 explains
 [what a reload guarantees](part-2-reference.md#reload-semantics) — the short version is that
 either all of it applies or none of it does.

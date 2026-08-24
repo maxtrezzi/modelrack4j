@@ -8,6 +8,7 @@ wrong. [Part 1](part-1-tutorial.md) is the way in; this is the page you come bac
 | | |
 |---|---|
 | [Concepts](#concepts) | five words used precisely |
+| [Examples](#examples) | four runnable programs, one claim each |
 | [Configuration](#configuration) | file format, layering, every key |
 | [Memory](#memory) | the two variants and the cost rule |
 | [Java API](#java-api) | builder, registry, records, exceptions |
@@ -31,6 +32,30 @@ wrong. [Part 1](part-1-tutorial.md) is the way in; this is the page you come bac
 | **Snapshot** | The complete map of name to bundle at one instant. There is exactly one live snapshot, and a reload replaces it wholesale. |
 | **Layer** | One configuration file. Layers merge into one snapshot; they do not each produce their own. |
 | **Provider** | A LangChain4j integration, wrapped in a `ProviderFactory` and discovered on the classpath. Never a registry key. |
+
+---
+
+## Examples
+
+Each program in [`modelrack4j-examples`](../../modelrack4j-examples) demonstrates a single
+claim rather than the library in general.
+
+| Example | Demonstrates | Needs |
+|---|---|---|
+| `AtomicSnapshot` | [Snapshot-wide atomicity](#reload-semantics): four threads read two models while one save changes both, and count how often they catch a mixed pair. The answer is zero — and the count is real, not decorative: sabotaging the swap to publish one model 5 ms early makes it report tens of thousands. | **nothing** — reads configuration only, sends no request |
+| `ProviderSwap` | The provider as configuration: the same method, called twice around a file edit, answered by `AnthropicChatModel` and then `OpenAiChatModel`. The method names no provider and has no branch. | `ANTHROPIC_API_KEY` + `OPENAI_API_KEY`, two requests |
+| `ConsoleChat` | Everything interactively: a menu of configured models, streaming where configured, moderation on input where configured, memory across turns, and reload while you watch. | one provider key |
+| `ThreeModelCouncil` | The multi-model scenario: three names, one question, capabilities read from the bundle. | two provider keys |
+
+Run them with `exec:java` after `mvn install` — the plugin resolves `modelrack4j-core` from
+`~/.m2` rather than from the reactor, so a stale local install is the usual cause of a
+`NoSuchMethodError` here:
+
+```bash
+mvn install
+mvn -q -pl modelrack4j-examples exec:java \
+    -Dexec.mainClass=io.github.maxtrezzi.modelrack4j.examples.AtomicSnapshot
+```
 
 ---
 
