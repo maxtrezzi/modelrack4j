@@ -1,6 +1,20 @@
 # Local-only planning material — never commit
 brainstorm/
 
+# Local configuration and credentials — this library's whole domain is config files that
+# hold API keys, so the ignore list is deliberately wider than the files we happen to use.
+local.conf
+*.local.conf
+.env
+.env.*
+application-local.*
+**/secrets.*
+
+# Personal Claude Code settings. The shared .claude/settings.json is committable; this one
+# is per-machine, and was previously ignored only by the author's global ignore file —
+# which does not travel to anyone else's checkout.
+.claude/settings.local.json
+
 # Maven
 target/
 
