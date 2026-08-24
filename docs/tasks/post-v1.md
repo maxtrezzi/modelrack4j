@@ -240,6 +240,31 @@ Part 2 gained an `Examples` section: one row per program, what it demonstrates, 
 needs, including the note that `AtomicSnapshot`'s zero is a measurement rather than a
 decoration because sabotaging the swap makes it report tens of thousands.
 
+#### Completeness pass on Part 2
+
+Audited mechanically rather than by reading: every public API member (28 of 28) and every
+configuration key the loader reads (14 of 14) is documented. One real hole —
+`grep -cE "modelrack4j-bom|<dependency>|artifactId"` returned **0**, so a reference manual
+never said what to put in a POM. Added a `Dependencies` section: the BOM import, one artifact
+per provider, the rule that core knows no providers, core's actual dependency tree, and the
+reminder that an SLF4J binding is required or every rejected-reload warning is discarded.
+
+Two threading facts were also missing and are the kind asked once and needed answered:
+listeners may be registered at any time from any thread (the lists are copy-on-write), and
+registering one never replays a reload that already happened.
+
+Part 1 gained four sentences of orientation. It opened with *"Forty minutes, start to
+finish"*, which serves a reader arriving from the README and strands one arriving from a
+shared link. It now states what the library is for and hands the argument back to the README's
+`Why` rather than repeating it — purpose, not pitch. Part 2 deliberately gets none of this; a
+reference opens with concepts.
+
+> The orientation paragraph originally linked the README's `Should you use this?` as well.
+> That anchor lives on a different unmerged branch, so the link checker caught a cross-branch
+> dependency that would have dangled if the two merged out of order. Removed the second link
+> instead of sequencing the merges: the README's `Why` already ends with a bridge to that
+> section, so one link does the work and P4 stays independently mergeable.
+
 #### Not done
 
 The examples module still depends on OpenAI and Anthropic only, so nothing exercises Gemini or

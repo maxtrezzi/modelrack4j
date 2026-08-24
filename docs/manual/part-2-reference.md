@@ -8,6 +8,7 @@ wrong. [Part 1](part-1-tutorial.md) is the way in; this is the page you come bac
 | | |
 |---|---|
 | [Concepts](#concepts) | five words used precisely |
+| [Dependencies](#dependencies) | what to put in your POM |
 | [Examples](#examples) | four runnable programs, one claim each |
 | [Configuration](#configuration) | file format, layering, every key |
 | [Memory](#memory) | the two variants and the cost rule |
@@ -32,6 +33,74 @@ wrong. [Part 1](part-1-tutorial.md) is the way in; this is the page you come bac
 | **Snapshot** | The complete map of name to bundle at one instant. There is exactly one live snapshot, and a reload replaces it wholesale. |
 | **Layer** | One configuration file. Layers merge into one snapshot; they do not each produce their own. |
 | **Provider** | A LangChain4j integration, wrapped in a `ProviderFactory` and discovered on the classpath. Never a registry key. |
+
+---
+
+## Dependencies
+
+**Java 17 or newer.** Built and tested on 17, 21 and 25.
+
+**Not on Maven Central yet.** Build and install locally from a checkout:
+
+```bash
+git clone https://github.com/maxtrezzi/modelrack4j.git
+cd modelrack4j && mvn install
+```
+
+Import the BOM once, then declare artifacts without versions:
+
+```xml
+<dependencyManagement>
+  <dependencies>
+    <dependency>
+      <groupId>io.github.maxtrezzi</groupId>
+      <artifactId>modelrack4j-bom</artifactId>
+      <version>0.1.0-SNAPSHOT</version>
+      <type>pom</type>
+      <scope>import</scope>
+    </dependency>
+  </dependencies>
+</dependencyManagement>
+
+<dependencies>
+  <dependency>
+    <groupId>io.github.maxtrezzi</groupId>
+    <artifactId>modelrack4j-core</artifactId>
+  </dependency>
+  <dependency>
+    <groupId>io.github.maxtrezzi</groupId>
+    <artifactId>modelrack4j-provider-anthropic</artifactId>
+  </dependency>
+</dependencies>
+```
+
+| Artifact | Take it when |
+|---|---|
+| `modelrack4j-core` | always |
+| `modelrack4j-provider-openai` | you configure `provider = openai` |
+| `modelrack4j-provider-anthropic` | `provider = anthropic` |
+| `modelrack4j-provider-gemini` | `provider = gemini` |
+| `modelrack4j-provider-glm` | `provider = glm` |
+| `modelrack4j-bom` | to version all of the above from one coordinate |
+
+**Core knows no providers.** It contains no provider artifact and never will: each provider
+module registers itself through `ServiceLoader`, and a name whose `provider` has no module on
+the classpath is a configuration error listing the ones that are. An application configuring
+only Anthropic therefore never carries OpenAI's dependencies.
+
+What core brings with it, and nothing else:
+
+```
+modelrack4j-core
++- dev.langchain4j:langchain4j-core     (+ jackson, jspecify — transitive)
++- dev.langchain4j:langchain4j          (for ChatMemoryProvider, which is not in -core)
++- com.typesafe:config
+\- org.slf4j:slf4j-api
+```
+
+**Add an SLF4J binding.** Core logs through the API and ships no implementation, so without
+one, SLF4J prints its no-provider notice and the [warnings](#logging) — including every
+rejected reload — are discarded.
 
 ---
 
@@ -427,6 +496,10 @@ tests assert on them.
   sees the whole old snapshot or the whole new one.
 - **Listeners run on the watcher thread.** Long work in a listener delays the next reload;
   hand it off to your own executor if it is not quick.
+- **Listeners may be registered at any time, from any thread.** The registration lists are
+  copy-on-write, so adding one during a reload is safe and does not block it.
+- **Registering a listener does not replay anything.** It is called on the next reload, never
+  for one that already happened; the current state is `get()`, not a callback.
 - **`close()` waits** for a reload already in flight, so no listener runs after it returns. It
   is safe to call from a listener — that case is detected rather than deadlocking.
 - **Bundles are never closed by the library**, including superseded ones.

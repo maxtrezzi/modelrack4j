@@ -1,5 +1,13 @@
 # Part 1 — Tutorial
 
+**What this is for.** Your application's models — which provider, which model, what
+temperature, how much memory — are normally decided in Java, which means changing any of them
+is a recompile and a redeploy. modelrack4j moves those decisions into configuration files that
+can be edited while the application runs, and validates them against what each provider can
+actually do. The argument for that — and the cases where you should reach for your framework's
+LangChain4j starter instead — is in the README's [Why](../../README.md#why). This page assumes
+you are past it and want the thing working.
+
 Forty minutes, start to finish. You will end with a console application talking to a real
 model, a configuration file you can edit **while it runs**, and a clear idea of what the
 library refuses to do and why.
