@@ -23,22 +23,91 @@ change; see [CHANGELOG.md](CHANGELOG.md).
 
 ## Why
 
-LangChain4j gives you model builders. What it does not give you is an answer to *"where do
-the parameters come from, and what happens when they change?"* — so every application grows
-its own half of a configuration layer: environment variables read in three places, a
-`ChatModel` built in a `@Bean` method, and a redeploy to change a temperature.
+LangChain4j is already provider-agnostic where it counts: `ChatModel` is an interface and
+every provider implements it, so the code you write against it does not care who answers.
 
-modelrack4j is that missing half, and nothing else:
+What is *not* agnostic is the act of **choosing**. Picking a provider, naming a model,
+setting a temperature and a timeout is a constructor call — which means it is code:
 
-- **Configuration is layered and merged**, so a defaults file, an environment file and a
-  local override compose instead of replacing each other.
-- **Validation is capability-aware**: enabling moderation on a provider that ships no
-  moderation model fails when the config loads, not on the first request.
-- **Reload is atomic across the whole snapshot.** Either every named bundle swaps or none
-  does, so a multi-model flow never sees a new `SL` next to an old `SH`.
+```java
+ChatModel model = AnthropicChatModel.builder()
+        .apiKey(System.getenv("ANTHROPIC_API_KEY"))
+        .modelName("claude-sonnet-5")
+        .temperature(0.2)
+        .timeout(Duration.ofSeconds(60))
+        .build();
+```
+
+Changing the provider means editing that, recompiling and redeploying. So does raising a
+temperature by 0.1. The abstraction is real, but the decision it was supposed to free you
+from is welded to the build.
+
+**modelrack4j moves that decision into a file.** Three things follow, and they are the whole
+library:
+
+1. **The provider becomes configuration.** `provider = anthropic` → `provider = openai` is an
+   edit, not a release. Nothing in your code selects a provider, and nothing needs to know
+   which one answered.
+
+2. **Several setups of the same model cost nothing.** `SL` and `SH` below are one provider and
+   one model at two temperatures, one of them streamed. In code that is two near-identical
+   builder blocks that drift apart over time; here it is two named blocks, and adding a third
+   is four lines in a file.
+
+3. **Configuration changes while the process runs.** Edit the file and the registry rebuilds
+   what changed and swaps it — validated, and atomically across every configured model at
+   once, so a flow using `SL` and `SH` together never sees one of them updated and the other
+   not. If the new file is broken, nothing swaps and the previous configuration keeps
+   serving.
+
+The fourth thing is what makes the first three safe to rely on: **mistakes fail when the file
+loads, not at the first request.** Providers differ in what they can actually do — moderation
+is OpenAI-only among the four here, and token counting is local, remote or absent depending
+on who you ask — so the configuration is validated against the provider's real capabilities.
+Enabling moderation on Anthropic is a startup error naming the block, not an empty `Optional`
+you discover in production.
 
 It deliberately does not do prompt templating, `AiServices`, tools, RAG, retries or
 fallback — see [Out of scope](#out-of-scope).
+
+> That is the case against building this yourself on top of plain LangChain4j. If you are on
+> Spring Boot or Quarkus, the comparison is a different one — read on.
+
+---
+
+## Should you use this?
+
+Often the answer is no, and it is cheaper to find that out here than three days in.
+
+**If you are on Spring Boot or Quarkus, start with their LangChain4j starters.** They already
+configure models from properties at startup, and for most applications that is the whole job.
+Neither needs this library:
+
+| | Spring Boot starter | Quarkus LangChain4j | modelrack4j |
+|---|---|---|---|
+| Models configured from properties at startup | ✅ | ✅ | ✅ |
+| Several models, keyed by a name you choose | ❌ one namespace per provider, wired by bean name | ✅ `quarkus.langchain4j.openai.my-model.…` | ✅ |
+| **Two** configurations of the **same** provider, from configuration alone | ❌ needs a hand-written `@Bean` | ✅ | ✅ |
+| Configuration reloaded **without a restart** | ❌ | ❌ | ✅ |
+| Requires a framework | Spring | Quarkus | ❌ plain Java |
+
+So there are exactly two reasons to reach for this instead:
+
+1. **You are not on one of those frameworks**, or you do not want your model configuration
+   coupled to the one you are on. This is plain Java with no container, no annotations and no
+   classpath scanning.
+2. **You need configuration to change while the process runs.** Neither starter documents a
+   way to do that, and it is the thing this library is built around — validated, atomic across
+   every configured model at once, and with the previous configuration left running if the new
+   one does not parse.
+
+If neither applies, use the starter for your framework. It will be less code than this.
+
+> Checked against the [Spring Boot](https://docs.langchain4j.dev/tutorials/spring-boot-integration/)
+> and [Quarkus](https://docs.quarkiverse.io/quarkus-langchain4j/dev/models.html) documentation
+> in August 2026, for LangChain4j 1.19.0. Both projects move quickly — if one of them has
+> added reload since, this table is out of date and the comparison above is the part to
+> distrust first.
 
 ---
 
