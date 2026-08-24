@@ -1,5 +1,13 @@
 # Part 1 — Tutorial
 
+**What this is for.** Your application's models — which provider, which model, what
+temperature, how much memory — are normally decided in Java, which means changing any of them
+is a recompile and a redeploy. modelrack4j moves those decisions into configuration files that
+can be edited while the application runs, and validates them against what each provider can
+actually do. The argument for that — and the cases where you should reach for your framework's
+LangChain4j starter instead — is in the README's [Why](../../README.md#why). This page assumes
+you are past it and want the thing working.
+
 Forty minutes, start to finish. You will end with a console application talking to a real
 model, a configuration file you can edit **while it runs**, and a clear idea of what the
 library refuses to do and why.
@@ -187,9 +195,28 @@ Try the other direction too: delete the `SH` block while you are chatting with i
 `removed=[SH]` and the console drops you back to the menu, because the name it was using no
 longer exists.
 
+**The same edit changes the provider.** If you have a key for a second provider, change three
+lines of `SL` — `provider`, `api-key` and `model-name` — and save:
+
+```hocon
+    provider    = openai
+    api-key     = ${OPENAI_API_KEY}
+    model-name  = "gpt-5.1"
+```
+
+Your next question goes to a different company, through the same code, with no restart.
+Nothing in `ConsoleChat` names a provider or branches on one. `ProviderSwap` does exactly this
+unattended, asking the same question before and after the edit, if you would rather watch it
+than type it.
+
 This is the feature the rest of the library exists to make safe. Part 2 explains
 [what a reload guarantees](part-2-reference.md#reload-semantics) — the short version is that
 either all of it applies or none of it does.
+
+> **Want to see the "all of it" part?** `AtomicSnapshot` changes two models in one save while
+> four threads read both as fast as they can, and reports how many times they caught a mixed
+> pair. It reads configuration only, so it needs no key and costs nothing:
+> `mvn -q -pl modelrack4j-examples exec:java -Dexec.mainClass=io.github.maxtrezzi.modelrack4j.examples.AtomicSnapshot`
 
 ---
 

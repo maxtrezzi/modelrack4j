@@ -169,3 +169,105 @@ page says so rather than inventing a plausible one.
 
 Both are the kind of defect that only appears when someone runs the instructions instead of
 reading them.
+
+---
+
+### P4 — Two examples for the two undemonstrated strengths
+
+**Status:** Done 2026-08-24 · **Branch:** `task/p4-strength-examples`
+
+The README claims four strengths. An audit found two of them had no runnable demonstration
+at all: **the provider becoming configuration**, and **snapshot-wide reload atomicity**. The
+second is the subtlest thing the library does and a reader simply had to take it on trust.
+
+#### Built
+
+**`AtomicSnapshot` — the guarantee made visible, for free.** `SL` and `SH` are both tagged
+`gen-1` in their `description`. Four threads read the pair as fast as they can while a single
+save changes **both** blocks to `gen-2`. Measured on this machine:
+
+```
+pairs observed, in the order they first appeared:
+  1.  SL=gen-1  SH=gen-1                73,753,045 samples
+  2.  SL=gen-2  SH=gen-2               169,238,048 samples
+
+torn pairs (SL and SH from different generations): 0
+```
+
+243 million observations, no mixed pair. It reads configuration only — literal credentials,
+no request ever sent — so it is **the only example that needs no API key and costs nothing**,
+which makes it the one to hand someone who wants to see something work in thirty seconds.
+
+**It was verified by being made to fail.** A demonstration that cannot fail proves nothing, so
+`reload()` was temporarily sabotaged to publish `SL` five milliseconds before the rest of the
+snapshot. The example immediately reported the torn pair it exists to catch:
+
+```
+  2.  SL=gen-2  SH=gen-1                    28,342 samples
+torn pairs (SL and SH from different generations): 28342
+TORN — this is a bug: the snapshot swap is no longer atomic.
+```
+
+The sabotage was reverted from a backup; `git diff` confirmed the tree clean afterwards.
+
+**`ProviderSwap` — the headline claim, demonstrated.** Asks a question, rewrites the file from
+`provider = anthropic` to `provider = openai`, waits for the reload, and asks the same
+question through the same method. The output moves from `AnthropicChatModel` to
+`OpenAiChatModel` with no recompile and no restart. `ask()` names no provider, imports no
+provider type and has no branch — it cannot tell who answered, which is the point.
+
+Without both keys it explains what it needs and exits rather than failing, and points at
+`AtomicSnapshot` as the free alternative. A rejected key is caught and reported per call, so a
+bad credential does not hide the swap the example exists to show.
+
+#### Verified
+
+`AtomicSnapshot` end to end, including its failure mode. `ProviderSwap` end to end **except
+the two answers**: run with dummy credentials, both requests reached their provider and came
+back rejected at authentication, which proves the whole path including the network — only a
+valid-key response is unproven, the same gap the integration tests still have.
+
+#### The manual, updated with them
+
+Its index claimed "the two runnable examples" and there are now four — the kind of line that
+goes stale silently. Replaced with a table of all four and what each costs to run, since the
+free one is the useful thing to know.
+
+Two real gaps closed at the same time. Part 1's step 4 now shows that the same edit which adds
+a model also **changes its provider** — three lines and a save, pointing at `ProviderSwap` for
+the unattended version. The tutorial had never demonstrated the library's headline claim.
+Part 2 gained an `Examples` section: one row per program, what it demonstrates, and what it
+needs, including the note that `AtomicSnapshot`'s zero is a measurement rather than a
+decoration because sabotaging the swap makes it report tens of thousands.
+
+#### Completeness pass on Part 2
+
+Audited mechanically rather than by reading: every public API member (28 of 28) and every
+configuration key the loader reads (14 of 14) is documented. One real hole —
+`grep -cE "modelrack4j-bom|<dependency>|artifactId"` returned **0**, so a reference manual
+never said what to put in a POM. Added a `Dependencies` section: the BOM import, one artifact
+per provider, the rule that core knows no providers, core's actual dependency tree, and the
+reminder that an SLF4J binding is required or every rejected-reload warning is discarded.
+
+Two threading facts were also missing and are the kind asked once and needed answered:
+listeners may be registered at any time from any thread (the lists are copy-on-write), and
+registering one never replays a reload that already happened.
+
+Part 1 gained four sentences of orientation. It opened with *"Forty minutes, start to
+finish"*, which serves a reader arriving from the README and strands one arriving from a
+shared link. It now states what the library is for and hands the argument back to the README's
+`Why` rather than repeating it — purpose, not pitch. Part 2 deliberately gets none of this; a
+reference opens with concepts.
+
+> The orientation paragraph originally linked the README's `Should you use this?` as well.
+> That anchor lives on a different unmerged branch, so the link checker caught a cross-branch
+> dependency that would have dangled if the two merged out of order. Removed the second link
+> instead of sequencing the merges: the README's `Why` already ends with a bridge to that
+> section, so one link does the work and P4 stays independently mergeable.
+
+#### Not done
+
+The examples module still depends on OpenAI and Anthropic only, so nothing exercises Gemini or
+GLM. Adding them is easy; making a *demo* out of them is not, because mandatory `${VAR}`
+substitution is all-or-nothing per snapshot — a four-provider example file needs all four keys
+or nothing loads. Not worth solving for a demonstration.
