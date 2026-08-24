@@ -325,6 +325,35 @@ component participates, including `description`.
 | `UnknownConfigurationException` | `get()` on a name that is not in the current snapshot. |
 | `UncheckedIOException` | Watching was requested and a directory cannot be watched. |
 
+Those three are the library's own, and they are thrown identically whichever provider a block
+names. **Everything a model call throws belongs to the provider instead**, and those types are
+not portable between providers.
+
+Verified against all four live APIs
+([P6](../tasks/post-v1.md#p6--the-integration-tests-against-live-apis)):
+
+| Provider | Condition | Type thrown |
+|---|---|---|
+| OpenAI | account out of credit | `dev.langchain4j.exception.RateLimitException` |
+| Gemini | model ID retired upstream | `dev.langchain4j.exception.ModelNotFoundException` |
+| GLM | resource package out of credit | `dev.langchain4j.community.model.zhipu.ZhipuAiException` |
+
+Read rows one and three together: the *same* real condition arrives as two different types
+depending on which provider the configuration names. GLM's message is in Chinese, and its
+detail code is reachable only via a provider-specific `getCode()`.
+
+So the swap guarantee has a precise width. **Which objects exist, who builds them, with what
+credentials, model, timeout and memory — all config-shaped, all swap freely. What a failing
+call throws does not.** Catch `dev.langchain4j.exception.LangChain4jException` and your
+handling survives any swap; all four providers throw beneath it. Reach below that and you have
+written provider-specific code, which is fine as long as it is deliberate — after a swap it
+does not break loudly, it simply stops being entered.
+
+The library does not translate these, and
+[ADR-0033](../adr/0033-provider-exceptions-pass-through-untranslated.md) records why:
+translating means proxying every model call, which would stop the registry handing back
+genuine LangChain4j objects.
+
 ---
 
 ## Reload semantics

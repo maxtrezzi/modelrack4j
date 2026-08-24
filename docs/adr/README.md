@@ -60,6 +60,7 @@ by number, since the numbering only reflects the order of the original appendix.
 | [0011](0011-independent-name-and-deferred-wrapper.md) | Independent name; the hot-swap wrapper deferred to v2 | Accepted |
 | [0017](0017-apache-2-0-license.md) | License under Apache 2.0, with no NOTICE file | Accepted |
 | [0025](0025-fix-coordinates-under-io-github-maxtrezzi.md) | Fix the coordinates at `io.github.maxtrezzi:modelrack4j-*` | Accepted |
+| [0033](0033-provider-exceptions-pass-through-untranslated.md) | Provider exceptions pass through untranslated; the swap boundary is construction, not invocation | Accepted |
 
 **Structure and configuration**
 

@@ -59,7 +59,7 @@ class GeminiProviderIT {
                   IT {
                     provider   = gemini
                     api-key    = ${GEMINI_API_KEY}
-                    model-name = "gemini-2.5-flash"
+                    model-name = "gemini-3.6-flash"
                     timeout    = 60s
                   }
                 }

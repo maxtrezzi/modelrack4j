@@ -55,7 +55,7 @@ class GlmProviderIT {
                   IT {
                     provider   = glm
                     api-key    = ${ZHIPU_API_KEY}
-                    model-name = "glm-4.6"
+                    model-name = "glm-5.3"
                     timeout    = 60s
                   }
                 }

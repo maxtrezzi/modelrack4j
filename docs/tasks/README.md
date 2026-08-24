@@ -72,6 +72,7 @@ Phase 0 gates everything else; nothing below M0 should start before its blockers
 | [P3](post-v1.md#p3--the-manual) | The manual: tutorial and reference | **Done** — every command run |
 | [P4](post-v1.md#p4--two-examples-for-the-two-undemonstrated-strengths) | Examples for the two undemonstrated strengths | **Done** — atomicity shown, and made to fail |
 | [P5](post-v1.md#p5--repository-hygiene-ignore-rules-and-a-contributing-guide) | Ignore rules and a contributing guide | **Done** — rules tested, one gap found |
+| [P6](post-v1.md#p6--the-integration-tests-against-live-apis) | The integration tests against live APIs | **Done** — all four answered; ADR-0033 |
 | [D1](open-decisions.md#d1--glm-route-if-no-maintained-module-exists) | GLM route if no maintained module | **Closed** — never became live |
 | [D2](open-decisions.md#d2--repository-visibility) | Repository visibility | Needs decision |
 | [D3](open-decisions.md#d3--token-window-memory-on-a-remote-estimator) | Token-window memory on a remote estimator | **Settled** — opt-in flag |
@@ -99,12 +100,16 @@ throwaway project outside the reactor.
 unscheduled: it is triggered by the library proving itself in the owner's first real project,
 not by a date.
 
-Three things are open, and none of them is code:
+**Nothing rests on unexercised code any more.** `mvn -Pintegration verify` reached a live API
+on 2026-08-24 ([P6](post-v1.md#p6--the-integration-tests-against-live-apis)): all four
+providers answered a real request. It cost two stale model IDs and produced one portability
+finding, [ADR-0033](../adr/0033-provider-exceptions-pass-through-untranslated.md). What it
+leaves behind is a standing cost rather than an open item — model IDs rot, and two of the four
+are now outside upstream's enums, so only a live run can catch the next one.
+
+Two things are open, and neither of them is code:
 
 - **[D2](open-decisions.md#d2--repository-visibility)** — needs the owner. The only open
   decision.
-- **`mvn -Pintegration verify` has never reached a live API.** Both guards are verified across
-  all four providers; the payload has never run. Worth doing once, and it is now the last
-  claim in the README that rests on unexercised code.
 - **The macOS half of [Task 0.8](phase-0-verification.md#task-08--watch-strategy-spike)** —
   needs hardware. The README states the gap rather than papering over it.

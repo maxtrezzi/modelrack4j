@@ -357,6 +357,14 @@ rather than from recollection. That is still true for GLM — `glm-4.6` is from
 `gemini-2.5-flash` could not be checked against the artifact. It is the one string in this
 milestone that only a live call can verify, and the IT says so at the point of use.
 
+**Corrected 2026-08-24 by [P6](post-v1.md#p6--the-integration-tests-against-live-apis).** The
+live call was made, and `gemini-2.5-flash` had been retired upstream — this paragraph named
+the one string that could rot unseen, and it was the one that did. It is now
+`gemini-3.6-flash`. The GLM half of the claim no longer holds either: `glm-4.6` is now
+`glm-5.3`, which `ChatCompletionModel` does not contain, so **both** IDs are outside upstream's
+enums and verifiable only by a live call. Nothing in `src/main` changed; `GlmProviderFactory`
+always passed the model name through as a raw `String`.
+
 **Both integration-test guards were re-verified with four modules present**, because the
 second one is the one that breaks quietly: `mvn -Pintegration verify` with no keys set runs
 failsafe and **skips all four ITs**, build passing. Running the profile with one provider
@@ -364,6 +372,12 @@ configured therefore skips the other three rather than failing.
 
 **Still never run against a live API.** Adding two more providers to the profile does not
 change that. Worth doing once before M5 closes v1.
+
+**Done 2026-08-24, after M5 rather than before it, as
+[P6](post-v1.md#p6--the-integration-tests-against-live-apis).** All four providers answered a
+real request in one run of `mvn -Pintegration verify`, with `Skipped: 0` on every one. Three
+of the four failed first, each time for the provider's own reasons and never inside this
+library; one of those failures produced [ADR-0033](../adr/0033-provider-exceptions-pass-through-untranslated.md).
 
 **Deferred into M5 with the README that holds it:** M4's third bullet asks for the capability
 matrix in the README, and there is no README yet — M5 creates it. The matrix itself is done
