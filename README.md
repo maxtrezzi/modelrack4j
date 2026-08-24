@@ -42,6 +42,45 @@ fallback — see [Out of scope](#out-of-scope).
 
 ---
 
+## Should you use this?
+
+Often the answer is no, and it is cheaper to find that out here than three days in.
+
+**If you are on Spring Boot or Quarkus, start with their LangChain4j starters.** They already
+configure models from properties at startup, and for most applications that is the whole job.
+Neither needs this library:
+
+| | Spring Boot starter | Quarkus LangChain4j | modelrack4j |
+|---|---|---|---|
+| Models configured from properties at startup | ✅ | ✅ | ✅ |
+| Several models, keyed by a name you choose | ❌ one namespace per provider, wired by bean name | ✅ `quarkus.langchain4j.openai.my-model.…` | ✅ |
+| **Two** configurations of the **same** provider, from configuration alone | ❌ needs a hand-written `@Bean` | ✅ | ✅ |
+| Configuration reloaded **without a restart** | ❌ | ❌ | ✅ |
+| Requires a framework | Spring | Quarkus | ❌ plain Java |
+
+So there are exactly two reasons to reach for this instead:
+
+1. **You are not on one of those frameworks**, or you do not want your model configuration
+   coupled to the one you are on. This is plain Java with no container, no annotations and no
+   classpath scanning.
+2. **You need configuration to change while the process runs.** Neither starter documents a
+   way to do that, and it is the thing this library is built around — validated, atomic across
+   every configured model at once, and with the previous configuration left running if the new
+   one does not parse.
+
+If neither applies, use the starter for your framework. It will be less code than this.
+
+> Checked against the [Spring Boot](https://docs.langchain4j.dev/tutorials/spring-boot-integration/)
+> and [Quarkus](https://docs.quarkiverse.io/quarkus-langchain4j/dev/models.html) documentation
+> in August 2026, for LangChain4j 1.19.0. Both projects move quickly — if one of them has
+> added reload since, this table is out of date and the comparison above is the part to
+> distrust first.
+
+There is also a list of things this library will never do, whichever framework you are on —
+see [Out of scope](#out-of-scope).
+
+---
+
 ## Quick start
 
 ### 1. Add the dependencies
