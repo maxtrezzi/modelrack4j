@@ -191,6 +191,11 @@ This is the feature the rest of the library exists to make safe. Part 2 explains
 [what a reload guarantees](part-2-reference.md#reload-semantics) — the short version is that
 either all of it applies or none of it does.
 
+> **Want to see the "all of it" part?** `AtomicSnapshot` changes two models in one save while
+> four threads read both as fast as they can, and reports how many times they caught a mixed
+> pair. It reads configuration only, so it needs no key and costs nothing:
+> `mvn -q -pl modelrack4j-examples exec:java -Dexec.mainClass=io.github.maxtrezzi.modelrack4j.examples.AtomicSnapshot`
+
 ---
 
 ## 5. Memory and streaming

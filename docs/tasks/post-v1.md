@@ -169,3 +169,67 @@ page says so rather than inventing a plausible one.
 
 Both are the kind of defect that only appears when someone runs the instructions instead of
 reading them.
+
+---
+
+### P4 — Two examples for the two undemonstrated strengths
+
+**Status:** Done 2026-08-24 · **Branch:** `task/p4-strength-examples`
+
+The README claims four strengths. An audit found two of them had no runnable demonstration
+at all: **the provider becoming configuration**, and **snapshot-wide reload atomicity**. The
+second is the subtlest thing the library does and a reader simply had to take it on trust.
+
+#### Built
+
+**`AtomicSnapshot` — the guarantee made visible, for free.** `SL` and `SH` are both tagged
+`gen-1` in their `description`. Four threads read the pair as fast as they can while a single
+save changes **both** blocks to `gen-2`. Measured on this machine:
+
+```
+pairs observed, in the order they first appeared:
+  1.  SL=gen-1  SH=gen-1                73,753,045 samples
+  2.  SL=gen-2  SH=gen-2               169,238,048 samples
+
+torn pairs (SL and SH from different generations): 0
+```
+
+243 million observations, no mixed pair. It reads configuration only — literal credentials,
+no request ever sent — so it is **the only example that needs no API key and costs nothing**,
+which makes it the one to hand someone who wants to see something work in thirty seconds.
+
+**It was verified by being made to fail.** A demonstration that cannot fail proves nothing, so
+`reload()` was temporarily sabotaged to publish `SL` five milliseconds before the rest of the
+snapshot. The example immediately reported the torn pair it exists to catch:
+
+```
+  2.  SL=gen-2  SH=gen-1                    28,342 samples
+torn pairs (SL and SH from different generations): 28342
+TORN — this is a bug: the snapshot swap is no longer atomic.
+```
+
+The sabotage was reverted from a backup; `git diff` confirmed the tree clean afterwards.
+
+**`ProviderSwap` — the headline claim, demonstrated.** Asks a question, rewrites the file from
+`provider = anthropic` to `provider = openai`, waits for the reload, and asks the same
+question through the same method. The output moves from `AnthropicChatModel` to
+`OpenAiChatModel` with no recompile and no restart. `ask()` names no provider, imports no
+provider type and has no branch — it cannot tell who answered, which is the point.
+
+Without both keys it explains what it needs and exits rather than failing, and points at
+`AtomicSnapshot` as the free alternative. A rejected key is caught and reported per call, so a
+bad credential does not hide the swap the example exists to show.
+
+#### Verified
+
+`AtomicSnapshot` end to end, including its failure mode. `ProviderSwap` end to end **except
+the two answers**: run with dummy credentials, both requests reached their provider and came
+back rejected at authentication, which proves the whole path including the network — only a
+valid-key response is unproven, the same gap the integration tests still have.
+
+#### Not done
+
+The examples module still depends on OpenAI and Anthropic only, so nothing exercises Gemini or
+GLM. Adding them is easy; making a *demo* out of them is not, because mandatory `${VAR}`
+substitution is all-or-nothing per snapshot — a four-provider example file needs all four keys
+or nothing loads. Not worth solving for a demonstration.

@@ -153,12 +153,25 @@ try (LlmRegistry registry = LlmRegistry.builder()
 | `moderationModel()` | `Optional<ModerationModel>` | `moderation.enabled = true` |
 | `chatMemoryProvider()` | `Optional<ChatMemoryProvider>` | a `memory` block is configured |
 
-A runnable version of exactly this scenario lives in
-[`modelrack4j-examples`](modelrack4j-examples/src/main/java/io/github/maxtrezzi/modelrack4j/examples/ThreeModelCouncil.java),
-alongside [`ConsoleChat`](modelrack4j-examples/src/main/java/io/github/maxtrezzi/modelrack4j/examples/ConsoleChat.java)
-— an interactive menu of every configured model, with `/menu` to switch and `/exit` to
-leave. Leave it running and edit the config file: the menu changes underneath you, which is
-the fastest way to see what [hot reload](#hot-reload) actually does.
+### Runnable examples
+
+Four, in [`modelrack4j-examples`](modelrack4j-examples/src/main/java/io/github/maxtrezzi/modelrack4j/examples).
+Each one demonstrates a single claim from [Why](#why) rather than the library in general:
+
+| Example | Shows | Cost |
+|---|---|---|
+| [`AtomicSnapshot`](modelrack4j-examples/src/main/java/io/github/maxtrezzi/modelrack4j/examples/AtomicSnapshot.java) | One save changes two models; four threads sampling both never once see a mixed pair | **free, no API key** |
+| [`ProviderSwap`](modelrack4j-examples/src/main/java/io/github/maxtrezzi/modelrack4j/examples/ProviderSwap.java) | The same call site answered by Anthropic, then by OpenAI, after a file edit | two requests |
+| [`ConsoleChat`](modelrack4j-examples/src/main/java/io/github/maxtrezzi/modelrack4j/examples/ConsoleChat.java) | An interactive menu of every configured model; edit the file while it runs and the menu changes | a conversation |
+| [`ThreeModelCouncil`](modelrack4j-examples/src/main/java/io/github/maxtrezzi/modelrack4j/examples/ThreeModelCouncil.java) | The scenario above: three models, one question, no provider branch in the code | three requests |
+
+Start with `AtomicSnapshot` if you want to see the least obvious guarantee for nothing:
+
+```bash
+mvn install
+mvn -q -pl modelrack4j-examples exec:java \
+    -Dexec.mainClass=io.github.maxtrezzi.modelrack4j.examples.AtomicSnapshot
+```
 
 ---
 
