@@ -73,8 +73,9 @@ Phase 0 gates everything else; nothing below M0 should start before its blockers
 | [P4](post-v1.md#p4--two-examples-for-the-two-undemonstrated-strengths) | Examples for the two undemonstrated strengths | **Done** — atomicity shown, and made to fail |
 | [P5](post-v1.md#p5--repository-hygiene-ignore-rules-and-a-contributing-guide) | Ignore rules and a contributing guide | **Done** — rules tested, one gap found |
 | [P6](post-v1.md#p6--the-integration-tests-against-live-apis) | The integration tests against live APIs | **Done** — all four answered; ADR-0033 |
+| [P7](post-v1.md#p7--closing-out-the-outside-review-of-the-public-repository) | Closing out the outside review | **Done** — ADR-0035, ADR-0037 |
 | [D1](open-decisions.md#d1--glm-route-if-no-maintained-module-exists) | GLM route if no maintained module | **Closed** — never became live |
-| [D2](open-decisions.md#d2--repository-visibility) | Repository visibility | Needs decision |
+| [D2](open-decisions.md#d2--repository-visibility) | Repository visibility | **Settled** — public, not released; ADR-0034 |
 | [D3](open-decisions.md#d3--token-window-memory-on-a-remote-estimator) | Token-window memory on a remote estimator | **Settled** — opt-in flag |
 
 **Phase 0 is complete except for one measurement, and M0 is done — the build is green.** Tasks 0.1–0.7 are
@@ -107,9 +108,23 @@ finding, [ADR-0033](../adr/0033-provider-exceptions-pass-through-untranslated.md
 leaves behind is a standing cost rather than an open item — model IDs rot, and two of the four
 are now outside upstream's enums, so only a live run can catch the next one.
 
-Two things are open, and neither of them is code:
+**The repository is public as of 2026-08-25, and deliberately not released**
+([D2](open-decisions.md#d2--repository-visibility),
+[ADR-0034](../adr/0034-the-repository-is-public-before-it-is-released.md)). The source and
+the reasoning are readable; the version is still `0.1.0-SNAPSHOT` with no tag, no release and
+no artifact, and M6 keeps its own trigger. Two habits become rules with that switch:
+`brainstorm/` is now a confidentiality boundary rather than a convention, and secret
+discipline is pre-push rather than pre-release.
 
-- **[D2](open-decisions.md#d2--repository-visibility)** — needs the owner. The only open
-  decision.
-- **The macOS half of [Task 0.8](phase-0-verification.md#task-08--watch-strategy-spike)** —
-  needs hardware. The README states the gap rather than papering over it.
+**The first outside reading of the public repository is closed**
+([P7](post-v1.md#p7--closing-out-the-outside-review-of-the-public-repository)). Ten findings;
+two were wrong about the code and wrong in the project's favour, two forced decisions
+([ADR-0035](../adr/0035-ship-a-notice-file-for-attribution.md) adds a `NOTICE` file, and
+`CLAUDE.md` was untracked and then put back within hours —
+[ADR-0037](../adr/0037-claude-md-is-tracked-and-maintained.md) supersedes
+[ADR-0036](../adr/0036-claude-md-is-local-only.md), because hiding a file does not stop it
+drifting), and the rest were documentation the code had already outgrown.
+
+**No decision is open.** One thing is, and it is not code: the macOS half of
+[Task 0.8](phase-0-verification.md#task-08--watch-strategy-spike) needs hardware. The README
+states the gap rather than papering over it.

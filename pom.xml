@@ -163,6 +163,27 @@
   </dependencies>
 
   <build>
+    <!--
+      ADR-0035: LICENSE and NOTICE travel INSIDE every jar, at META-INF/. Apache 2.0 §4(d)
+      only binds a redistributor who actually receives the NOTICE, so one sitting in the
+      repository root reaches anyone who clones and nobody who consumes an artifact — which
+      is the case the clause exists for. The default src/main/resources entry is restated
+      because declaring <resources> at all replaces it rather than adding to it.
+    -->
+    <resources>
+      <resource>
+        <directory>${project.basedir}/src/main/resources</directory>
+      </resource>
+      <resource>
+        <directory>${maven.multiModuleProjectDirectory}</directory>
+        <targetPath>META-INF</targetPath>
+        <includes>
+          <include>LICENSE</include>
+          <include>NOTICE</include>
+        </includes>
+      </resource>
+    </resources>
+
     <pluginManagement>
       <plugins>
         <plugin>

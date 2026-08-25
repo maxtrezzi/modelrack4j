@@ -71,7 +71,18 @@ changes with it.
 
 ### D2 — Repository visibility
 
-**Status:** Needs decision
+**Status:** Settled 2026-08-25 — **public now, not released** ·
+**Settled by:** [ADR-0034](../adr/0034-the-repository-is-public-before-it-is-released.md)
+
+The owner made the repository public on 2026-08-25, taking the *public now* option below.
+The decision is narrower than the switch it was made with: public and released are separate
+acts, and only the first was taken. The version stays `0.1.0-SNAPSHOT`, there is no tag, no
+GitHub release and no announcement, and M6 keeps its own trigger unchanged. ADR-0034 records
+why, and what being readable now makes non-negotiable — `brainstorm/` as a confidentiality
+boundary rather than a convention, secret discipline that is pre-push rather than
+pre-release, and history that can no longer be quietly rewritten.
+
+The framing the decision was taken under follows.
 
 Public from day one, or public at first release?
 

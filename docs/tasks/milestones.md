@@ -35,6 +35,27 @@ parent, core, four providers, BOM, examples.
 | Core takes no provider artifact, and no `opennlp` ([ADR-0005](../adr/0005-provider-factory-spi-via-serviceloader.md), [ADR-0020](../adr/0020-core-depends-on-langchain4j-aggregate.md)) | `dependency:tree` — core resolves to `langchain4j-core`, the aggregate, `com.typesafe:config`, and nothing else |
 | Javadoc and sources jars attach | both present in `target/` alongside the main jar |
 
+**Re-measured 2026-08-25, against `1.19.0`.** The row above asserts the shape of core's
+dependency tree but never recorded its size, and an unmeasured cost is what invites a
+periodic argument to drop the aggregate exception
+([ADR-0020](../adr/0020-core-depends-on-langchain4j-aggregate.md) says not to, and the
+number is why). `mvn dependency:tree -pl modelrack4j-core` puts core's whole compile scope
+at **six artifacts**: `langchain4j-core` with its three Jackson jars and `jspecify`,
+`com.typesafe:config`, `slf4j-api`, and the aggregate.
+
+**The aggregate adds 317 KB and no new transitive dependency at all.** It declares six of
+its own, and every one is either already present or excluded — `langchain4j-core` and
+`slf4j-api` are direct dependencies of core, the three Jacksons arrive through
+`langchain4j-core`, and `opennlp-tools` is the ADR-0020 exclusion, which keeps out 1.33 MB.
+So the exception ADR-0020 argues for costs one jar. Re-run the command on every LangChain4j
+bump: this is a fact about `1.19.0`, and a dependency added upstream would land here
+silently.
+
+One wording note while re-reading the row: "and nothing else" was accurate at M0 and reads
+as of M0. `slf4j-api` became a *declared* dependency at M1
+([ADR-0028](../adr/0028-core-logs-through-slf4j-api.md)) — it was already present
+transitively, so the tree did not grow, but the declared list did.
+
 **Three things the build caught that reasoning had not:**
 
 1. **The GLM module breaks dependency convergence.** Its `jjwt` pulls `jjwt-jackson`, which

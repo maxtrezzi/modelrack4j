@@ -29,6 +29,13 @@ Superseding or amending an ADR means editing only the old file's `Status` line a
 the pointer. Its body stays untouched — including the parts the newer ADR overrode, since
 those are what make the change legible.
 
+**The body is also frozen against additions.** A measurement that confirms an ADR, a number
+someone wishes had been recorded, a note that upstream has since changed — none of these are
+appended here, no matter how clearly dated. They belong in
+[`../tasks/`](../tasks/README.md), which exists to record what was found. `Status`,
+`Supersedes` and `Amends` are the only lines that ever change, because they are the
+mechanism itself.
+
 ## When to write one
 
 Whenever a discussion settles something that constrains future code: a dependency taken
@@ -58,9 +65,13 @@ by number, since the numbering only reflects the order of the original appendix.
 | [0002](0002-scope-to-langchain4j-llm-configuration.md) | Scope to LangChain4j LLM configuration, not generic reloadable config | Accepted |
 | [0003](0003-bundle-holds-config-shaped-inputs-only.md) | A bundle holds the config-shaped inputs only | Accepted |
 | [0011](0011-independent-name-and-deferred-wrapper.md) | Independent name; the hot-swap wrapper deferred to v2 | Accepted |
-| [0017](0017-apache-2-0-license.md) | License under Apache 2.0, with no NOTICE file | Accepted |
+| [0017](0017-apache-2-0-license.md) | License under Apache 2.0, with no NOTICE file | Accepted — NOTICE decision amended by ADR-0035 |
 | [0025](0025-fix-coordinates-under-io-github-maxtrezzi.md) | Fix the coordinates at `io.github.maxtrezzi:modelrack4j-*` | Accepted |
 | [0033](0033-provider-exceptions-pass-through-untranslated.md) | Provider exceptions pass through untranslated; the swap boundary is construction, not invocation | Accepted |
+| [0034](0034-the-repository-is-public-before-it-is-released.md) | The repository is public before it is released | Accepted |
+| [0035](0035-ship-a-notice-file-for-attribution.md) | Ship a NOTICE file; §4(d) is the only attribution clause that reaches a binary | Accepted |
+| [0036](0036-claude-md-is-local-only.md) | `CLAUDE.md` is local-only; the tracked documentation is the source | Superseded by ADR-0037 |
+| [0037](0037-claude-md-is-tracked-and-maintained.md) | `CLAUDE.md` is tracked and maintained; hiding a file does not stop it drifting | Accepted |
 
 **Structure and configuration**
 
@@ -74,7 +85,7 @@ by number, since the numbering only reflects the order of the original appendix.
 | [0032](0032-description-is-part-of-the-config-record.md) | `description` is an ordinary part of the config record | Accepted |
 | [0010](0010-discriminators-only-with-two-real-variants.md) | Discriminated variants only where two real variants exist today | Accepted — estimator-availability premise amended by ADR-0021 |
 | [0004](0004-expose-chatmemoryprovider.md) | Expose `ChatMemoryProvider`, not a bare `ChatMemory` | Accepted — estimator-availability premise amended by ADR-0021 |
-| [0021](0021-token-estimation-is-universal-but-two-cost-classes.md) | Token estimation is universal; the capability that varies is its cost | Accepted |
+| [0021](0021-token-estimation-is-universal-but-two-cost-classes.md) | Token estimation is universal; the capability that varies is its cost | Accepted — universality premise amended by ADR-0022 |
 | [0027](0027-remote-token-counting-is-opt-in.md) | Token-window memory on a remote estimator is opt-in | Accepted |
 | [0030](0030-one-timeout-in-the-schema.md) | One `timeout` in the schema; providers map it onto their own client | Accepted |
 | [0018](0018-manage-langchain4j-versions-via-bom.md) | Manage LangChain4j versions by importing its BOM | Accepted — one import becomes two, per ADR-0022 |

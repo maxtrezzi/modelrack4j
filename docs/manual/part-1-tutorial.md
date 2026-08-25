@@ -15,25 +15,31 @@ library refuses to do and why.
 Every command and every output block on this page was run before it was written down. Where
 the output depends on a model's answer, it says so instead of inventing one.
 
-> **This spends money.** Not much — the tutorial sends a handful of short prompts — but the
-> requests are real. Steps 1 to 8 need one API key from any supported provider. Step 9 needs
-> two.
+> **Most of it is free, and the free part comes first.** Steps 1, 2, 6, 7 and 8 send no
+> request at all: building, writing configuration, watching validation refuse a block a
+> provider cannot serve, and watching a broken file get rejected are all offline. Only
+> steps 3, 4, 5 and 9 talk to a provider — roughly a dozen short prompts if you follow the
+> page literally, of which step 9 sends three, one per model.
+>
+> **Every step needs one API key to be *set*, because substitution is mandatory** — an unset
+> variable fails at load, by design. Only those four steps need it to be valid and funded.
+> Steps 1 to 8 take one key from any supported provider; step 9 needs two.
 
 **Contents**
 
-| | |
-|---|---|
-| [Before you start](#before-you-start) | what you need |
-| [1. Build and install](#1-build-and-install) | why `install` and not `package` |
-| [2. Your first configuration](#2-your-first-configuration) | one block, one model |
-| [3. Talk to it](#3-talk-to-it) | the menu, `/menu`, `/exit` |
-| [4. Add a model while it is running](#4-add-a-model-while-it-is-running) | the point of the library |
-| [5. Memory and streaming](#5-memory-and-streaming) | two optional parts of a bundle |
-| [6. What it refuses to build](#6-what-it-refuses-to-build) | three deliberate failures |
-| [7. Break the file on purpose](#7-break-the-file-on-purpose) | what a rejected reload does |
-| [8. Layering](#8-layering) | defaults, environment, local override |
-| [9. Three models at once](#9-three-models-at-once) | the council |
-| [10. In your own project](#10-in-your-own-project) | the dependency and ten lines of Java |
+| | | |
+|---|---|---|
+| [Before you start](#before-you-start) | what you need | |
+| [1. Build and install](#1-build-and-install) | why `install` and not `package` | offline |
+| [2. Your first configuration](#2-your-first-configuration) | one block, one model | offline |
+| [3. Talk to it](#3-talk-to-it) | the menu, `/menu`, `/exit` | **sends requests** |
+| [4. Add a model while it is running](#4-add-a-model-while-it-is-running) | the point of the library | **sends requests** |
+| [5. Memory and streaming](#5-memory-and-streaming) | two optional parts of a bundle | **sends requests** |
+| [6. What it refuses to build](#6-what-it-refuses-to-build) | three deliberate failures | offline |
+| [7. Break the file on purpose](#7-break-the-file-on-purpose) | what a rejected reload does | offline |
+| [8. Layering](#8-layering) | defaults, environment, local override | offline |
+| [9. Three models at once](#9-three-models-at-once) | the council | **sends requests** |
+| [10. In your own project](#10-in-your-own-project) | the dependency and ten lines of Java | offline |
 
 ---
 
