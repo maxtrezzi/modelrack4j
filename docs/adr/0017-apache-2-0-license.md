@@ -1,6 +1,6 @@
 # ADR-0017: License under Apache 2.0, with no NOTICE file
 
-- **Status:** Accepted
+- **Status:** Accepted — the NOTICE decision amended by [ADR-0035](0035-ship-a-notice-file-for-attribution.md)
 - **Date:** 2026-07-27
 - **Supersedes:** —
 - **Amends:** —

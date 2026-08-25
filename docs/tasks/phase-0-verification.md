@@ -521,6 +521,11 @@ is not.
   verification key, not a public project repository. The repository is currently private,
   which does not block publishing. D2 stays the owner's call on its own merits.
 
+  **Corrected 2026-08-25:** the repository is no longer private — the owner made it public,
+  settling D2 ([ADR-0034](../adr/0034-the-repository-is-public-before-it-is-released.md)).
+  The finding above is unaffected in substance: publishing was never gated on visibility in
+  either direction, which is precisely why the decision could be taken on its own merits.
+
 ---
 
 ### Task 0.8 — Watch strategy spike

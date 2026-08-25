@@ -402,3 +402,120 @@ running them does not cover the advertised ones.
 **A model ID can rot at any time**, and now two of the four are outside upstream's enums. That
 is a standing maintenance cost of the integration suite, not a defect: it is the suite doing
 its job.
+
+---
+
+### P7 — Closing out the outside review of the public repository
+
+**Status:** Done 2026-08-25 ·
+**Produced:** [ADR-0035](../adr/0035-ship-a-notice-file-for-attribution.md),
+[ADR-0036](../adr/0036-claude-md-is-local-only.md)
+
+The repository went public on 2026-08-25 ([D2](open-decisions.md#d2--repository-visibility),
+[ADR-0034](../adr/0034-the-repository-is-public-before-it-is-released.md)). An outside review
+followed, reading only what a stranger could see: `README.md`, the ADR index, and the manual
+index. Ten findings, investigated one at a time against the actual files.
+
+#### What the investigation found
+
+Two findings did not survive contact with the code, and the more interesting one failed in
+the project's favour.
+
+**Core is not accumulating dependencies.** The review reasoned from the ADR index that core
+had taken on the `langchain4j` aggregate, `com.typesafe:config` and `slf4j-api`, and that the
+cumulative effect worked against the original "`langchain4j-core` only" goal.
+`mvn dependency:tree` says otherwise: core's whole compile scope is **six artifacts**, and
+the aggregate contributes exactly one jar with **no new transitive dependency at all**. The
+number is now recorded in [M0's verification block](milestones.md#m0--skeleton-and-ci).
+
+**Nothing contradicted anything on GLM token estimation.** The review read ADR-0021's title
+("token estimation is universal") against the README's provider table (GLM: none) and
+concluded one must be wrong. Both are right. `GlmProviderFactory` returns `ABSENT`, the README
+matches it, and ADR-0021's body is correct *for its date* — it surveyed four modules before
+the GLM route was settled and deliberately kept `ABSENT` representable against exactly this
+outcome. What was missing was one status line: ADR-0021 handed amendment pointers to ADR-0004
+and ADR-0010, then never received its own when ADR-0022 falsified its premise the same way.
+
+**Every model identifier a reader is told to copy still resolves.** Re-checked live against
+all three provider APIs on 2026-08-25. The retired strings survive only in unit tests, which
+never make a call, and in dated records here.
+
+**The Spring Boot / Quarkus comparison still holds.** Both upstream pages re-fetched the same
+day and scanned for `reload`, `refresh`, `restart` and `hot`: zero occurrences on either. One
+objection to expect anyway — a Quarkus user may point at dev-mode live reload, which is a
+Quarkus feature rather than a documented capability of the LangChain4j starter.
+
+#### The two decisions it forced
+
+**[ADR-0035](../adr/0035-ship-a-notice-file-for-attribution.md) — a `NOTICE` file after all.**
+[ADR-0017](../adr/0017-apache-2-0-license.md) had ruled one out, and it had genuinely weighed
+the question — but only as *"does a NOTICE carry attribution someone else is owed?"*, the
+vendored-code case. It never asked whether a NOTICE makes a **fork credit this project**,
+which is a goal the owner holds and which has a different answer: §4(c) protects source
+headers only in the Source form, so **§4(d) is the only clause in the licence that follows the
+work into a binary** — and it is conditional on a NOTICE existing. `LICENSE` and `NOTICE` now
+ship inside `META-INF/` of every jar, verified by reading them back out of the built
+artifacts.
+
+**`CLAUDE.md` — untracked, then reversed within hours.**
+[ADR-0036](../adr/0036-claude-md-is-local-only.md) removed it from the tree, arguing that it
+summarises `docs/` and can drift against it.
+[ADR-0037](../adr/0037-claude-md-is-tracked-and-maintained.md) supersedes it and puts the
+file back. Both steps are recorded because the reason the first was wrong is the useful part.
+
+Two things surfaced after ADR-0036 and together they reverse it.
+
+**Untracking removes nothing.** `CLAUDE.md` is in the first commit and in the head commit of
+all 26 merged pull requests, which GitHub serves at `refs/pull/N/head` permanently — a
+force-push does not touch them. Verified by fetching PR #4's head and reading the file out of
+it, 11,222 bytes. Rewriting `main` would change 28 SHAs and leave it exactly as reachable;
+the only complete removal is deleting and recreating the repository, which destroys the pull
+requests and their review history. So the privacy question was never live.
+
+**The file was materially false in four claims in its opening section** — "no code exists
+yet" against 27 `src/main` Java files, "no POM and no source tree" against seven modules, "no
+remote configured" against 26 merged PRs, and "ADR-0002 … ADR-0014" against 37 ADRs. Worse,
+its watcher guidance still said *"resolve symlinks to their real path"*, which
+[ADR-0024](../adr/0024-watch-the-symlink-s-directory-not-its-real-path.md) reversed after the
+Task 0.8 spike. A session following it would have reintroduced a fixed bug.
+
+**Which inverts ADR-0036's argument.** Drift is a reason to track, not to hide: a tracked
+file changes through pull requests and gets read, an untracked one drifts with no reviewer
+and no diff. `CLAUDE.md` reached four false statements *while nominally tracked* because
+nobody treated it as a document with an audience — untracking would have removed the only
+mechanism that could catch that and left the false version as the last public copy. The file
+is now current, and a stale instruction in it counts as a defect.
+
+#### Left alone deliberately
+
+**The tutorial was not reordered.** The review suggested restructuring so the free part comes
+first. It already did — steps 1 and 2 send no request. What was missing was the label, and the
+distinction that was actually doing the discouraging: every step needs an API key to be *set*,
+because substitution is mandatory, but only four need it to be *funded*. Reordering would break
+every anchor and the "every command was run before it was written down" guarantee, to buy
+something labelling already buys.
+
+**The cost is quantified in requests, not money.** About a dozen short prompts, three of them
+in step 9. Dollar figures depend on pricing pages that move and that nothing here can
+re-verify; a request count is checkable from the page itself.
+
+#### Still open
+
+**`CLAUDE.md` now carries a standing obligation.** Every change that invalidates a line in it
+must fix that line in the same commit. That is the cost ADR-0036 was trying to avoid paying,
+and it is cheaper than guidance that quietly instructs the next session to undo finished work.
+
+**ADR-0036's body still describes a dead link in ADR-0025** that is alive again, its target
+being tracked once more. That body is frozen and stays as written;
+[ADR-0037](../adr/0037-claude-md-is-tracked-and-maintained.md) is where a reader learns it was
+reversed. The supersede mechanism working, not a defect in it.
+
+**The freeze itself was sharpened during this work.** A measurement was appended to ADR-0020's
+body and the owner ruled it out. `CLAUDE.md` and [`../adr/README.md`](../adr/README.md) now
+say frozen means frozen against *additions*, however clearly dated, with `Status`,
+`Supersedes` and `Amends` named as the only mutable lines.
+
+**One stale phrase, noted in place rather than rewritten:** M0's verification row says core
+resolves to `langchain4j-core`, the aggregate, `com.typesafe:config` "and nothing else". True
+at M0; `slf4j-api` became a declared dependency at M1 under
+[ADR-0028](../adr/0028-core-logs-through-slf4j-api.md).

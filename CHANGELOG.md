@@ -9,25 +9,6 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 release. Breaking changes will be called out under **Changed** with the migration, but they
 will not be held back for a major bump until the API settles at `1.0.0`.
 
-## [Unreleased]
-
-### Added
-
-- An optional `description` key on each named block: one short line saying what the
-  configuration is for, surfaced through `LlmConfig.description()`. Nothing in the library
-  reads it. A present-but-blank description is rejected; `description = null` in a higher
-  layer clears one set lower down.
-- A manual in `docs/manual/`: a tutorial built on the runnable examples, and a reference for
-  the schema, the API, reload semantics, the provider matrix and troubleshooting.
-- `AtomicSnapshot`, an example that demonstrates snapshot-wide reload atomicity: four threads
-  sample two models while one save changes both, and the mixed pair never appears. Needs no
-  API key and sends no request, so it costs nothing to run.
-- `ProviderSwap`, an example that changes a running application's provider by editing a file
-  and asks the same question again through the same call site.
-- `ConsoleChat`, an interactive example: a menu of every configured model, chat with the one
-  you pick, `/menu` to switch, `/exit` to leave. Watches its configuration files, so editing
-  one while it runs changes the menu underneath you.
-
 ## [0.1.0] — unreleased
 
 The first release. Everything below is new, so it is grouped by what it gives you rather
@@ -46,6 +27,10 @@ than listed as one long **Added** block.
   supported.
 - `LlmConfig` and the sealed `MemoryConfig` are validating records: an instance that exists
   is valid.
+- An optional `description` key on each named block: one short line saying what the
+  configuration is for, surfaced through `LlmConfig.description()`. Nothing in the library
+  reads it. A present-but-blank description is rejected; `description = null` in a higher
+  layer clears one set lower down.
 - Configuration errors are `ConfigValidationException` and name the offending block; an
   unknown name is `UnknownConfigurationException`.
 
@@ -78,12 +63,30 @@ than listed as one long **Added** block.
   (Anthropic, Gemini), and rejected outright where no estimator exists (GLM).
 - `ProviderFactory` is the SPI for adding your own.
 
+### Documentation and examples
+
+- A manual in `docs/manual/`: a tutorial built on the runnable examples, and a reference for
+  the schema, the API, reload semantics, the provider matrix and troubleshooting.
+- `AtomicSnapshot`, an example that demonstrates snapshot-wide reload atomicity: four threads
+  sample two models while one save changes both, and the mixed pair never appears. Needs no
+  API key and sends no request, so it costs nothing to run.
+- `ProviderSwap`, an example that changes a running application's provider by editing a file
+  and asks the same question again through the same call site.
+- `ConsoleChat`, an interactive example: a menu of every configured model, chat with the one
+  you pick, `/menu` to switch, `/exit` to leave. Watches its configuration files, so editing
+  one while it runs changes the menu underneath you.
+- `ThreeModelCouncil`, an example that asks one question of three models configured together
+  and prints the three answers, with no provider branch anywhere in the code.
+
 ### Build and artifacts
 
 - Java 17 baseline, built and tested on JDK 17, 21 and 25.
 - Built against LangChain4j 1.19.0, with both the stable and community BOMs imported.
 - `modelrack4j-bom` versions every artifact from one coordinate.
 - Sources and javadoc jars attach to every published module.
+- `LICENSE` and a `NOTICE` file ship inside `META-INF/` of every jar. The `NOTICE` is four
+  lines and stays that way on purpose: Apache 2.0 §4(d) requires anyone redistributing this
+  library, or a derivative of it, to carry its attribution along.
 - Integration tests are off unless `-Pintegration` is passed, and each skips itself when its
   own API key is absent.
 
@@ -100,4 +103,7 @@ than listed as one long **Added** block.
 - No `EmbeddingModel`, and no `ReloadableChatModel` hot-swap wrapper — both deliberate, see
   the README's scope section.
 
-[Unreleased]: https://github.com/maxtrezzi/modelrack4j/compare/main...HEAD
+<!--
+  No link definition for [0.1.0] yet: the repository is public but deliberately not released,
+  so there is no v0.1.0 tag to compare against (ADR-0034). The link lands with the tag.
+-->

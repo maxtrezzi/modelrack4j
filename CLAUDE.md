@@ -4,23 +4,37 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project state
 
-**Greenfield — no code exists yet.** The repository contains documentation only:
-`CLAUDE.md`, `docs/`, `.gitignore`, and the untracked `brainstorm/`. There is no POM and no
-source tree. Git is initialised on `main` with no remote configured.
+**v1 is complete and the repository is public.** Seven Maven modules, four providers, hot
+reload, a two-part manual and runnable examples. M0–M5 are done; M6 (GPG signing, Central
+Portal publishing) is unscheduled by design, triggered by the library proving itself in the
+owner's first real project rather than by a date. The version is `0.1.0-SNAPSHOT` with no
+tag and no released artifact — public and released are separate, and only the first has
+happened (ADR-0034).
+
+**This file is tracked and public.** It drifted badly once — its Project state section still
+claimed "no code exists yet" long after v1 shipped, and its watcher guidance still described
+a symlink strategy ADR-0024 had reversed. That is why it is tracked rather than local: a
+tracked file changes through review, a hidden one drifts unseen (ADR-0037). **Keep it
+current in the same commit as the work it describes**, and treat a stale instruction here as
+a defect, not as background noise — a future session will follow it.
 
 Three documents matter, with different jobs:
 
 - **`docs/tasks/`** — what to do next and whether it is done: the Phase 0 verification
-  tasks, milestones M0–M5, and the decisions waiting on the owner. **Start here.**
-- **`docs/adr/`** — why the work is shaped this way: ADR-0002 … ADR-0014 carry the
-  reasoning behind each design constraint, backfilled from the plan's Appendix A.
-- **`brainstorm/PLAN.md`** — the specification: config schema, target API shape, SPI
-  signature, module layout, and the §2 decision table. Local-only, never committed. Read it
-  before writing code and follow it rather than re-deriving a design.
+  tasks, milestones M0–M6, the post-v1 items P1…, and any decision waiting on the owner.
+  **Start here.**
+- **`docs/adr/`** — why the work is shaped this way. ADR-0002 … ADR-0014 were backfilled
+  from the plan's Appendix A; everything from ADR-0015 on was written as the decision was
+  taken. Read the index in `docs/adr/README.md` for what governs what.
+- **`docs/manual/`** — the user-facing account: a tutorial and a reference covering every
+  configuration key, every public method, and what a reload guarantees.
+- **`brainstorm/PLAN.md`** — the owner's original specification. Local-only, never
+  committed. The tracked documents have since absorbed nearly all of it, so prefer them;
+  consult the plan for intent the ADRs and the manual do not cover.
 
 They overlap deliberately. Where they differ: the ADR wins on a *decision*, `docs/tasks/`
-wins on *status*, and the plan remains the owner's working copy and the only home for the
-schema and API detail the tracked files do not restate.
+wins on *status*, the manual wins on *how a user drives it*, and the plan is the owner's
+working copy rather than an authority.
 
 **`brainstorm/` is local-only and MUST NEVER be committed.** It is git-ignored; never
 `git add -f` it, never quote it into a commit message, README, issue, or PR body, and
@@ -59,7 +73,11 @@ Content moves from the discussion log to the ADR by **rewriting**, never copying
 is private material, the ADR is the distilled public result. Accepted ADRs are immutable:
 to change a decision, write a new ADR and mark the old one `Superseded by ADR-NNNN` (or
 `Accepted — <aspect> amended by ADR-NNNN` if only part of it moved), leaving its body
-alone.
+alone. **Frozen means frozen against additions too** — a later measurement, correction or
+finding does not get appended to an accepted ADR, however well dated or however clearly it
+confirms the decision. It goes to `docs/tasks/`, which is where "what was found" belongs
+(ADR-0015). The only lines that may ever change in an accepted ADR are `Status`,
+`Supersedes` and `Amends`, because those *are* the amend mechanism.
 
 Not every discussion produces an ADR; every discussion produces a log. Recording too
 little is the failure mode — a short ADR beats none.
@@ -79,11 +97,10 @@ Governing rule from the plan: *when library and application disagree, the applic
 and the library changes* — so a requirement traced to that application outranks a
 preference of the library's own design.
 
-## Build and test (once the Maven skeleton exists)
+## Build and test
 
-Maven multi-module, Apache 2.0, artifacts `io.github.<owner>:modelrack4j-*`. Local install
-only for now (`-SNAPSHOT` to `~/.m2`); Maven Central publishing is deferred to a later
-milestone.
+Maven multi-module, Apache 2.0, artifacts `io.github.maxtrezzi:modelrack4j-*` (ADR-0025).
+Local install only for now (`-SNAPSHOT` to `~/.m2`); Central publishing is M6 and unscheduled.
 
 ```bash
 mvn clean install                        # full build, all modules
@@ -102,15 +119,19 @@ everything else must pass offline with no keys (that is what `FakeProviderFactor
 test scope is for).
 
 Toolchain on this machine: JDK 25.0.3 (Temurin), Maven 3.8.7. The language floor is Java 17
-(records are used throughout); confirm LangChain4j's own requirement and set
-`maven.compiler.release` accordingly.
+and `maven.compiler.release` is set to it (ADR-0019); CI runs the floor, the development JDK
+and the current LTS (ADR-0026).
+
+**Model identifiers rot, and only a live run catches it.** Two of the four are now outside
+upstream's enums, so `mvn -Pintegration verify` is the only check that a configured model
+still exists. It cost two stale IDs the first time it ran (P6).
 
 ## Architecture: the load-bearing constraints
 
-These are the parts that require reading several plan sections together. Do not
-"simplify" them away — each protects a specific failure mode, and the full reasoning is in
-`docs/adr/` (ADR-0002 … ADR-0014, backfilled from the plan's Appendix A). Read the ADR
-before changing anything below; the summaries here are pointers, not the argument.
+These are the parts that require reading several decisions together. Do not "simplify" them
+away — each protects a specific failure mode, and the full reasoning is in `docs/adr/`. Read
+the ADR before changing anything below; the summaries here are pointers, not the argument,
+and where a summary and an ADR disagree the ADR wins and the summary is the bug.
 
 **Snapshot-wide atomicity (ADR-0012, widening ADR-0008).** All config
 files are merged in memory into ONE snapshot. A reload parses → validates → builds every
@@ -126,7 +147,7 @@ builders throw for reasons `validate()` cannot predict.
 from resolution. Parse each layer with `ConfigFactory.parseFile(...)` only, merge with
 `withFallback` (lowest → highest precedence), then call `.resolve()` exactly ONCE on the
 merged result. Resolving per file breaks mandatory `${VAR}` substitution in layered
-setups. This needs a dedicated regression test.
+setups. This has a dedicated regression test; keep it.
 
 **Core dependency isolation (ADR-0005, amended by ADR-0020).** `modelrack4j-core` depends on
 `langchain4j-core`, `com.typesafe:config`, and — for `ChatMemoryProvider` alone, which is
@@ -134,8 +155,11 @@ setups. This needs a dedicated regression test.
 `opennlp-tools` excluded. **No provider artifact, ever.** Each provider lives in its own module
 (`modelrack4j-provider-openai|anthropic|gemini|glm`) implementing the `ProviderFactory`
 SPI, discovered via `java.util.ServiceLoader` (`META-INF/services/...spi.ProviderFactory`).
-Providers differ in *capabilities* — moderation is roughly OpenAI-family only, token
-estimation varies — so `validate()` per factory is where capability checks fail fast.
+Providers differ in *capabilities* — moderation is OpenAI-only, and token estimation is
+three-valued rather than a boolean: `ABSENT` (GLM), `LOCAL` (OpenAI), `REMOTE` (Anthropic,
+Gemini), because a remote estimator puts a billed network call inside memory eviction
+(ADR-0021, opt-in per ADR-0027). `validate()` per factory is where capability checks fail
+fast.
 `ChatMemoryProvider` is built in core (provider-independent), except the
 `TokenCountEstimator` needed by token-window memory, which comes from the factory.
 
@@ -146,15 +170,24 @@ in its constructor/loader — invalid configs unrepresentable.
 
 **Holder API is primary (ADR-0009).** `registry.get(name)` always returns the current bundle;
 listeners are optional and secondary. The classic trap — callers caching a bundle at
-startup and never seeing reloads — must be documented prominently in README and Javadoc.
+startup and never seeing reloads — is documented prominently in the README and the Javadoc;
+keep it there.
 
-**Watching directories, not files (ADR-0013).** `WatchService` registers on directories: watch
-the deduplicated set of parent directories, filter by filename, treat ENTRY_CREATE and
-ENTRY_MODIFY identically (editors write via temp-file-then-rename), debounce ~300 ms,
-resolve symlinks to their real path and re-resolve after each event (Kubernetes ConfigMap
-swaps the link target). macOS `WatchService` is polling-based internally — measure and
-document the latency instead of claiming uniform real-time behaviour. Task 0.8 spike gates
-M3.
+**Watching directories, not files (ADR-0013, symlink strategy reversed by ADR-0024).**
+`WatchService` registers on directories: watch the deduplicated set of parent directories,
+treat ENTRY_CREATE and ENTRY_MODIFY identically (editors write via temp-file-then-rename),
+debounce ~300 ms, and re-register when a watched directory is lost.
+
+**Register on the directory containing the configured path itself — the symlink, when it is
+one — and NEVER on the resolved real path's directory.** Resolution still happens, to read
+the file and to detect that it changed, but never to choose what to watch. The Task 0.8
+spike refuted the opposite instruction, which this file carried for months: resolving to the
+real path cannot see a Kubernetes ConfigMap swap the link target. The filename filter is
+conditional on that — filter by filename for a plain file, but for a symlinked one accept
+*any* event in the directory, then re-resolve and compare.
+
+macOS `WatchService` is polling-based internally. Its latency is measured on Linux only and
+the gap is stated rather than papered over; do not substitute a plausible figure.
 
 **Lifecycle (ADR-0014).** A name removed from config is removed from the registry; `get()`
 then throws `UnknownConfigurationException`. Superseded bundles are NOT closed in v1 —
@@ -173,14 +206,26 @@ in-flight requests may still hold them.
 
 ## Working practices for this repo
 
-- **Phase 0 gates design details** — see `docs/tasks/phase-0-verification.md`. Verify those
-  facts *against Maven Central and upstream sources*, never from recollection; that is the
-  whole point of the phase. Several ADRs rest on assumptions those tasks confirm or refute,
-  and each entry names the ADR its finding would amend.
+- **Verify against upstream sources, never from recollection.** That was Phase 0's whole
+  point and it outlived the phase: three of its seven verification tasks refuted the premise
+  they were written with. Read the artifact with `javap` or `unzip`, query Central, fetch the
+  upstream POM. "I believe the API is…" is how this project gets things wrong.
 - **`docs/tasks/open-decisions.md` needs the owner.** Ask; do not decide unilaterally.
+  D1–D3 are all settled, so the file is currently a record rather than a queue — a new
+  entry there is a question for the owner, not work to pick up.
 - The §2 decision table in `brainstorm/PLAN.md` is closed: do not reopen those choices
   without asking. The ADRs carry the same decisions with their reasoning.
-- Milestones run M0 → M5 in `docs/tasks/milestones.md` (v1 is done at M5). Note the open
-  M3-vs-M4 ordering question recorded there.
+- Milestones run M0 → M6 in `docs/tasks/milestones.md`; v1 was done at M5 and post-v1 work
+  is P1… in `docs/tasks/post-v1.md`.
+- **The repository is public (ADR-0034).** Secret discipline is pre-push, not pre-release,
+  and `brainstorm/` is a confidentiality boundary rather than a convention. Checks that read
+  the working tree answer "does it work here", not "does it work for someone cloning" — the
+  two came apart the day it went public.
+- **Do not grow the `NOTICE` file.** Apache 2.0 §4(d) binds every downstream redistributor
+  to carry its contents forever, so it is four lines on purpose (ADR-0035). It ships inside
+  every jar via a `<resources>` entry in the parent POM — and that entry *replaces* the
+  default `src/main/resources` rather than adding to it, so the default is restated there.
+  Deleting it as redundant silently empties every provider's `META-INF/services` file and
+  breaks `ServiceLoader` with no compile error.
 - The `java-best-practices-modern` plugin skill is enabled for this project; use it for
   non-trivial Java.

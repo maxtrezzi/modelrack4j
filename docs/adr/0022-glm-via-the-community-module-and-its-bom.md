@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-08-20
 - **Supersedes:** —
-- **Amends:** ADR-0018 — one BOM import becomes two
+- **Amends:** ADR-0018 — one BOM import becomes two; [ADR-0021](0021-token-estimation-is-universal-but-two-cost-classes.md) — the premise that every provider ships an estimator
 
 ## Context
 

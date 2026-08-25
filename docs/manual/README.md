@@ -5,22 +5,20 @@ when you need an answer.
 
 | | For | Read it |
 |---|---|---|
-| **[Part 1 — Tutorial](part-1-tutorial.md)** | Someone who has not used the library | Start to finish, running the commands. About forty minutes, and it spends a little money on real API calls. |
+| **[Part 1 — Tutorial](part-1-tutorial.md)** | Someone who has not used the library | Start to finish, running the commands. About forty minutes. Six of its ten steps run offline; four send real requests — a dozen short prompts in total. |
 | **[Part 2 — Reference](part-2-reference.md)** | Someone using it | By section. Every configuration key, every method, exactly what a reload guarantees, and a troubleshooting table. |
 
 The tutorial builds on the runnable examples in
 [`modelrack4j-examples`](../../modelrack4j-examples). Nothing in it is pseudo-code — every
 command was run and every output block is a real capture.
 
-| Example | Shows | Cost |
-|---|---|---|
-| `AtomicSnapshot` | One save changes two models; threads sampling both never see a mixed pair | **free, no API key** |
-| `ProviderSwap` | The same call site answered by one provider, then another, after a file edit | two requests |
-| `ConsoleChat` | A menu of every configured model; edit the file while it runs | a conversation |
-| `ThreeModelCouncil` | Three models, one question, no provider branch in the code | three requests |
+What each one shows, and what it costs to run, is tabulated once in the root README under
+[Runnable examples](../../README.md#runnable-examples) — that table links to each source
+file and is the single copy, so this page does not keep a second one to drift against.
 
-`AtomicSnapshot` is the one to run first if you only want to see something work: it reads
-configuration and sends no request, so it needs no credential and costs nothing.
+The one worth knowing here: **`AtomicSnapshot` is free.** It reads configuration and sends
+no request, so it needs no credential and costs nothing — start there if you only want to
+see something work.
 
 ## What lives where
 

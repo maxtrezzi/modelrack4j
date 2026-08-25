@@ -1,6 +1,6 @@
 # ADR-0021: Token estimation is universal; the capability that varies is its cost
 
-- **Status:** Accepted
+- **Status:** Accepted — the universality premise amended by [ADR-0022](0022-glm-via-the-community-module-and-its-bom.md)
 - **Date:** 2026-08-03
 - **Supersedes:** —
 - **Amends:** [ADR-0004](0004-expose-chatmemoryprovider.md) and [ADR-0010](0010-discriminators-only-with-two-real-variants.md) — the premise that a `TokenCountEstimator` may be absent

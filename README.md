@@ -118,6 +118,11 @@ If neither applies, use the starter for your framework. It will be less code tha
 Core knows no providers. Add core **plus** each provider module you actually configure —
 each one registers itself through `ServiceLoader`.
 
+> **Build it first.** These coordinates are not on Maven Central yet, so copying the snippet
+> into a project resolves nothing until you have run `mvn clean install` in a clone of this
+> repository — see [Building from source](#building-from-source). The `-SNAPSHOT` suffix is
+> what tells you that: it resolves from your local `~/.m2`, not from Central.
+
 ```xml
 <dependency>
   <groupId>io.github.maxtrezzi</groupId>
@@ -561,7 +566,13 @@ CI runs JDK 17 (the floor), 21 and 25.
 
 ## License
 
-[Apache License 2.0](LICENSE).
+[Apache License 2.0](LICENSE), with a [`NOTICE`](NOTICE) file. Both are copied into
+`META-INF/` of every published jar, so they reach you whether you clone the repository or
+just take the artifact.
+
+If you redistribute this library or a derivative of it, §4(d) of the licence asks you to
+carry the `NOTICE`'s attribution along. It is four lines, and that is deliberate — see
+[ADR-0035](docs/adr/0035-ship-a-notice-file-for-attribution.md).
 
 LangChain4j is a separate project under its own license; this library depends on it and is
 not part of it.
