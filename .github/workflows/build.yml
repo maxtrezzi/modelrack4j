@@ -36,6 +36,19 @@ jobs:
       - name: Build
         run: mvn -B --no-transfer-progress clean verify
 
+  docs:
+    name: docs consistency
+    runs-on: ubuntu-latest
+    steps:
+      # Needs the full checkout: the checker resolves every link against `git ls-files`
+      # rather than the filesystem, because a target that is git-ignored resolves fine on a
+      # contributor's machine and 404s for everyone who clones. That exact false pass is
+      # what this job exists to stop.
+      - uses: actions/checkout@v4
+
+      - name: Check ADR status lines, the index, and every link
+        run: python3 build/check-docs.py
+
   offline:
     name: offline, no API keys
     runs-on: ubuntu-latest

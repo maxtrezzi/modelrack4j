@@ -1,6 +1,6 @@
 # ADR-0020: Core also depends on the `langchain4j` aggregate, for `ChatMemoryProvider`
 
-- **Status:** Accepted
+- **Status:** Accepted — dependency set amended by [ADR-0028](0028-core-logs-through-slf4j-api.md)
 - **Date:** 2026-08-03
 - **Supersedes:** —
 - **Amends:** [ADR-0005](0005-provider-factory-spi-via-serviceloader.md) — the core dependency set only

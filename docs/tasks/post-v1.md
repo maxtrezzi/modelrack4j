@@ -519,3 +519,91 @@ say frozen means frozen against *additions*, however clearly dated, with `Status
 resolves to `langchain4j-core`, the aggregate, `com.typesafe:config` "and nothing else". True
 at M0; `slf4j-api` became a declared dependency at M1 under
 [ADR-0028](../adr/0028-core-logs-through-slf4j-api.md).
+
+---
+
+### P8 — Status-line drift, and a check that would have caught it
+
+**Status:** Done 2026-08-26 · **Branch:** `docs/p8-status-drift-and-doc-checks`
+
+An audit of `CLAUDE.md` after it was brought back under version control
+([ADR-0037](../adr/0037-claude-md-is-tracked-and-maintained.md)) found three defects in it —
+and finding them exposed a larger one in the ADR index that had been there for months.
+
+#### The one that matters: four ADRs never got the pointer their index row records
+
+The supersede/amend mechanism is a status line. [ADR-0013](../adr/0013-watch-directories-resolve-symlinks.md),
+[ADR-0018](../adr/0018-manage-langchain4j-versions-via-bom.md),
+[ADR-0019](../adr/0019-target-java-17.md) and
+[ADR-0020](../adr/0020-core-depends-on-langchain4j-aggregate.md) each read plain `Accepted`
+in their own header while the index row beside them recorded an amendment. A reader opening
+the ADR — the normal way to read one — saw a decision that looked untouched.
+
+**It survived two hand-rolled checks**, both of which reported "0 mismatches". Both compared
+only the text *before* the em-dash, so `Accepted` and `Accepted — dependency set amended by
+ADR-0028` looked identical. The check was structurally incapable of finding the thing it was
+written to find, and said so in a reassuring green number.
+
+Fixed in the ADR headers rather than the index rows: the ADR's own header is authoritative.
+Two more rows (0017, 0021) had drifted by an article and were aligned to their files.
+
+#### `CLAUDE.md`
+
+- "**Three** documents matter" above **four** bullets — introduced days earlier when
+  `docs/manual/` was added to the list.
+- **Core's dependency list omitted `slf4j-api`**, and its amendment chain stopped at
+  ADR-0020 without reaching [ADR-0028](../adr/0028-core-logs-through-slf4j-api.md). The POM
+  declares four compile dependencies; the file named three. This is precisely the failure
+  the same file warns about eighteen lines above it — *"where a summary and an ADR disagree
+  the ADR wins and the summary is the bug"*.
+- "Milestones run **M0 → M6**" against a `milestones.md` with headings for M0–M5 only. M6 is
+  named in prose and deliberately has no entry, being unscheduled. Now says so.
+- `Task 0.4` was offered as an example of an ID cited from that file; after the rewrite it
+  is not cited there at all. Changed to `Task 0.8`, which is.
+
+#### One arithmetic error, in two places
+
+`docs/tasks/README.md` said "three of the **seven** verification tasks refuted the premise
+they were written with", and `CLAUDE.md` had copied it. There are **eight** — and one of the
+three refutations is Task 0.8 itself, so the sentence excluded a task it was counting.
+
+#### `build/check-docs.py`
+
+Every check in it exists because the corresponding mistake was actually made. It compares
+**whole** status strings, and it resolves every link and anchor against `git ls-files` rather
+than the filesystem — a target that is git-ignored resolves fine locally and 404s for
+everyone who clones, which is how a broken link passed clean the day `CLAUDE.md` was
+untracked.
+
+**Proven by breaking the repository on purpose**, not by passing on a clean one: reinstating
+ADR-0020's drift, adding a link to a git-ignored file, and adding a bad anchor each produce
+exit 1 with the offending line named. Wired into CI as a third job alongside the JDK matrix
+and the offline build.
+
+#### What a second pass found, after the first fix was already committed
+
+Re-checking by hand rather than by re-running the new script — the script being the thing
+under suspicion — turned up two more, one of them freshly introduced by this very task.
+
+**A status line written during this task did not follow the documented shape.** ADR-0018 was
+given `Accepted — one import becomes two, per ADR-0022`, copied verbatim from its index row.
+That records the amendment in prose a reader scanning for "amended by" would slide straight
+past — the same legibility failure the task was opened to fix, reintroduced while fixing it.
+Now `Accepted — the BOM import set amended by ADR-0022`.
+
+**One legitimate variant was not documented.** ADR-0008 has read *"swap scope widened by
+ADR-0012"* since the first commit. That is not a deviation — the folder README defines an
+amendment as one that "narrows or widens" — but the Status values table only ever showed
+`amended`. The table now records `widened` and `narrowed` as equally valid, so the shape can
+be enforced without flagging a line that was right all along.
+
+**Amendments are reciprocal, and nothing was checking it.** If A's status says it was amended
+by B, B's `Amends` header must name A, and the reverse. Both directions were verified clean
+across all 37 ADRs — but only by an ad-hoc script, which is exactly how the original drift
+went unnoticed for months. Both directions are now checked on every run.
+
+#### Still open
+
+**M6 has no entry in `milestones.md`.** Deliberate — it is unscheduled, so there is nothing
+to record beyond its trigger — but it means a reader following a pointer to "M6" finds prose
+rather than a work item. Worth writing when publishing is actually scheduled, not before.

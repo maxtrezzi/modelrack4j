@@ -18,7 +18,7 @@ tracked file changes through review, a hidden one drifts unseen (ADR-0037). **Ke
 current in the same commit as the work it describes**, and treat a stale instruction here as
 a defect, not as background noise — a future session will follow it.
 
-Three documents matter, with different jobs:
+Four documents matter, with different jobs:
 
 - **`docs/tasks/`** — what to do next and whether it is done: the Phase 0 verification
   tasks, milestones M0–M6, the post-v1 items P1…, and any decision waiting on the owner.
@@ -57,8 +57,8 @@ Three artifacts, different audiences (ADR-0001, ADR-0015):
   `docs/adr/README.md`.
 - **`docs/tasks/`** — tracked. Update the status of whatever you worked on, in the entry
   and in the status board, in the same commit as the work. Verification tasks record what
-  was *found*, not just that they finished. Never renumber an item: `Task 0.4` and `M3` are
-  cited from this file and from the ADRs.
+  was *found*, not just that they finished. Never renumber an item: `Task 0.8` and `M3` are
+  cited from this file, and others from the ADRs.
 
 Seed the session task list from `docs/tasks/` when starting work, and treat the files as
 the durable record — the session list is a working copy, not a second source of truth.
@@ -149,10 +149,13 @@ from resolution. Parse each layer with `ConfigFactory.parseFile(...)` only, merg
 merged result. Resolving per file breaks mandatory `${VAR}` substitution in layered
 setups. This has a dedicated regression test; keep it.
 
-**Core dependency isolation (ADR-0005, amended by ADR-0020).** `modelrack4j-core` depends on
-`langchain4j-core`, `com.typesafe:config`, and — for `ChatMemoryProvider` alone, which is
-*not* in `langchain4j-core` — the `dev.langchain4j:langchain4j` aggregate with
-`opennlp-tools` excluded. **No provider artifact, ever.** Each provider lives in its own module
+**Core dependency isolation (ADR-0005, amended by ADR-0020 and then ADR-0028).**
+`modelrack4j-core` declares exactly four compile dependencies: `langchain4j-core`,
+`com.typesafe:config`, `org.slf4j:slf4j-api` — for the watcher, whose thread has no caller
+to throw at (ADR-0028) — and, for `ChatMemoryProvider` alone, which is *not* in
+`langchain4j-core`, the `dev.langchain4j:langchain4j` aggregate with `opennlp-tools`
+excluded. The aggregate costs one jar and adds no transitive dependency; the measurement is
+in M0's verification block. **No provider artifact, ever.** Each provider lives in its own module
 (`modelrack4j-provider-openai|anthropic|gemini|glm`) implementing the `ProviderFactory`
 SPI, discovered via `java.util.ServiceLoader` (`META-INF/services/...spi.ProviderFactory`).
 Providers differ in *capabilities* — moderation is OpenAI-only, and token estimation is
@@ -207,7 +210,7 @@ in-flight requests may still hold them.
 ## Working practices for this repo
 
 - **Verify against upstream sources, never from recollection.** That was Phase 0's whole
-  point and it outlived the phase: three of its seven verification tasks refuted the premise
+  point and it outlived the phase: three of its eight verification tasks refuted the premise
   they were written with. Read the artifact with `javap` or `unzip`, query Central, fetch the
   upstream POM. "I believe the API is…" is how this project gets things wrong.
 - **`docs/tasks/open-decisions.md` needs the owner.** Ask; do not decide unilaterally.
@@ -215,8 +218,9 @@ in-flight requests may still hold them.
   entry there is a question for the owner, not work to pick up.
 - The §2 decision table in `brainstorm/PLAN.md` is closed: do not reopen those choices
   without asking. The ADRs carry the same decisions with their reasoning.
-- Milestones run M0 → M6 in `docs/tasks/milestones.md`; v1 was done at M5 and post-v1 work
-  is P1… in `docs/tasks/post-v1.md`.
+- Milestones run M0 → M5 in `docs/tasks/milestones.md` and v1 was done at M5. **M6 is named
+  there but has no entry of its own**, deliberately: it is unscheduled, so there is nothing
+  to write down yet beyond its trigger. Post-v1 work is P1… in `docs/tasks/post-v1.md`.
 - **The repository is public (ADR-0034).** Secret discipline is pre-push, not pre-release,
   and `brainstorm/` is a confidentiality boundary rather than a convention. Checks that read
   the working tree answer "does it work here", not "does it work for someone cloning" — the
