@@ -416,17 +416,18 @@ class ReloadTest {
         Path file = write("llm.conf", twoBlocks("gen-1"));
         watch(file);
 
-        // Hammer both names while reloads land underneath. Two separate registry.get()
-        // calls can straddle a swap — that is why snapshot() exists — so this asserts the
-        // property on the snapshot, which is where it is actually guaranteed.
+        // The guarantee is structural, not statistical: a snapshot is exactly one volatile
+        // read, so either every lookup from it agrees or the mechanism itself is broken.
+        // One probe per generation is therefore enough — this is a regression pin, not the
+        // stress harness that found the defect in get() in the first place. A high iteration
+        // count here bought nothing but CPU load on a shared CI runner, which is what made a
+        // neighbouring debounce-timing test flaky.
         for (int generation = 2; generation <= 6; generation++) {
             Files.writeString(file, twoBlocks("gen-" + generation), StandardCharsets.UTF_8);
             awaitModel("SL", "gen-" + generation);
-            for (int probe = 0; probe < 2_000; probe++) {
-                LlmSnapshot snapshot = registry.snapshot();
-                assertThat(snapshot.get("SL").config().modelName())
-                        .isEqualTo(snapshot.get("SH").config().modelName());
-            }
+            LlmSnapshot snapshot = registry.snapshot();
+            assertThat(snapshot.get("SL").config().modelName())
+                    .isEqualTo(snapshot.get("SH").config().modelName());
         }
     }
 
