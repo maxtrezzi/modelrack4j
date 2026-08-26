@@ -14,6 +14,10 @@
   <name>modelrack4j :: provider :: Anthropic</name>
   <description>ProviderFactory for Anthropic. No moderation model (ADR-0021).</description>
 
+  <properties>
+    <automatic.module.name>io.github.maxtrezzi.modelrack4j.provider.anthropic</automatic.module.name>
+  </properties>
+
   <dependencies>
     <dependency>
       <groupId>io.github.maxtrezzi</groupId>

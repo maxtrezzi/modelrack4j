@@ -14,6 +14,10 @@
   <name>modelrack4j :: provider :: Gemini</name>
   <description>ProviderFactory for Gemini. Uses the stable module (ADR-0023).</description>
 
+  <properties>
+    <automatic.module.name>io.github.maxtrezzi.modelrack4j.provider.gemini</automatic.module.name>
+  </properties>
+
   <dependencies>
     <dependency>
       <groupId>io.github.maxtrezzi</groupId>

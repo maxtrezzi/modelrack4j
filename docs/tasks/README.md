@@ -75,6 +75,7 @@ Phase 0 gates everything else; nothing below M0 should start before its blockers
 | [P6](post-v1.md#p6--the-integration-tests-against-live-apis) | The integration tests against live APIs | **Done** — all four answered; ADR-0033 |
 | [P7](post-v1.md#p7--closing-out-the-outside-review-of-the-public-repository) | Closing out the outside review | **Done** — ADR-0035, ADR-0037 |
 | [P8](post-v1.md#p8--status-line-drift-and-a-check-that-would-have-caught-it) | Status-line drift, and a check for it | **Done** — 4 ADRs fixed; `build/check-docs.py` |
+| [P9](post-v1.md#p9--the-three-things-that-had-to-be-right-before-a-first-release) | Pre-release correctness and metadata | **Done** — `snapshot()`, ADR-0038 |
 | [D1](open-decisions.md#d1--glm-route-if-no-maintained-module-exists) | GLM route if no maintained module | **Closed** — never became live |
 | [D2](open-decisions.md#d2--repository-visibility) | Repository visibility | **Settled** — public, not released; ADR-0034 |
 | [D3](open-decisions.md#d3--token-window-memory-on-a-remote-estimator) | Token-window memory on a remote estimator | **Settled** — opt-in flag |
