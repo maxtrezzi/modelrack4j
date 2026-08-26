@@ -57,9 +57,18 @@ public final class LlmSnapshot {
 
     private final Map<String, LlmBundle> bundles;
 
-    /** Package-private: a snapshot only ever comes from the registry that published it. */
+    /**
+     * Package-private: a snapshot only ever comes from the registry that published it.
+     * Re-wrapped as unmodifiable regardless of what {@link SnapshotLoader} already did, so
+     * this invariant lives here rather than depending silently on another file. Verified
+     * rather than assumed: {@code Collections.unmodifiableMap} recognises an
+     * already-unmodifiable map and returns that same instance instead of allocating a new
+     * wrapper, so this line costs one {@code instanceof} check and no allocation — safe to
+     * pay on every call to {@link LlmRegistry#get(String)}, which delegates here and is the
+     * API's declared cheap path (see the README).
+     */
     LlmSnapshot(Map<String, LlmBundle> bundles) {
-        this.bundles = bundles;
+        this.bundles = Collections.unmodifiableMap(Objects.requireNonNull(bundles, "bundles"));
     }
 
     /**
@@ -78,7 +87,7 @@ public final class LlmSnapshot {
     }
 
     /**
-     * Returns every name configured in this generation.
+     * Returns every name configured in this generation, in sorted order.
      *
      * @return an unmodifiable set of names
      */
