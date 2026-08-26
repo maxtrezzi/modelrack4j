@@ -19,7 +19,6 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Path;
 import java.time.Duration;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -121,11 +120,7 @@ public final class LlmRegistry implements AutoCloseable {
      *     because it was never configured or because a reload removed it
      */
     public LlmBundle get(String name) {
-        LlmBundle bundle = bundles.get(Objects.requireNonNull(name, "name"));
-        if (bundle == null) {
-            throw new UnknownConfigurationException(name);
-        }
-        return bundle;
+        return snapshot().get(name);
     }
 
     /**
@@ -160,7 +155,7 @@ public final class LlmRegistry implements AutoCloseable {
      * @return an unmodifiable snapshot of the names currently held
      */
     public Set<String> names() {
-        return Collections.unmodifiableSet(bundles.keySet());
+        return snapshot().names();
     }
 
     /**

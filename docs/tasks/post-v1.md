@@ -690,3 +690,62 @@ Everything in the release mechanics proper: GPG key, Central Portal token, the `
 profile with the signing and publishing plugins, dropping `-SNAPSHOT`, the tag, and an ADR
 amending [ADR-0034](../adr/0034-the-repository-is-public-before-it-is-released.md), which
 currently forbids one.
+
+---
+
+### P10 — A code review of `LlmSnapshot`, and a self-correction found while checking the fix
+
+**Status:** Done 2026-08-26 · **Branch:** `task/p10-snapshot-review-fixes`
+
+A review of the code P9 added — `LlmSnapshot`, the `LlmRegistry.get()`/`snapshot()` change,
+the four new `ReloadTest` tests, and the updated `AtomicSnapshot` example. Four findings, all
+in `LlmSnapshot.java`, none in the public contract.
+
+**Duplicated logic.** `LlmRegistry.get()`/`names()` and `LlmSnapshot.get()`/`names()` were
+byte-identical: the same lookup-or-throw and the same `keySet()` wrap, written twice. Fixed
+by delegation — `LlmRegistry.get(name)` is now `snapshot().get(name)`, and `names()` likewise
+— which costs nothing new (`snapshot()` already performs the single volatile read `get()`
+always did) and leaves the lookup living in exactly one place.
+
+**Three smaller ones**, all in `LlmSnapshot`'s constructor and Javadoc: the package-private
+constructor took no `Objects.requireNonNull`, unlike every other method in the same class;
+`names()` didn't say its result is sorted, though it inherits that from the same `TreeMap`
+`LlmRegistry.names()` documents explicitly; and the constructor trusted the caller never to
+mutate the map it was handed, an invariant that lives in `SnapshotLoader`, a different file.
+
+**The documentation check this task was also asked to do caught a mistake in its own fix
+— which then turned out to be a mistake in a different direction.** First pass: wrapping the
+incoming map in `Collections.unmodifiableMap(...)` looked like the obvious defensive move,
+until it was checked against the README's and the manual's near-identical claim that
+`get()` is *"a read of a volatile field and a map lookup; cheap enough to call per request"*
+— once `get()` routes through `snapshot()` on every call, an allocation in that constructor
+lands on every lookup, which would have quietly falsified both documents. So the wrap was
+dropped.
+
+**That was also wrong, caught on a second review pass minutes later.** `Collections.
+unmodifiableMap` recognises a map that is already one of its own unmodifiable wrappers and
+returns that exact instance rather than allocating a new one — verified empirically with a
+five-line program before trusting it, not assumed from memory, per this project's own Task
+0.7 discipline. `SnapshotLoader` always hands out such a map, so wrapping it again in
+`LlmSnapshot`'s constructor costs one `instanceof` check and nothing else. The wrap went back
+in. Net effect on the constructor across both passes: still guards the invariant locally
+(the map cannot be mutated regardless of what `SnapshotLoader` does in the future), and it
+does so for the same zero allocations the no-wrap version had — the working code from the
+first pass and the safety of the version before it, at once. The `requireNonNull` stayed
+throughout.
+
+Two lessons this leaves behind, not one. `build/check-docs.py` verifies links and ADR
+metadata, not semantic claims about behaviour — the first catch came from re-reading two
+sentences in the README and the manual against the new code, not from a checker. And a
+performance argument is a claim about the JDK, which means it needs the same verification
+discipline as a claim about an upstream library: the fix that "obviously" cost an allocation
+did not, and the only way to know that was to write the five lines and run them.
+
+Verified: core 63/63, reactor 96/96 — unchanged from before any of this, so two rounds of
+tightening cost nothing. `javac -Xlint:all` clean on every pass. `build/check-docs.py` clean
+across 38 ADRs and 52 files. Every remaining reference to `get()`/`snapshot()`'s internals in
+`README.md`, `docs/manual/part-2-reference.md`, the CHANGELOG and ADR-0038 re-read against
+the final code and found to still hold. A separate five-line program at the end confirmed,
+running against the built jar rather than reasoned about, that two `snapshot()` calls in the
+same generation print the same bundle set and that `get()` still resolves through the
+delegation chain.
