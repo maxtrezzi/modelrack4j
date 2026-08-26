@@ -1,6 +1,6 @@
 # ADR-0019: Target Java 17, build on a newer JDK
 
-- **Status:** Accepted
+- **Status:** Accepted — CI matrix amended by [ADR-0026](0026-ci-matrix-is-floor-dev-jdk-and-current-lts.md)
 - **Date:** 2026-08-03
 - **Supersedes:** —
 - **Amends:** —

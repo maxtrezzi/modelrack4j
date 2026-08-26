@@ -1,6 +1,6 @@
 # ADR-0013: Watch directories, resolve symlinks, document the macOS caveat
 
-- **Status:** Accepted
+- **Status:** Accepted — symlink strategy and filename filter amended by [ADR-0024](0024-watch-the-symlink-s-directory-not-its-real-path.md)
 - **Date:** 2026-07-26 *(record backfilled; the decision itself predates it)*
 - **Supersedes:** —
 

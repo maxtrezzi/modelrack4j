@@ -74,6 +74,7 @@ Phase 0 gates everything else; nothing below M0 should start before its blockers
 | [P5](post-v1.md#p5--repository-hygiene-ignore-rules-and-a-contributing-guide) | Ignore rules and a contributing guide | **Done** — rules tested, one gap found |
 | [P6](post-v1.md#p6--the-integration-tests-against-live-apis) | The integration tests against live APIs | **Done** — all four answered; ADR-0033 |
 | [P7](post-v1.md#p7--closing-out-the-outside-review-of-the-public-repository) | Closing out the outside review | **Done** — ADR-0035, ADR-0037 |
+| [P8](post-v1.md#p8--status-line-drift-and-a-check-that-would-have-caught-it) | Status-line drift, and a check for it | **Done** — 4 ADRs fixed; `build/check-docs.py` |
 | [D1](open-decisions.md#d1--glm-route-if-no-maintained-module-exists) | GLM route if no maintained module | **Closed** — never became live |
 | [D2](open-decisions.md#d2--repository-visibility) | Repository visibility | **Settled** — public, not released; ADR-0034 |
 | [D3](open-decisions.md#d3--token-window-memory-on-a-remote-estimator) | Token-window memory on a remote estimator | **Settled** — opt-in flag |
@@ -88,7 +89,7 @@ capability matrix, GLM on the maintained community module, Gemini on the stable 
 coordinates `io.github.maxtrezzi:modelrack4j-*`, and — from the spike — the symlink watch
 strategy ADR-0013 got wrong.
 
-Three of the seven verification tasks **refuted the premise they were written with**: the GLM
+Three of the eight verification tasks **refuted the premise they were written with**: the GLM
 module was not removed, token estimation was not OpenAI-only, and resolving symlinks to their
 real path does not see a ConfigMap swap. That is the phase working as intended.
 

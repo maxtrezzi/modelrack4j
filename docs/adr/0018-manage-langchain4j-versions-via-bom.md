@@ -1,6 +1,6 @@
 # ADR-0018: Manage LangChain4j versions by importing its BOM
 
-- **Status:** Accepted
+- **Status:** Accepted — the BOM import set amended by [ADR-0022](0022-glm-via-the-community-module-and-its-bom.md)
 - **Date:** 2026-07-28
 - **Supersedes:** —
 - **Amends:** —

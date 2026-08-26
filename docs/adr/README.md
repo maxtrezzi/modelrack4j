@@ -23,6 +23,11 @@ narrows or widens part of one). Both default to `—`.
 | `Proposed` | Written up, not yet agreed |
 | `Accepted` | In force; implementation must follow it |
 | `Accepted — <aspect> amended by ADR-NNNN` | Still in force, but a later ADR narrowed or widened part of it; the later ADR wins where they differ |
+
+`amended` may be `widened` or `narrowed` where that is more precise — ADR-0008 reads
+*"swap scope widened by ADR-0012"*. What may not vary is the rest of the shape: the row and
+the ADR's own `Status` line must match **exactly**, and the pointer must name an ADR number.
+`build/check-docs.py` enforces both.
 | `Superseded by ADR-NNNN` | Replaced wholesale; kept for the reasoning trail |
 
 Superseding or amending an ADR means editing only the old file's `Status` line and adding
@@ -65,7 +70,7 @@ by number, since the numbering only reflects the order of the original appendix.
 | [0002](0002-scope-to-langchain4j-llm-configuration.md) | Scope to LangChain4j LLM configuration, not generic reloadable config | Accepted |
 | [0003](0003-bundle-holds-config-shaped-inputs-only.md) | A bundle holds the config-shaped inputs only | Accepted |
 | [0011](0011-independent-name-and-deferred-wrapper.md) | Independent name; the hot-swap wrapper deferred to v2 | Accepted |
-| [0017](0017-apache-2-0-license.md) | License under Apache 2.0, with no NOTICE file | Accepted — NOTICE decision amended by ADR-0035 |
+| [0017](0017-apache-2-0-license.md) | License under Apache 2.0, with no NOTICE file | Accepted — the NOTICE decision amended by ADR-0035 |
 | [0025](0025-fix-coordinates-under-io-github-maxtrezzi.md) | Fix the coordinates at `io.github.maxtrezzi:modelrack4j-*` | Accepted |
 | [0033](0033-provider-exceptions-pass-through-untranslated.md) | Provider exceptions pass through untranslated; the swap boundary is construction, not invocation | Accepted |
 | [0034](0034-the-repository-is-public-before-it-is-released.md) | The repository is public before it is released | Accepted |
@@ -85,10 +90,10 @@ by number, since the numbering only reflects the order of the original appendix.
 | [0032](0032-description-is-part-of-the-config-record.md) | `description` is an ordinary part of the config record | Accepted |
 | [0010](0010-discriminators-only-with-two-real-variants.md) | Discriminated variants only where two real variants exist today | Accepted — estimator-availability premise amended by ADR-0021 |
 | [0004](0004-expose-chatmemoryprovider.md) | Expose `ChatMemoryProvider`, not a bare `ChatMemory` | Accepted — estimator-availability premise amended by ADR-0021 |
-| [0021](0021-token-estimation-is-universal-but-two-cost-classes.md) | Token estimation is universal; the capability that varies is its cost | Accepted — universality premise amended by ADR-0022 |
+| [0021](0021-token-estimation-is-universal-but-two-cost-classes.md) | Token estimation is universal; the capability that varies is its cost | Accepted — the universality premise amended by ADR-0022 |
 | [0027](0027-remote-token-counting-is-opt-in.md) | Token-window memory on a remote estimator is opt-in | Accepted |
 | [0030](0030-one-timeout-in-the-schema.md) | One `timeout` in the schema; providers map it onto their own client | Accepted |
-| [0018](0018-manage-langchain4j-versions-via-bom.md) | Manage LangChain4j versions by importing its BOM | Accepted — one import becomes two, per ADR-0022 |
+| [0018](0018-manage-langchain4j-versions-via-bom.md) | Manage LangChain4j versions by importing its BOM | Accepted — the BOM import set amended by ADR-0022 |
 | [0022](0022-glm-via-the-community-module-and-its-bom.md) | Take GLM from the community module, and import its BOM alongside the main one | Accepted |
 | [0023](0023-gemini-via-the-stable-google-ai-gemini-module.md) | Take Gemini from `langchain4j-google-ai-gemini`, the stable module | Accepted |
 | [0019](0019-target-java-17.md) | Target Java 17, build on a newer JDK | Accepted — CI matrix amended by ADR-0026 |
