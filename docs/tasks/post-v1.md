@@ -602,6 +602,19 @@ by B, B's `Amends` header must name A, and the reverse. Both directions were ver
 across all 37 ADRs — but only by an ad-hoc script, which is exactly how the original drift
 went unnoticed for months. Both directions are now checked on every run.
 
+#### One thing this task got wrong
+
+**A `.pyc` was committed.** `python3 -m py_compile build/check-docs.py`, run while verifying
+the checker, left a `build/__pycache__/` that `git add -A` swept into the branch. It reached
+`main` in #28 and was removed immediately afterwards, with `__pycache__/` and `*.py[cod]`
+added to `.gitignore` — rules that did not exist because until this task the repository had
+no Python in it.
+
+Worth recording rather than quietly deleting: five CI jobs, a purpose-built documentation
+checker and a hand audit all passed, and none of them was looking at what the commit
+*contained*. Every check added here reads the documentation; nothing checks the shape of the
+tree itself.
+
 #### Still open
 
 **M6 has no entry in `milestones.md`.** Deliberate — it is unscheduled, so there is nothing

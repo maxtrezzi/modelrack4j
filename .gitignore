@@ -18,6 +18,12 @@ application-local.*
 # Maven
 target/
 
+# Python bytecode. build/check-docs.py is a script, not a package — running it, or
+# py_compile'ing it during a review, leaves a __pycache__ that has no business being
+# tracked. One got committed in #28 before this rule existed.
+__pycache__/
+*.py[cod]
+
 # IDE
 .idea/
 *.iml
