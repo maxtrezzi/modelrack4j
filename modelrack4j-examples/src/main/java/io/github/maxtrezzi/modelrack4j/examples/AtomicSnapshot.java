@@ -16,6 +16,7 @@
 package io.github.maxtrezzi.modelrack4j.examples;
 
 import io.github.maxtrezzi.modelrack4j.LlmRegistry;
+import io.github.maxtrezzi.modelrack4j.LlmSnapshot;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -37,15 +38,26 @@ import java.util.concurrent.TimeUnit;
  *
  * <p>Two names, {@code SL} and {@code SH}, are both tagged {@code gen-1} in their
  * {@code description}. Four threads read the pair as fast as they can while a single save
- * changes <em>both</em> blocks to {@code gen-2}. The observed pairs go straight from
- * {@code gen-1/gen-1} to {@code gen-2/gen-2}: the mixed pair never appears, however many
- * million times the readers look.
+ * changes <em>both</em> blocks to {@code gen-2}.
+ *
+ * <p><strong>Each reader samples the pair twice, two different ways</strong>, because the
+ * guarantee has an edge and this example exists to show exactly where it is:
+ *
+ * <ul>
+ *   <li><strong>Two {@code registry.get(...)} calls.</strong> Each reads the live
+ *       configuration, so a reload landing between them yields a mixed pair. Rare — one save
+ *       here, so usually zero — but structurally possible, and reproducible at roughly two
+ *       per million pairs when reloads land every few milliseconds.
+ *   <li><strong>One {@link LlmRegistry#snapshot()}, then two lookups on it.</strong> One read
+ *       of the published generation, so the pair cannot be mixed. This column is zero, and
+ *       it is zero by construction rather than by luck.
+ * </ul>
  *
  * <p>Why it matters: several models cooperating on one problem is the case this library was
  * built for, and a torn pair there is a correctness bug rather than a cosmetic one — one
- * model answering under the old configuration while its partner answers under the new. Firing
- * one callback per changed name instead of one per snapshot would produce exactly that
- * window.
+ * model answering under the old configuration while its partner answers under the new. The
+ * reload itself is atomic; taking a snapshot is how a caller inherits that atomicity across
+ * more than one lookup.
  *
  * <pre>{@code
  * mvn install                                     # exec:java reads ~/.m2, not the reactor
@@ -141,11 +153,23 @@ public final class AtomicSnapshot {
             System.out.printf("  %d.  %-28s %,15d samples%n", ++n, pair.getKey(), pair.getValue());
         }
 
+        long tornSnapshot = 0;
+        for (Reader reader : readers) {
+            tornSnapshot += reader.tornSnapshot;
+        }
+
         System.out.println();
-        System.out.printf("torn pairs (SL and SH from different generations): %d%n", torn);
-        System.out.println(torn == 0
-                ? "Never torn. One save, one swap, both models or neither."
-                : "TORN — this is a bug: the snapshot swap is no longer atomic.");
+        System.out.printf("torn pairs via two get() calls : %d%n", torn);
+        System.out.printf("torn pairs via snapshot()      : %d%n", tornSnapshot);
+        System.out.println();
+        if (tornSnapshot > 0) {
+            System.out.println("BUG: a snapshot tore. The swap is no longer atomic.");
+        } else if (torn > 0) {
+            System.out.println("As designed: two get() calls straddled a reload; the snapshot never did.");
+        } else {
+            System.out.println("No tear either way this run — the get() window is narrow, not absent.");
+            System.out.println("Only the snapshot column is guaranteed to stay at zero.");
+        }
     }
 
     /** Reads both names as one observation, as fast as it can, until told to stop. */
@@ -155,6 +179,7 @@ public final class AtomicSnapshot {
         private final CountDownLatch stop;
         private final Map<String, Long> observed = new LinkedHashMap<>();
         private long torn;
+        private long tornSnapshot;
 
         Reader(LlmRegistry registry, CountDownLatch stop) {
             this.registry = registry;
@@ -164,19 +189,29 @@ public final class AtomicSnapshot {
         @Override
         public void run() {
             while (stop.getCount() > 0) {
-                // Two separate get() calls, deliberately. If the swap were per-name rather
-                // than snapshot-wide, this is precisely where the mixed pair would appear.
+                // Two separate get() calls, deliberately: each re-reads the live
+                // configuration, so a reload landing between them produces a mixed pair.
                 String sl = generationOf("SL");
                 String sh = generationOf("SH");
                 if (!sl.equals(sh)) {
                     torn++;
                 }
                 observed.merge("SL=" + sl + "  SH=" + sh, 1L, Long::sum);
+
+                // The same question asked of one generation held still. This must never tear.
+                LlmSnapshot held = registry.snapshot();
+                if (!generationOf(held, "SL").equals(generationOf(held, "SH"))) {
+                    tornSnapshot++;
+                }
             }
         }
 
         private String generationOf(String name) {
             return registry.get(name).config().description().orElse("(none)");
+        }
+
+        private static String generationOf(LlmSnapshot snapshot, String name) {
+            return snapshot.get(name).config().description().orElse("(none)");
         }
     }
 

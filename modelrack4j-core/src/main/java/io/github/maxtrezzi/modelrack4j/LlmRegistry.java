@@ -110,6 +110,11 @@ public final class LlmRegistry implements AutoCloseable {
     /**
      * Returns the current bundle for a name.
      *
+     * <p>Each call reads the live configuration, which is what makes a reload visible without
+     * a restart. It also means <strong>two consecutive calls are not guaranteed to come from
+     * the same generation</strong>: a reload landing between them returns bundles built from
+     * different file contents. Where several models have to agree, use {@link #snapshot()}.
+     *
      * @param name the configuration name, as written in the config file
      * @return the bundle bound to that name
      * @throws UnknownConfigurationException if no bundle is bound to the name, either
@@ -121,6 +126,32 @@ public final class LlmRegistry implements AutoCloseable {
             throw new UnknownConfigurationException(name);
         }
         return bundle;
+    }
+
+    /**
+     * Returns the current generation, held still, so several lookups agree with each other.
+     *
+     * <p>{@link #get(String)} reads the live configuration on every call. Two consecutive
+     * calls can therefore straddle a reload and return bundles built from different file
+     * contents — rare, but reproducible, and a correctness hazard wherever several models
+     * are expected to be consistent with one another. This method reads the published
+     * generation exactly once and hands it back; everything taken from the result belongs to
+     * that one generation.
+     *
+     * <pre>{@code
+     * LlmSnapshot models = registry.snapshot();
+     * var fast = models.get("SL");
+     * var deep = models.get("SH");   // same generation as fast, guaranteed
+     * }</pre>
+     *
+     * <p>The returned snapshot never updates. Take one per unit of work — per request, per
+     * council round — and let it go. Holding one for the lifetime of the application is the
+     * caching trap in a new costume.
+     *
+     * @return the current generation
+     */
+    public LlmSnapshot snapshot() {
+        return new LlmSnapshot(bundles);
     }
 
     /**

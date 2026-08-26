@@ -57,6 +57,21 @@
     <maven.compiler.release>17</maven.compiler.release>
 
     <!--
+      Reproducible builds: pins every entry timestamp inside the jars, so the same source
+      produces byte-identical artifacts on two machines and on two days. Without it the
+      build embeds "now" and nobody downstream can verify that a published jar was built
+      from the tag it claims. Bump this at each release, to that release's date.
+    -->
+    <project.build.outputTimestamp>2026-08-26T00:00:00Z</project.build.outputTimestamp>
+
+    <!--
+      A1: the JPMS module name every published jar advertises. Overridden per module. It
+      becomes API the moment it is published — a consumer with a module-info requires it by
+      name, so changing it later breaks them. Set before the first release, never after.
+    -->
+    <automatic.module.name>io.github.maxtrezzi.modelrack4j</automatic.module.name>
+
+    <!--
       ADR-0018 + ADR-0022: upstream publishes TWO release trains from one release, and this
       project imports a BOM for each. These two lines are deliberately adjacent: bump them
       TOGETHER. Moving one and not the other resolves cleanly while mixing trains, which is
@@ -77,6 +92,7 @@
 
     <maven-compiler-plugin.version>3.15.0</maven-compiler-plugin.version>
     <maven-surefire-plugin.version>3.5.6</maven-surefire-plugin.version>
+    <maven-jar-plugin.version>3.4.2</maven-jar-plugin.version>
     <maven-failsafe-plugin.version>3.5.6</maven-failsafe-plugin.version>
     <maven-javadoc-plugin.version>3.12.0</maven-javadoc-plugin.version>
     <maven-source-plugin.version>3.4.0</maven-source-plugin.version>
@@ -203,6 +219,18 @@
         </plugin>
         <plugin>
           <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-jar-plugin</artifactId>
+          <version>${maven-jar-plugin.version}</version>
+          <configuration>
+            <archive>
+              <manifestEntries>
+                <Automatic-Module-Name>${automatic.module.name}</Automatic-Module-Name>
+              </manifestEntries>
+            </archive>
+          </configuration>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
           <artifactId>maven-source-plugin</artifactId>
           <version>${maven-source-plugin.version}</version>
         </plugin>
@@ -316,6 +344,11 @@
             <goals><goal>jar</goal></goals>
           </execution>
         </executions>
+      </plugin>
+
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
       </plugin>
 
       <plugin>

@@ -14,6 +14,10 @@
   <name>modelrack4j :: provider :: Zhipu GLM</name>
   <description>ProviderFactory for Zhipu GLM. Community module, beta line (ADR-0022).</description>
 
+  <properties>
+    <automatic.module.name>io.github.maxtrezzi.modelrack4j.provider.glm</automatic.module.name>
+  </properties>
+
   <dependencies>
     <dependency>
       <groupId>io.github.maxtrezzi</groupId>

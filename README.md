@@ -234,7 +234,7 @@ Each one demonstrates a single claim from [Why](#why) rather than the library in
 
 | Example | Shows | Cost |
 |---|---|---|
-| [`AtomicSnapshot`](modelrack4j-examples/src/main/java/io/github/maxtrezzi/modelrack4j/examples/AtomicSnapshot.java) | One save changes two models; four threads sampling both never once see a mixed pair | **free, no API key** |
+| [`AtomicSnapshot`](modelrack4j-examples/src/main/java/io/github/maxtrezzi/modelrack4j/examples/AtomicSnapshot.java) | One save changes two models; four threads sample the pair both ways and count the mixed ones — via `snapshot()` the count is zero by construction | **free, no API key** |
 | [`ProviderSwap`](modelrack4j-examples/src/main/java/io/github/maxtrezzi/modelrack4j/examples/ProviderSwap.java) | The same call site answered by Anthropic, then by OpenAI, after a file edit | two requests |
 | [`ConsoleChat`](modelrack4j-examples/src/main/java/io/github/maxtrezzi/modelrack4j/examples/ConsoleChat.java) | An interactive menu of every configured model; edit the file while it runs and the menu changes | a conversation |
 | [`ThreeModelCouncil`](modelrack4j-examples/src/main/java/io/github/maxtrezzi/modelrack4j/examples/ThreeModelCouncil.java) | The scenario above: three models, one question, no provider branch in the code | three requests |
@@ -382,6 +382,23 @@ registry.onReloadFailure(failure ->
 ```
 
 **What a reload guarantees:**
+
+- **Ask for consistency when you need it.** `registry.get(name)` reads the live
+  configuration on every call — that is what makes reload work, and it means **two
+  consecutive calls can straddle a reload** and return models built from different file
+  contents. Rare (measured at roughly two per million read pairs under a reload every few
+  milliseconds) but reproducible, and a correctness hazard wherever several models must
+  agree. Where they must, take a snapshot:
+
+  ```java
+  LlmSnapshot models = registry.snapshot();   // one read of the current generation
+  var fast = models.get("SL");
+  var deep = models.get("SH");                // guaranteed same generation as fast
+  ```
+
+  A snapshot never updates — take one per unit of work, not one at startup, or you have
+  re-created the caching trap above. See
+  [ADR-0038](docs/adr/0038-snapshot-gives-callers-the-atomicity-the-swap-already-has.md).
 
 - **All or nothing, across the whole snapshot.** Every layer is re-parsed, re-validated and
   every changed bundle rebuilt in a staging area. If anything fails anywhere — a parse

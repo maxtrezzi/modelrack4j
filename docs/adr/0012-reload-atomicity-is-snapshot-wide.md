@@ -1,6 +1,6 @@
 # ADR-0012: Reload atomicity is snapshot-wide, not per-bundle
 
-- **Status:** Accepted
+- **Status:** Accepted — the width reaching a caller amended by [ADR-0038](0038-snapshot-gives-callers-the-atomicity-the-swap-already-has.md)
 - **Date:** 2026-07-26 *(record backfilled; the decision itself predates it)*
 - **Supersedes:** —
 - **Amends:** [ADR-0008](0008-fail-fast-validation-staged-build-atomic-swap.md) — widens its swap scope from per-bundle to whole-snapshot

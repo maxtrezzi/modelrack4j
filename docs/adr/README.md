@@ -104,11 +104,12 @@ by number, since the numbering only reflects the order of the original appendix.
 | ADR | Title | Status |
 |---|---|---|
 | [0008](0008-fail-fast-validation-staged-build-atomic-swap.md) | Fail-fast validation, staged build, atomic swap | Accepted — swap scope widened by ADR-0012 |
-| [0012](0012-reload-atomicity-is-snapshot-wide.md) | Reload atomicity is snapshot-wide, not per-bundle | Accepted |
+| [0012](0012-reload-atomicity-is-snapshot-wide.md) | Reload atomicity is snapshot-wide, not per-bundle | Accepted — the width reaching a caller amended by ADR-0038 |
 | [0013](0013-watch-directories-resolve-symlinks.md) | Watch directories, resolve symlinks, document the macOS caveat | Accepted — symlink strategy and filename filter amended by ADR-0024 |
 | [0024](0024-watch-the-symlink-s-directory-not-its-real-path.md) | Watch the symlink's own directory; filename filtering cannot gate a ConfigMap swap | Accepted |
 | [0014](0014-lifecycle-of-removed-names-and-superseded-bundles.md) | Lifecycle of removed names and superseded bundles | Accepted |
 | [0009](0009-holder-api-primary-listeners-optional.md) | Holder API primary, listeners optional | Accepted |
+| [0038](0038-snapshot-gives-callers-the-atomicity-the-swap-already-has.md) | `snapshot()` gives callers the atomicity the swap already had | Accepted |
 | [0029](0029-reload-callbacks-are-quiet-contained-and-not-a-heartbeat.md) | A reload callback means something changed — nothing else | Accepted — failure path amended by ADR-0031 |
 | [0031](0031-a-rejected-reload-is-always-logged.md) | A rejected reload is logged whether or not anyone is listening | Accepted |
 

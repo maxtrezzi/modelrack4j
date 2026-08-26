@@ -392,6 +392,80 @@ class ReloadTest {
         registry.onReloadFailure(failures::add);
     }
 
+    @Test
+    @DisplayName("a snapshot holds one generation still, and a reload does not move it")
+    void snapshotIsImmuneToReload() throws IOException {
+        Path file = write("llm.conf", twoBlocks("gen-1"));
+        watch(file);
+
+        LlmSnapshot held = registry.snapshot();
+        assertThat(held.get("SL").config().modelName()).isEqualTo("gen-1");
+
+        Files.writeString(file, twoBlocks("gen-2"), StandardCharsets.UTF_8);
+        awaitModel("SL", "gen-2");
+
+        // The registry has moved on; the snapshot has not, and both of its names agree.
+        assertThat(registry.get("SL").config().modelName()).isEqualTo("gen-2");
+        assertThat(held.get("SL").config().modelName()).isEqualTo("gen-1");
+        assertThat(held.get("SH").config().modelName()).isEqualTo("gen-1");
+    }
+
+    @Test
+    @DisplayName("every name in a snapshot comes from the same generation")
+    void snapshotIsInternallyConsistent() throws IOException {
+        Path file = write("llm.conf", twoBlocks("gen-1"));
+        watch(file);
+
+        // The guarantee is structural, not statistical: a snapshot is exactly one volatile
+        // read, so either every lookup from it agrees or the mechanism itself is broken.
+        // One probe per generation is therefore enough — this is a regression pin, not the
+        // stress harness that found the defect in get() in the first place. A high iteration
+        // count here bought nothing but CPU load on a shared CI runner, which is what made a
+        // neighbouring debounce-timing test flaky.
+        for (int generation = 2; generation <= 6; generation++) {
+            Files.writeString(file, twoBlocks("gen-" + generation), StandardCharsets.UTF_8);
+            awaitModel("SL", "gen-" + generation);
+            LlmSnapshot snapshot = registry.snapshot();
+            assertThat(snapshot.get("SL").config().modelName())
+                    .isEqualTo(snapshot.get("SH").config().modelName());
+        }
+    }
+
+    @Test
+    @DisplayName("a snapshot keeps a name that a later reload removed")
+    void snapshotKeepsRemovedName() throws IOException {
+        Path file = write("llm.conf", twoBlocks("gen-1"));
+        watch(file);
+
+        LlmSnapshot held = registry.snapshot();
+        assertThat(held.names()).containsExactlyInAnyOrder("SL", "SH");
+        assertThat(held.contains("SH")).isTrue();
+
+        Files.writeString(file, block("SL", "gen-2"), StandardCharsets.UTF_8);
+        awaitModel("SL", "gen-2");
+
+        assertThatThrownBy(() -> registry.get("SH")).isInstanceOf(UnknownConfigurationException.class);
+        assertThat(held.get("SH").config().modelName()).isEqualTo("gen-1");
+    }
+
+    @Test
+    @DisplayName("an unknown name throws from a snapshot as it does from the registry")
+    void snapshotRejectsUnknownName() throws IOException {
+        watch(write("llm.conf", twoBlocks("gen-1")));
+
+        LlmSnapshot snapshot = registry.snapshot();
+        assertThat(snapshot.contains("CR")).isFalse();
+        assertThatThrownBy(() -> snapshot.get("CR"))
+                .isInstanceOf(UnknownConfigurationException.class)
+                .hasMessageContaining("CR");
+    }
+
+    private static String twoBlocks(String modelName) {
+        return "llm { SL { provider = fake-local, api-key = \"k\", model-name = \"" + modelName
+                + "\" }\n      SH { provider = fake-local, api-key = \"k\", model-name = \""
+                + modelName + "\" } }";
+    }
+
     private void awaitModel(String name, String modelName) {
         await().atMost(TIMEOUT)
                 .until(() -> registry.names().contains(name)

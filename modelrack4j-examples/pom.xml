@@ -15,6 +15,12 @@
   <description>Runnable demos, including the SL/SH/CR scenario. Deliberately NOT published.</description>
 
   <properties>
+    <!--
+      Never published, but it still needs its OWN module name: inheriting the parent's
+      default gave this jar the same Automatic-Module-Name as core, and javadoc then failed
+      to resolve core's types at all — two automatic modules cannot share a name.
+    -->
+    <automatic.module.name>io.github.maxtrezzi.modelrack4j.examples</automatic.module.name>
     <!-- Per the module layout: examples are never published. -->
     <maven.deploy.skip>true</maven.deploy.skip>
     <maven.install.skip>true</maven.install.skip>

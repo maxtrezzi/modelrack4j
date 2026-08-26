@@ -20,6 +20,11 @@ than listed as one long **Added** block.
   into one snapshot and resolved exactly once after merging — so a `${VAR}` in a lower layer
   that a higher layer overrides never has to resolve.
 - `registry.get(name)` returns the current `LlmBundle`; `names()` lists what is configured.
+- `registry.snapshot()` returns an `LlmSnapshot`: one generation held still, so several
+  lookups are guaranteed to agree with each other. `get()` reads the live configuration on
+  every call, so two consecutive calls can straddle a reload — rare, reproducible, and a
+  correctness hazard where several models must be consistent. A snapshot never updates:
+  take one per unit of work.
   Bundles are keyed by **configuration name**, never provider name, so two names may share
   one provider and differ only in parameters.
 - `LlmBundle` carries a `ChatModel` plus an `Optional` `StreamingChatModel`,

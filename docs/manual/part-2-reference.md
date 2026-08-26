@@ -111,7 +111,7 @@ claim rather than the library in general.
 
 | Example | Demonstrates | Needs |
 |---|---|---|
-| `AtomicSnapshot` | [Snapshot-wide atomicity](#reload-semantics): four threads read two models while one save changes both, and count how often they catch a mixed pair. The answer is zero — and the count is real, not decorative: sabotaging the swap to publish one model 5 ms early makes it report tens of thousands. | **nothing** — reads configuration only, sends no request |
+| `AtomicSnapshot` | [Snapshot-wide atomicity](#reload-semantics): four threads read two models while one save changes both, sampling the pair two ways and counting the mixed ones. Via `snapshot()` the count is zero by construction; via two `get()` calls it is merely small. The count is real, not decorative: sabotaging the swap to publish one model 5 ms early makes it report tens of thousands. | **nothing** — reads configuration only, sends no request |
 | `ProviderSwap` | The provider as configuration: the same method, called twice around a file edit, answered by `AnthropicChatModel` and then `OpenAiChatModel`. The method names no provider and has no branch. | `ANTHROPIC_API_KEY` + `OPENAI_API_KEY`, two requests |
 | `ConsoleChat` | Everything interactively: a menu of configured models, streaming where configured, moderation on input where configured, memory across turns, and reload while you watch. | one provider key |
 | `ThreeModelCouncil` | The multi-model scenario: three names, one question, capabilities read from the bundle. | two provider keys |

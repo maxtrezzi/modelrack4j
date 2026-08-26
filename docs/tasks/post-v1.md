@@ -620,3 +620,73 @@ tree itself.
 **M6 has no entry in `milestones.md`.** Deliberate — it is unscheduled, so there is nothing
 to record beyond its trigger — but it means a reader following a pointer to "M6" finds prose
 rather than a work item. Worth writing when publishing is actually scheduled, not before.
+
+---
+
+### P9 — The three things that had to be right before a first release
+
+**Status:** Done 2026-08-26 · **Branch:** `task/p9-release-blocking-fixes` ·
+**Produced:** [ADR-0038](../adr/0038-snapshot-gives-callers-the-atomicity-the-swap-already-has.md)
+
+An outside list of pre-publication items. Four of its points were checked against the code;
+one was already done, one was the most serious defect found in the project so far.
+
+#### The atomicity guarantee was one notch wider than the truth
+
+[ADR-0012](../adr/0012-reload-atomicity-is-snapshot-wide.md) makes the *swap* atomic, and it
+is. What nobody had asked is how much of that a caller receives. `LlmRegistry.get(String)`
+reads the published generation on every call — that is what makes reload visible — so two
+consecutive calls are two independent reads, and a swap landing between them returns bundles
+from different generations.
+
+**Measured rather than argued.** A harness driving ~400 reloads at a 1 ms debounce, with one
+thread reading the pair as fast as it could, produced **220 mixed pairs in 111,597,529
+reads** — about two per million. Rare enough never to show up in a normal run of
+`AtomicSnapshot`, which is exactly why the example reported zero and the README claimed *"the
+mixed pair never appears"*.
+
+Fixed by giving callers a handle on the generation rather than by narrowing the claim:
+`registry.snapshot()` performs one read and returns an `LlmSnapshot` from which every lookup
+belongs to that generation. `get()` is unchanged and stays primary; its Javadoc now states
+what it does not promise. Four tests in `ReloadTest` pin the behaviour, deterministically —
+a held snapshot keeps the old generation across a reload, its names agree, it keeps a name a
+reload removed, and it rejects an unknown one.
+
+`AtomicSnapshot` now samples **both** ways and prints both columns, so the boundary is
+demonstrated instead of asserted. Core went from 59 to 63 tests.
+
+#### `Automatic-Module-Name`, and the collision it caused
+
+Absent from all five published jars. It becomes API on publication — a consumer with a
+`module-info` requires it by name — so it had to be set before a first release, never after.
+Now `io.github.maxtrezzi.modelrack4j` for core and `…provider.{openai,anthropic,gemini,glm}`
+for the providers.
+
+**The first attempt broke the build**, informatively: `modelrack4j-examples` inherited the
+parent's default and ended up advertising *core's* module name. Two automatic modules cannot
+share a name, and javadoc stopped resolving core's types entirely — an error that reads as
+"cannot find symbol" and says nothing about module names. Examples now has its own.
+
+#### Reproducible builds
+
+`<project.build.outputTimestamp>` was absent, so every build embedded "now" and no consumer
+could verify that a published jar came from the tag it claims. Set, and **verified by
+building twice and comparing SHA-256** — byte-identical. Bump it at each release.
+
+#### What the list got wrong
+
+It said the integration tests had never reached a live API and called that the most
+underrated risk. They ran on 2026-08-24 ([P6](#p6--the-integration-tests-against-live-apis)),
+all four providers, and cost two stale model IDs and one portability ADR. The claim came from
+reading M5, which said exactly that when it was true, without reading P6, which records that
+it stopped being true. It also asked for the `io.github.maxtrezzi` namespace to be verified —
+[Task 0.7](phase-0-verification.md#task-07--name-and-coordinates) established that Sonatype
+grants it automatically — and for `maven.deploy.skip` on the examples module, which has had
+it since M0.
+
+#### Still open
+
+Everything in the release mechanics proper: GPG key, Central Portal token, the `release`
+profile with the signing and publishing plugins, dropping `-SNAPSHOT`, the tag, and an ADR
+amending [ADR-0034](../adr/0034-the-repository-is-public-before-it-is-released.md), which
+currently forbids one.
