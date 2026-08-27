@@ -31,8 +31,9 @@ A full pass over the user-facing text, recorded as
 found this was not one bad sentence: ten metaphors of the same kind, nine vocabulary items
 above B2, and six sentences whose grammar rather than vocabulary was the obstacle. It also
 found two claims that were plainly wrong — a list of three introduced as two, and a Javadoc
-line promising hot reload "when it arrives" three milestones after it arrived. Prose nobody
-can read is also prose nobody proofreads.
+line written in M2 promising hot reload "when it arrives", left untouched through the two
+milestones that followed the feature landing in M3. Prose nobody can read is also prose
+nobody proofreads.
 
 Two constraints were fixed going in. The owner is not a native English speaker, and neither
 are most of the developers who would reach for a LangChain4j configuration library. And
@@ -120,7 +121,7 @@ shorter?" is yes, and it was, and it did not work.
 **The rule is a habit, not a gate, and it will be violated.** It already was, inside the
 commit that established it: the sentence added to explain the `claude-sonnet-4-6` model
 choice was first written as *"a temperature welded into a builder call"* — reintroducing the
-exact metaphor removed from the same file fifty lines above, three edits earlier. Recorded in
+exact metaphor removed from that same file's opening section, three edits earlier. Recorded in
 P11 rather than quietly fixed, because it is the honest forecast: a single pass does not
 inoculate the next paragraph, and the next contributor writing in this repository's voice
 will reach for the same compression. Expect to apply the two tests when writing, not only

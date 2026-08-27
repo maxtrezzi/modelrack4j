@@ -69,13 +69,20 @@ directly to `main` (ADR-0016). Name it after the work item — `task/0.1-pin-lan
 no task ID. One branch carries the work, its status update in `docs/tasks/`, and any ADR it
 produces.
 
-**This is now enforced on the remote, not merely asked (ADR-0040).** `main` requires a pull
-request, force-pushing and deleting it are blocked, and the five checks in
-`.github/workflows/build.yml` must pass and be current with the branch before a merge. No
-approving review is required, so a green build is the whole gate. One branch may carry
-several `docs/tasks/` entries when they are genuinely one piece of work — see the convention
-note in `docs/tasks/README.md`, and say so in the entries, so a branch matching no identifier
-reads as a decision rather than as drift.
+**`main` is protected on the remote (ADR-0040), but not against you.** A pull request is
+required, force-pushing and deleting are blocked, and the five checks in
+`.github/workflows/build.yml` must pass and be current with the branch before a merge, with
+no approving review needed — so for an outside contributor a green build is the whole gate.
+**`enforce_admins` is `false`, and the only collaborator is an admin**, which is every
+session working in this repository: none of those gates will actually stop you. Treat the
+branch rule as binding anyway. It is a rule you keep because it is right, not because
+something enforces it, and ADR-0040 accepts that trade deliberately — turning
+`enforce_admins` on is all-or-nothing on GitHub's side and would also impose a fake
+single-maintainer review requirement.
+
+One branch may carry several `docs/tasks/` entries when they are genuinely one piece of
+work — see the convention note in `docs/tasks/README.md`, and say so in the entries, so a
+branch matching no identifier reads as a decision rather than as drift.
 
 **ADR numbers are only safe once they are on `main`.** Two branches that each take "the next
 free number" are both correct and still collide, and `build/check-docs.py` cannot warn about
@@ -230,12 +237,15 @@ in-flight requests may still hold them.
 - **That rule covers the numbers you use to describe your own work, and this is where it
   gets broken.** Counts, word deltas, "N places", "the largest", "N precedents" — run the
   command that produces the figure *before* writing the sentence, not after, and prefer the
-  measurement to an adjective so the next reader can re-run it. P11 is the cautionary tale:
-  the counts of what to fix were grepped and held, while every count describing the fix was
-  estimated and was wrong, three times, each wrong version written while correcting the
-  previous one. A superlative is a claim; if you have not measured it, do not write it. Note
-  that `build/check-docs.py` cannot catch any of this — it checks links, ADR status lines and
-  numbering, not whether a sentence is true.
+  measurement to an adjective so the next reader can re-run it. P11 is the cautionary tale.
+  Do not read it as "the counts of what to fix were fine and only the write-up drifted" — an
+  early draft of that entry claimed exactly this, and an independent review refuted it from
+  the entry's own table. One figure went through three wrong versions in a row, each written
+  while correcting the previous one, and five further counts were wrong once each. A
+  superlative is a claim; if you have not measured it, do not write it. Note that
+  `build/check-docs.py` cannot catch any of this — it checks links, ADR status lines and
+  numbering, not whether a sentence is true. The check that did catch it was a session with
+  no memory of writing the text, which is the only kind that works here.
 - **User-facing prose has a register, and it is not this file's (ADR-0039).** The README,
   `docs/manual/`, public Javadoc, the commented `.conf` examples, `CONTRIBUTING.md` and the
   CHANGELOG are written for a technical reader at roughly B2 English who does not read it as

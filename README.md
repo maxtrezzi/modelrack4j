@@ -195,7 +195,8 @@ llm {
 Note `SL` and `SH`: **two names, one provider, one model, different parameters.** Registry
 keys are configuration names, never provider names, which is what makes that work. Neither
 sets `temperature`: `claude-sonnet-5`'s adaptive thinking controls its own sampling, and the
-API rejects a non-default value with a 400. `gpt-5.1` below still accepts it, and so does
+API rejects a non-default value with a 400. The `gpt-5.1` block above still accepts one, and
+so does
 `claude-sonnet-4-6` — which is why the Java example in [Why](#why) uses that model to show a
 temperature fixed in a builder call.
 

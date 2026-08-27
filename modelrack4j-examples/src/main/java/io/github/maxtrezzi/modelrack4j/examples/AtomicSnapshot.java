@@ -67,7 +67,7 @@ import java.util.concurrent.TimeUnit;
  *
  * @implNote <strong>No API key, and no cost.</strong> This reads configuration only — it
  *     never sends a request, so the credentials in the generated file are literals rather
- *     than substitutions. It is the one example that runs anywhere, for nothing.
+ *     than substitutions. It is the one example that runs anywhere, at no cost.
  */
 public final class AtomicSnapshot {
 

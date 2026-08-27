@@ -810,13 +810,16 @@ already discussed.
 **One thing this task got wrong about itself, worth recording.** The sentence added to
 explain the `claude-sonnet-4-6` choice was first written as *"a temperature welded into a
 builder call"* — reintroducing, three edits later, the exact metaphor this task had removed
-from the paragraph fifty lines above. Caught immediately, but it says something about the
+from that same file's opening section. Caught immediately, but it says something about the
 failure mode: the register is a habit, not a decision made once, and a pass like this does
 not inoculate the next paragraph written.
 
-**Every number describing this work was wrong at least once.** The counts of *what to fix*
-were produced by grepping the whole user-facing set for each flagged phrase, and they held.
-The counts describing *the fix itself* were written from impression, and did not:
+**Every number in this work was wrong at least once, including the ones this entry first
+claimed were sound.** An earlier draft here said the counts of *what to fix* were all grepped
+and held, and that only the counts describing *the fix itself* were estimated. That is
+contradicted by the first row of its own table: "straddle" was a what-to-fix count, written
+from impression, and wrong. Grepping happened for the lists of items; the totals over them
+did not always follow:
 
 | Claimed | Where | Actual |
 |---|---|---|
@@ -843,6 +846,22 @@ Three iterations to state one cost. Each wrong version was written while *correc
 previous wrong version, which is the part worth keeping: the impulse to reach for a vivid
 figure survived being caught twice, and what finally stopped it was running the measurement
 before writing the sentence rather than after.
+
+**An independent review then found four more, and the fix for them produced one more still.**
+A session with no memory of writing any of this text was asked to verify by measuring rather
+than re-reading. It refuted the framing sentence above the table — an earlier draft claimed
+the what-to-fix counts had all been grepped and held, which its own first row contradicts —
+and falsified three further figures nobody had checked: the "welded" metaphor came back not
+"fifty lines above" but roughly a hundred and fifty; the stale Javadoc line survived two
+milestones, not three; and "fifteen precedents" for the ADR amendment convention is ten
+ADRs, or twelve relationships, depending on how you count. Writing the CLAUDE.md rule that
+came out of all this, the first draft said "four wrong versions in total", which matches
+neither the chain of three nor the four one-off counts. It was caught by counting them into
+a list before writing the sentence — which is the whole rule, arrived at the long way.
+
+The tally, for anyone tempted to treat this as a run of bad luck rather than a method
+failure: **one figure wrong three times in a row, and five more wrong once each.** Nothing
+that was measured before being written was ever wrong.
 
 **They were corrected in place in ADR-0039, which its accepted status would normally
 forbid.** The judgement: the freeze exists to stop a decision being rewritten after people
