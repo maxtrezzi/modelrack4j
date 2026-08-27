@@ -22,7 +22,7 @@ The trigger was the owner — a technical reader, and the person the library is 
 failing to parse one of the repository's own sentences. The README described the
 `AtomicSnapshot` example as *"One save changes two models; four threads sample the pair both
 ways and count the mixed ones — via `snapshot()` the count is zero by construction."* Every
-clause is true and the whole thing is eleven words shorter than the version that replaced it.
+clause is true, and at 26 words against 32 it is only six words shorter than what replaced it.
 It is also undecodable unless the reader already holds the model of torn reads and generation
 freezing that the sentence exists to teach.
 
@@ -108,10 +108,11 @@ unenforceable by construction.
 read it, and the pass that established the rule also removed two false statements that had
 survived precisely because the surrounding prose discouraged close reading.
 
-**What is accepted.** Some documents get slightly longer. The `AtomicSnapshot` row in the
-README grew by about fifteen words and is the better for it. This is a real cost and it is
-paid deliberately; the answer to "can this be shorter?" is yes, and it was, and it did not
-work.
+**What is accepted.** Some documents get slightly longer, though measurably less than the
+rule's cost is usually assumed to be: the `AtomicSnapshot` row in the README, the worst case
+in the whole pass, grew by six words. The answer to "can this be shorter?" is yes, and it
+was, and it did not work — and the price of that finding turns out to be small enough that
+length is rarely the real argument against applying this rule.
 
 **The rule is a habit, not a gate, and it will be violated.** It already was, inside the
 commit that established it: the sentence added to explain the `claude-sonnet-4-6` model

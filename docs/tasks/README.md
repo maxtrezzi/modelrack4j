@@ -47,6 +47,14 @@ Branch before starting, never commit to `main`, and name the branch after the it
 `decision/d2-repository-visibility`. The branch carries the work, the status update here,
 and any ADR the task produces.
 
+**One branch may carry several entries when they are one piece of work.** P11, P12 and P13
+share `docs/documentation-reorganisation` because they are one documentation
+reorganisation split into three records, not three tasks batched for convenience — and
+because two of them independently took the same next-free ADR number, which only a shared
+branch could reconcile. Name such a branch after the work rather than after any one item, and
+say so in the entries, so that a branch matching no identifier reads as a decision rather
+than as drift.
+
 ## Status board
 
 Phase 0 gates everything else; nothing below M0 should start before its blockers clear.

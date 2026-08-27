@@ -786,8 +786,9 @@ are frozen and `docs/tasks/` excluded as an internal record:
   module on the community "release train", symlink handling that is "not a tidy-up
   candidate", a "shorter fuse" for a "flaky" connection, seeing a guarantee "for nothing"
   (free, or pointless?), and capabilities that vary "depending on who you ask".
-- **Nine vocabulary items above B2**, the largest being "straddle a reload" in six places
-  across the README, two Javadoc classes and the CHANGELOG. The replacement was not invented:
+- **Nine vocabulary items above B2**, the largest being "straddle a reload" in five places:
+  the README, `LlmRegistry`, `LlmSnapshot`, the CHANGELOG, and a line `AtomicSnapshot` prints
+  at runtime. The replacement was not invented:
   *"a reload landing between them"* was already the phrasing used elsewhere in the same files,
   so the fix was to stop maintaining two ways of saying one thing. Also "hearsay", "inert",
   "page someone", "collectable", "three days in", "sized against", "in miniature", "bites you".
@@ -813,11 +814,38 @@ from the paragraph fifty lines above. Caught immediately, but it says something 
 failure mode: the register is a habit, not a decision made once, and a pass like this does
 not inoculate the next paragraph written.
 
+**Three numbers in this work were wrong, and a later coherence check caught them.** The
+counts of *what to fix* were produced by grepping the whole user-facing set for each flagged
+phrase, and they held. The counts describing *the fix itself* were written from impression
+and did not:
+
+| Claimed | Where | Actual |
+|---|---|---|
+| "straddle a reload" in **six** places | this entry, and commit `418ca5b`'s message | **five** |
+| the old README sentence was **eleven** words shorter | ADR-0039, Context | **six** (26 against 32) |
+| the `AtomicSnapshot` row grew by about **fifteen** words | ADR-0039, Consequences | **six** |
+
+The last two describe the same edit and disagree with each other, which is what exposed them.
+Both sat in an ADR whose subject is careless writing, and the fifteen was in the sentence
+justifying the rule's cost — overstating that cost by two and a half times while arguing it
+was worth paying.
+
+**They were corrected in place in ADR-0039, which its accepted status would normally
+forbid.** The judgement: the freeze exists to stop a decision being rewritten after people
+have relied on it, and this ADR had never left the branch it was written on, was not on
+`main`, and was referenced from nowhere outside this repository — the same reasoning P13's
+numbering note used to renumber an ADR at that stage. Leaving figures known to be false
+inside an accepted ADR, in order to honour a rule against revisionism, would invert that
+rule. The corrected sentences state the measurement rather than an adjective, so the next
+reader can check them. Commit `418ca5b`'s message still says "six places" and is left alone:
+a commit message is history, not a document.
+
+The lesson is narrower than "verify claims", which this project already knew. It is that the
+discipline was applied asymmetrically — rigorously to the subject of the work, not at all to
+the description of the work — and the write-up is exactly where nobody thinks to grep.
+
 Verified: `mvn clean install` and the full reactor suite green, offline; every edit is prose,
-a comment, or one printed line, so no behaviour changed. `build/check-docs.py` clean. The
-counts above were produced by grepping the whole user-facing set for each flagged phrase
-rather than from reading impressions, which is what turned "straddle" from one sighting into
-six.
+a comment, or one printed line, so no behaviour changed. `build/check-docs.py` clean.
 
 ---
 

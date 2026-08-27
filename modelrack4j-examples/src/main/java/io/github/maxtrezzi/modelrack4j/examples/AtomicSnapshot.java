@@ -218,7 +218,9 @@ public final class AtomicSnapshot {
 
     private static String configuration(String generation) {
         // Literal keys: nothing here ever calls a provider, so no credential is needed and
-        // the example costs nothing to run.
+        // the example costs nothing to run. No temperature either, even though nothing here
+        // would reject one: claude-sonnet-5 answers a non-default temperature with a 400, and
+        // an example is configuration people copy into files that do send requests.
         return """
                 llm {
                   SL {
@@ -226,7 +228,6 @@ public final class AtomicSnapshot {
                     provider    = anthropic
                     api-key     = "unused-no-request-is-sent"
                     model-name  = "claude-sonnet-5"
-                    temperature = 0.2
                   }
 
                   SH {
@@ -234,7 +235,7 @@ public final class AtomicSnapshot {
                     provider    = anthropic
                     api-key     = "unused-no-request-is-sent"
                     model-name  = "claude-sonnet-5"
-                    temperature = 0.9
+                    streaming   = true
                   }
                 }
                 """.formatted(generation, generation);
