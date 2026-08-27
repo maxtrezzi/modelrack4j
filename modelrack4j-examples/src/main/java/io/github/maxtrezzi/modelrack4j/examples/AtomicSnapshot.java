@@ -165,7 +165,8 @@ public final class AtomicSnapshot {
         if (tornSnapshot > 0) {
             System.out.println("BUG: a snapshot tore. The swap is no longer atomic.");
         } else if (torn > 0) {
-            System.out.println("As designed: two get() calls straddled a reload; the snapshot never did.");
+            System.out.println("As designed: a reload landed between two get() calls; "
+                    + "no snapshot ever tore.");
         } else {
             System.out.println("No tear either way this run — the get() window is narrow, not absent.");
             System.out.println("Only the snapshot column is guaranteed to stay at zero.");

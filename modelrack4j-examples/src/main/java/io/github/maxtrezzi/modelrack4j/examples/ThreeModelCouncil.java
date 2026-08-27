@@ -36,7 +36,8 @@ import java.util.List;
  *
  * <p>Note what this demonstrates about the API: the registry is asked for a bundle at the
  * point of use, never cached in a field. That is the habit the holder API exists to
- * encourage, and it is what will make hot reload work when it arrives.
+ * encourage, and it is what makes hot reload reach this code: a bundle kept in a field
+ * would keep working and would never reflect a later edit to the file.
  */
 public final class ThreeModelCouncil {
 

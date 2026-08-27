@@ -749,3 +749,69 @@ the final code and found to still hold. A separate five-line program at the end 
 running against the built jar rather than reasoned about, that two `snapshot()` calls in the
 same generation print the same bundle set and that `get()` still resolves through the
 delegation chain.
+
+---
+
+### P11 — The user-facing text, read as a non-native reader would read it
+
+**Status:** Done 2026-08-27 · **Branch:** `docs/plain-english-pass`
+
+Prompted by the owner failing to parse one of this repository's own sentences. The README
+described the `AtomicSnapshot` example as *"One save changes two models; four threads sample
+the pair both ways and count the mixed ones — via `snapshot()` the count is zero by
+construction"*, which is accurate, short, and unreadable unless you already hold the mental
+model it describes. The manual's version of the same sentence had the same problem.
+
+**The distinction this settled, which is now the rule for this repository's prose.** Being
+brief is not the defect; being brief *by way of a figure of speech the reader must unpack* is.
+A short sentence is fine as long as it explains itself on a first reading. And the audience
+is technical but does not read English as a first language, so idiom and rare vocabulary are
+a second, independent way a sentence can fail — separate from whether the reader knows the
+mechanism. Both tests now apply to the README, `docs/manual/`, public Javadoc, the commented
+`.conf` files, CONTRIBUTING and the CHANGELOG. The deliberately terse register of the ADRs
+and `CLAUDE.md` is unaffected: different audience, and an explicit choice recorded in
+ADR-0001 and ADR-0015.
+
+**What a full pass over that text found**, `docs/adr/` excluded because accepted ADR bodies
+are frozen and `docs/tasks/` excluded as an internal record:
+
+- **Two stale claims, not style at all.** The README announced "Two provider notes" above a
+  list of three. `ThreeModelCouncil`'s Javadoc said the holder API "will make hot reload work
+  when it arrives" — hot reload arrived in M3 and shipped in v1, so the sentence had been
+  wrong since the day the feature landed and nobody re-read it.
+- **Ten metaphors** that decode only for a reader who already knows the answer: a guarantee
+  with a "precise width", a boolean that would "bless" every configuration, the caching trap
+  "in a new costume", a decision "welded to" the build, memory built with "no ceremony", a
+  module on the community "release train", symlink handling that is "not a tidy-up
+  candidate", a "shorter fuse" for a "flaky" connection, seeing a guarantee "for nothing"
+  (free, or pointless?), and capabilities that vary "depending on who you ask".
+- **Nine vocabulary items above B2**, the largest being "straddle a reload" in six places
+  across the README, two Javadoc classes and the CHANGELOG. The replacement was not invented:
+  *"a reload landing between them"* was already the phrasing used elsewhere in the same files,
+  so the fix was to stop maintaining two ways of saying one thing. Also "hearsay", "inert",
+  "page someone", "collectable", "three days in", "sized against", "in miniature", "bites you".
+- **Six sentences where the grammar was the obstacle rather than the words** — most notably
+  the imperative-as-conditional *"Resolve each file as you parse it … and this throws"*, which
+  appeared in both the README and the tutorial, and the dangling *"An unknown value lists the
+  ones that are"*, which never says what the ones in question are.
+
+**Two smaller findings the owner ruled on separately.** `licence` appeared once against
+`License` everywhere else and in the filename, now uniform. And the Java sample in *Why* uses
+`claude-sonnet-4-6` while every configuration example uses `claude-sonnet-5` — deliberate,
+because that sample's whole point is a `temperature` fixed in a builder call and
+`claude-sonnet-5` rejects a non-default temperature with a 400 (found by P6's live run). It
+read as an inconsistency, so the reason is now stated where `temperature` is already
+discussed.
+
+**One thing this task got wrong about itself, worth recording.** The sentence added to
+explain the `claude-sonnet-4-6` choice was first written as *"a temperature welded into a
+builder call"* — reintroducing, three edits later, the exact metaphor this task had removed
+from the paragraph fifty lines above. Caught immediately, but it says something about the
+failure mode: the register is a habit, not a decision made once, and a pass like this does
+not inoculate the next paragraph written.
+
+Verified: `mvn clean install` and the full reactor suite green, offline; every edit is prose,
+a comment, or one printed line, so no behaviour changed. `build/check-docs.py` clean. The
+counts above were produced by grepping the whole user-facing set for each flagged phrase
+rather than from reading impressions, which is what turned "straddle" from one sighting into
+six.

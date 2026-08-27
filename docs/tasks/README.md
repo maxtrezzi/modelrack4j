@@ -77,6 +77,7 @@ Phase 0 gates everything else; nothing below M0 should start before its blockers
 | [P8](post-v1.md#p8--status-line-drift-and-a-check-that-would-have-caught-it) | Status-line drift, and a check for it | **Done** — 4 ADRs fixed; `build/check-docs.py` |
 | [P9](post-v1.md#p9--the-three-things-that-had-to-be-right-before-a-first-release) | Pre-release correctness and metadata | **Done** — `snapshot()`, ADR-0038 |
 | [P10](post-v1.md#p10--a-code-review-of-llmsnapshot-and-a-self-correction-found-while-checking-the-fix) | Review of `LlmSnapshot`, plus a self-caught perf regression | **Done** — delegation, no duplication |
+| [P11](post-v1.md#p11--the-user-facing-text-read-as-a-non-native-reader-would-read-it) | The user-facing text, read as a non-native reader would | **Done** — 2 stale claims, 25 phrases |
 | [D1](open-decisions.md#d1--glm-route-if-no-maintained-module-exists) | GLM route if no maintained module | **Closed** — never became live |
 | [D2](open-decisions.md#d2--repository-visibility) | Repository visibility | **Settled** — public, not released; ADR-0034 |
 | [D3](open-decisions.md#d3--token-window-memory-on-a-remote-estimator) | Token-window memory on a remote estimator | **Settled** — opt-in flag |

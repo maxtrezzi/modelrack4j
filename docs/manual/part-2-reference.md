@@ -85,8 +85,8 @@ Import the BOM once, then declare artifacts without versions:
 
 **Core knows no providers.** It contains no provider artifact and never will: each provider
 module registers itself through `ServiceLoader`, and a name whose `provider` has no module on
-the classpath is a configuration error listing the ones that are. An application configuring
-only Anthropic therefore never carries OpenAI's dependencies.
+the classpath is a configuration error that lists the providers actually available. An
+application configuring only Anthropic therefore never carries OpenAI's dependencies.
 
 What core brings with it, and nothing else:
 
@@ -111,7 +111,7 @@ claim rather than the library in general.
 
 | Example | Demonstrates | Needs |
 |---|---|---|
-| `AtomicSnapshot` | [Snapshot-wide atomicity](#reload-semantics): four threads read two models while one save changes both, sampling the pair two ways and counting the mixed ones. Via `snapshot()` the count is zero by construction; via two `get()` calls it is merely small. The count is real, not decorative: sabotaging the swap to publish one model 5 ms early makes it report tens of thousands. | **nothing** — reads configuration only, sends no request |
+| `AtomicSnapshot` | [Snapshot-wide atomicity](#reload-semantics): a single save changes two models at once, while four threads keep reading both — once via two separate `get()` calls, once via one `snapshot()` shared for both lookups. A `get()` pair can occasionally catch one model already updated and the other not (a torn read); a `snapshot()` pair never can, because both lookups read the same frozen snapshot. The counter is real, not decorative: sabotaging the swap to publish one model 5 ms early makes the `get()` count jump to tens of thousands. | **nothing** — reads configuration only, sends no request |
 | `ProviderSwap` | The provider as configuration: the same method, called twice around a file edit, answered by `AnthropicChatModel` and then `OpenAiChatModel`. The method names no provider and has no branch. | `ANTHROPIC_API_KEY` + `OPENAI_API_KEY`, two requests |
 | `ConsoleChat` | Everything interactively: a menu of configured models, streaming where configured, moderation on input where configured, memory across turns, and reload while you watch. | one provider key |
 | `ThreeModelCouncil` | The multi-model scenario: three names, one question, capabilities read from the bundle. | two provider keys |
@@ -150,7 +150,7 @@ llm {
 | Key | Type | Default | Notes |
 |---|---|---|---|
 | `description` | string | *none* | Human-readable. Nothing in the library reads it. Blank is rejected; `null` in a higher layer clears one set lower down. |
-| `provider` | string | *required* | Must match a `ProviderFactory` on the classpath. An unknown value lists the ones that are. |
+| `provider` | string | *required* | Must match a `ProviderFactory` on the classpath. An unknown value is an error that lists the providers actually available. |
 | `api-key` | string | *required* | Use `${VAR}`. Never blank. |
 | `model-name` | string | *required* | The provider's own identifier. **Not validated** — see below. |
 | `temperature` | number | *provider's own* | 0.0–2.0. Omitted means "do not set it", which is different from setting a default. |
@@ -207,8 +207,9 @@ key outright.
 ### Missing and malformed files
 
 A layer that does not exist, or cannot be read, is a `ConfigValidationException` naming the
-path. There is no "skip what is missing" mode: a configuration file the operator expected to
-be read and which silently was not is a worse outcome than a failed start.
+path. There is no "skip what is missing" mode. The reason: an operator expects every listed
+file to be read, and a file that was silently skipped is a worse outcome than a start that
+fails immediately.
 
 ---
 
@@ -228,7 +229,7 @@ memory { type = message-window, max-messages = 20 }
 
 | The provider counts | Behaviour |
 |---|---|
-| **locally** (OpenAI, via a bundled tokenizer) | built, no ceremony |
+| **locally** (OpenAI, via a bundled tokenizer) | built, with no extra configuration |
 | **remotely** (Anthropic, Gemini) | **rejected unless** `allow-remote-token-counting = true` |
 | **not at all** (GLM) | rejected outright; the flag does not apply |
 
@@ -242,8 +243,8 @@ rate-limited, network-dependent HTTP call inside what your application treats as
 bookkeeping. That is a decision, so it is opted into explicitly rather than discovered on a
 bill.
 
-On a local counter the flag is inert rather than an error, because one configuration layer
-commonly spans several providers.
+On a local counter the flag has no effect rather than being an error, because one
+configuration layer commonly spans several providers.
 
 ---
 
@@ -342,12 +343,12 @@ Read rows one and three together: the *same* real condition arrives as two diffe
 depending on which provider the configuration names. GLM's message is in Chinese, and its
 detail code is reachable only via a provider-specific `getCode()`.
 
-So the swap guarantee has a precise width. **Which objects exist, who builds them, with what
+So the swap guarantee covers exactly this much. **Which objects exist, who builds them, with what
 credentials, model, timeout and memory — all config-shaped, all swap freely. What a failing
 call throws does not.** Catch `dev.langchain4j.exception.LangChain4jException` and your
-handling survives any swap; all four providers throw beneath it. Reach below that and you have
-written provider-specific code, which is fine as long as it is deliberate — after a swap it
-does not break loudly, it simply stops being entered.
+handling survives any swap; all four providers throw beneath it. Catching anything more
+specific is provider-specific code, which is fine as long as it is deliberate — after a swap
+it does not fail loudly, the catch block simply stops matching.
 
 The library does not translate these, and
 [ADR-0033](../adr/0033-provider-exceptions-pass-through-untranslated.md) records why:
@@ -389,7 +390,7 @@ removed from it is removed, and `get()` on it then throws. Long-running code hol
 must be ready for that — the console example catches it and returns to its menu.
 
 **Superseded bundles are not closed.** An in-flight request may still hold one. They become
-collectable when nothing references them.
+eligible for garbage collection when nothing references them.
 
 ---
 
@@ -408,7 +409,7 @@ deduplicated set of parent directories and filters events by filename.
 | Watched directory deleted | Re-registration is retried once a second until it succeeds. |
 | `OVERFLOW` | Treated as "something changed": a reload is scheduled. |
 
-The symlink handling is deliberately asymmetric and is not a tidy-up candidate. Resolving a
+The symlink handling is deliberately asymmetric, and it must not be refactored away. Resolving a
 symlink to its real path at registration — the obvious implementation — makes a ConfigMap swap
 **completely invisible**: it produces no event at all under that strategy.
 
@@ -421,7 +422,7 @@ Measured on Linux (inotify, Temurin 25), write to event observed, 20 samples:
 | 0.37 ms | **0.50 ms** | 0.63 ms |
 
 Add the debounce, so a saved file is live roughly 300 ms later by default. Events for one
-logical write arrive within ~2.5 ms, which is what the default is sized against. Lowering it
+logical write arrive within ~2.5 ms, which is the burst the default is chosen to cover. Lowering it
 below the time your writer takes to finish produces reloads of half-written files, which are
 rejected as failures rather than applied.
 
@@ -467,7 +468,7 @@ configuring only Anthropic never has OpenAI's dependencies on its classpath.
 
 Read out of the LangChain4j 1.19.0 artifacts rather than from documentation. Gemini is the
 stable `langchain4j-google-ai-gemini` module; GLM comes from `langchain4j-community-zhipu-ai`,
-which is on the community release train.
+which is released on the community cycle, separately from the stable modules.
 
 **Per-provider notes:**
 
@@ -506,7 +507,7 @@ public interface ProviderFactory {
 ```
 
 `tokenEstimation()` is three-valued rather than boolean on purpose. Every provider except GLM
-ships an estimator, so a boolean would return true almost everywhere and bless every
+ships an estimator, so a boolean would return true almost everywhere and accept every
 configuration — the check would exist and catch nothing. What varies is the *cost*.
 
 `validate()` is where capability mismatches are caught. Throw `ConfigValidationException` with

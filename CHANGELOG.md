@@ -22,7 +22,7 @@ than listed as one long **Added** block.
 - `registry.get(name)` returns the current `LlmBundle`; `names()` lists what is configured.
 - `registry.snapshot()` returns an `LlmSnapshot`: one generation held still, so several
   lookups are guaranteed to agree with each other. `get()` reads the live configuration on
-  every call, so two consecutive calls can straddle a reload — rare, reproducible, and a
+  every call, so a reload can land between two consecutive calls — rare, reproducible, and a
   correctness hazard where several models must be consistent. A snapshot never updates:
   take one per unit of work.
   Bundles are keyed by **configuration name**, never provider name, so two names may share

@@ -137,13 +137,14 @@ public final class ProviderSwap {
     }
 
     private static String anthropic() {
+        // No temperature: claude-sonnet-5's adaptive thinking controls its own sampling, and
+        // the API rejects a non-default temperature with a 400.
         return """
                 llm.SWAP {
                   description = "the model this application talks to"
                   provider    = anthropic
                   api-key     = ${ANTHROPIC_API_KEY}
                   model-name  = "claude-sonnet-5"
-                  temperature = 0.2
                 }
                 """;
     }
