@@ -28,8 +28,8 @@ freezing that the sentence exists to teach.
 
 A full pass over the user-facing text, recorded as
 [P11](../tasks/post-v1.md#p11--the-user-facing-text-read-as-a-non-native-reader-would-read-it),
-found this was not one bad sentence: ten metaphors of the same kind, nine vocabulary items
-above B2, and six sentences whose grammar rather than vocabulary was the obstacle. It also
+found this was not one bad sentence: nine metaphors of the same kind, nine vocabulary items
+above B2, and five grammar problems spread over eight sentences. It also
 found two claims that were plainly wrong — a list of three introduced as two, and a Javadoc
 line written in M2 promising hot reload "when it arrives", left untouched through the two
 milestones that followed the feature landing in M3. Prose nobody can read is also prose
@@ -57,7 +57,7 @@ and unreadable.
 
 **Non-native readability is an independent axis from conceptual readability.** A sentence can
 fail because the reader lacks the domain model, or because the reader lacks the idiom —
-"page someone", "no ceremony", "release train", "a shorter fuse", "three days in" — and the
+"page someone", "no ceremony", "release train", "bites you", "three days in" — and the
 two failures need separate tests. Writing only for conceptual clarity leaves the idiom
 problem untouched, which is what had happened.
 

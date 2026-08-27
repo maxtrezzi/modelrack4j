@@ -85,7 +85,7 @@ Phase 0 gates everything else; nothing below M0 should start before its blockers
 | [P8](post-v1.md#p8--status-line-drift-and-a-check-that-would-have-caught-it) | Status-line drift, and a check for it | **Done** — 4 ADRs fixed; `build/check-docs.py` |
 | [P9](post-v1.md#p9--the-three-things-that-had-to-be-right-before-a-first-release) | Pre-release correctness and metadata | **Done** — `snapshot()`, ADR-0038 |
 | [P10](post-v1.md#p10--a-code-review-of-llmsnapshot-and-a-self-correction-found-while-checking-the-fix) | Review of `LlmSnapshot`, plus a self-caught perf regression | **Done** — delegation, no duplication |
-| [P11](post-v1.md#p11--the-user-facing-text-read-as-a-non-native-reader-would-read-it) | The user-facing text, read as a non-native reader would | **Done** — 2 stale claims, 25 phrases |
+| [P11](post-v1.md#p11--the-user-facing-text-read-as-a-non-native-reader-would-read-it) | The user-facing text, read as a non-native reader would | **Done** — 2 stale claims, 23 phrases |
 | [P12](post-v1.md#p12--testing-the-examples-by-hand-and-a-live-break-in-anthropics-sampling-parameters) | Testing the examples by hand | **Done** — Anthropic dropped non-default `temperature` on claude-sonnet-5 |
 | [P13](post-v1.md#p13--branch-protection-on-main) | Branch protection on `main` | **Done** — required checks, PR required, 0 reviews; ADR-0040 |
 | [D1](open-decisions.md#d1--glm-route-if-no-maintained-module-exists) | GLM route if no maintained module | **Closed** — never became live |

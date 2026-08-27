@@ -238,7 +238,7 @@ Each one demonstrates a single claim from [Why](#why) rather than the library in
 
 | Example | Shows | Cost |
 |---|---|---|
-| [`AtomicSnapshot`](modelrack4j-examples/src/main/java/io/github/maxtrezzi/modelrack4j/examples/AtomicSnapshot.java) | A single save changes two models at once, while four threads keep reading both; reading through `snapshot()` never catches a mix of old and new, reading through two `get()` calls occasionally does | **free, no API key** |
+| [`AtomicSnapshot`](modelrack4j-examples/src/main/java/io/github/maxtrezzi/modelrack4j/examples/AtomicSnapshot.java) | A single save changes two models at once, while four threads keep reading both; reading through `snapshot()` never catches a mix of old and new, reading through two `get()` calls can, though a single run often catches none | **free, no API key** |
 | [`ProviderSwap`](modelrack4j-examples/src/main/java/io/github/maxtrezzi/modelrack4j/examples/ProviderSwap.java) | The same call site answered by Anthropic, then by OpenAI, after a file edit | two requests |
 | [`ConsoleChat`](modelrack4j-examples/src/main/java/io/github/maxtrezzi/modelrack4j/examples/ConsoleChat.java) | An interactive menu of every configured model; edit the file while it runs and the menu changes | a conversation |
 | [`ThreeModelCouncil`](modelrack4j-examples/src/main/java/io/github/maxtrezzi/modelrack4j/examples/ThreeModelCouncil.java) | The scenario above: three models, one question, no provider branch in the code | three requests |

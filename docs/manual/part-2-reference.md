@@ -149,7 +149,7 @@ llm {
 
 | Key | Type | Default | Notes |
 |---|---|---|---|
-| `description` | string | *none* | Human-readable. Nothing in the library reads it. Blank is rejected; `null` in a higher layer clears one set lower down. |
+| `description` | string | *none* | Human-readable. Nothing in the library reads it. Blank is rejected; `null` in a higher layer clears a description set in a lower layer. |
 | `provider` | string | *required* | Must match a `ProviderFactory` on the classpath. An unknown value is an error that lists the providers actually available. |
 | `api-key` | string | *required* | Use `${VAR}`. Never blank. |
 | `model-name` | string | *required* | The provider's own identifier. **Not validated** — see below. |

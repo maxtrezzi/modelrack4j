@@ -88,7 +88,9 @@ branch matching no identifier reads as a decision rather than as drift.
 free number" are both correct and still collide, and `build/check-docs.py` cannot warn about
 it because from inside either branch nothing is wrong. Renumbering is cheap while nothing is
 pushed and the ADR is referenced from nowhere outside the repository, and stops being cheap
-after either. This has already happened once (P13).
+after either. This has already happened once (P13). `CONTRIBUTING.md` carries the
+contributor-facing version of this rule, because an outside contributor never reads this
+file.
 
 Content moves from the discussion log to the ADR by **rewriting**, never copying — the log
 is private material, the ADR is the distilled public result. Accepted ADRs are immutable:
@@ -241,11 +243,18 @@ in-flight requests may still hold them.
   Do not read it as "the counts of what to fix were fine and only the write-up drifted" — an
   early draft of that entry claimed exactly this, and an independent review refuted it from
   the entry's own table. One figure went through three wrong versions in a row, each written
-  while correcting the previous one, and five further counts were wrong once each. A
+  while correcting the previous one, and seven further counts were wrong once each. A
   superlative is a claim; if you have not measured it, do not write it. Note that
   `build/check-docs.py` cannot catch any of this — it checks links, ADR status lines and
   numbering, not whether a sentence is true. The check that did catch it was a session with
   no memory of writing the text, which is the only kind that works here.
+- **Grepping the figure is not enough; read the whole diff.** The two errors the third review
+  of P11 found were invisible to a grep for the number, because the write-up was checked
+  against one commit and the work spanned several. One of them was not a miscount at all: the
+  entry listed a metaphor it had *written* among the metaphors it had *removed*, and no count
+  of anything would have caught it. Before you describe a change, run
+  `git diff main..HEAD` over it and read the output to the end — including when it is long,
+  which is exactly when the previous session stopped.
 - **User-facing prose has a register, and it is not this file's (ADR-0039).** The README,
   `docs/manual/`, public Javadoc, the commented `.conf` examples, `CONTRIBUTING.md` and the
   CHANGELOG are written for a technical reader at roughly B2 English who does not read it as

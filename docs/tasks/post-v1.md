@@ -780,22 +780,24 @@ are frozen and `docs/tasks/` excluded as an internal record:
   list of three. `ThreeModelCouncil`'s Javadoc said the holder API "will make hot reload work
   when it arrives" — hot reload arrived in M3 and shipped in v1, so the sentence had been
   wrong since the day the feature landed and nobody re-read it.
-- **Ten metaphors** that decode only for a reader who already knows the answer: a guarantee
+- **Nine metaphors** that decode only for a reader who already knows the answer: a guarantee
   with a "precise width", a boolean that would "bless" every configuration, the caching trap
   "in a new costume", a decision "welded to" the build, memory built with "no ceremony", a
   module on the community "release train", symlink handling that is "not a tidy-up
-  candidate", a "shorter fuse" for a "flaky" connection, seeing a guarantee "for nothing"
-  (free, or pointless?), and capabilities that vary "depending on who you ask".
+  candidate", seeing a guarantee "for nothing" (free, or pointless?), and capabilities that
+  vary "depending on who you ask".
 - **Nine vocabulary items above B2**, the largest being "straddle a reload" in five places:
   the README, `LlmRegistry`, `LlmSnapshot`, the CHANGELOG, and a line `AtomicSnapshot` prints
   at runtime. The replacement was not invented:
   *"a reload landing between them"* was already the phrasing used elsewhere in the same files,
   so the fix was to stop maintaining two ways of saying one thing. Also "hearsay", "inert",
   "page someone", "collectable", "three days in", "sized against", "in miniature", "bites you".
-- **Six sentences where the grammar was the obstacle rather than the words** — most notably
-  the imperative-as-conditional *"Resolve each file as you parse it … and this throws"*, which
-  appeared in both the README and the tutorial, and the dangling *"An unknown value lists the
-  ones that are"*, which never says what the ones in question are.
+- **Five grammar problems, in eight sentences** — the imperative-as-conditional *"Resolve each
+  file as you parse it … and this throws"* in the README and the tutorial; the dangling *"the
+  ones that are"*, which never says what the ones in question are, twice in the reference;
+  *"no caller to be thrown at"* in the README and in `LlmRegistry`; a doubly-nested relative
+  clause about a file the operator expected to be read; and *"stops being entered"*. Grep
+  those five over `git diff main..HEAD` to get the eight.
 
 **Two smaller findings the owner ruled on separately.** `licence` appeared once against
 `License` everywhere else and in the filename, now uniform. And the Java sample in *Why* uses
@@ -859,9 +861,32 @@ came out of all this, the first draft said "four wrong versions in total", which
 neither the chain of three nor the four one-off counts. It was caught by counting them into
 a list before writing the sentence — which is the whole rule, arrived at the long way.
 
-The tally, for anyone tempted to treat this as a run of bad luck rather than a method
-failure: **one figure wrong three times in a row, and five more wrong once each.** Nothing
-that was measured before being written was ever wrong.
+**A third review found that two of the three counts above were still wrong, and that one of
+them was not a miscount.** The vocabulary figure held — nine items, with "straddle a reload" in
+exactly five files. The other two did not:
+
+- **Ten metaphors was nine.** The tenth, *a "shorter fuse" for a "flaky" connection*, was never
+  in any file. `git log --all -S "shorter fuse"` returns only the two commits that *describe*
+  this pass, and `-S "flaky connection"` returns nothing at all. It looks like the vivid version
+  of a sentence that was **written** rather than removed: the tutorial's replacement text reads
+  *"a shorter timeout for an unreliable local connection"*. So the write-up did not merely
+  miscount what it had fixed — it credited itself with removing a metaphor it had just invented,
+  and did so in the entry whose subject is writing figures without measuring them.
+- **Six grammar sentences was five problems over eight sentences.** Six matches neither
+  convention used by its two neighbours in the same list, which count distinct items. Three of
+  the five appear twice ("Resolve each file as you parse it" in the README and the tutorial,
+  "the ones that are" twice in the reference, "no caller to be thrown at" in the README and in
+  `LlmRegistry`) and two appear once, which is 8.
+
+Both were found by grepping the whole `main..HEAD` diff rather than the single commit the
+earlier rounds had looked at — the pass spans more than one commit, and no earlier round had
+read it end to end. The status-board figure moves from 25 to 23 with them.
+
+The tally, for anyone tempted to treat this as a run of bad luck rather than a method failure:
+**one figure wrong three times in a row, and seven more wrong once each**, the last two of them
+above. Nothing that was measured before being written was ever wrong. And one of the eight is
+not a counting error at all: "run the command that produces the figure before writing the
+sentence" catches a wrong count, but only reading the diff catches a fix that never happened.
 
 **They were corrected in place in ADR-0039, which its accepted status would normally
 forbid.** The judgement: the freeze exists to stop a decision being rewritten after people
@@ -872,6 +897,29 @@ inside an accepted ADR, in order to honour a rule against revisionism, would inv
 rule. The corrected sentences state the measurement rather than an adjective, so the next
 reader can check them. Commit `418ca5b`'s message still says "six places" and is left alone:
 a commit message is history, not a document.
+
+The same judgement was applied a second time for the two counts above, under the same
+conditions: still not on `main`, still unpushed, still referenced from nowhere outside this
+repository. Two of the three figures in ADR-0039's Context are now measurements a reader can
+re-run, and the Forces section no longer offers *"a shorter fuse"* as an example of an idiom
+this repository removed, because it never contained it. What was **not** touched: ADR-0039's
+"26 words to 32" for the README's `AtomicSnapshot` row. That figure was correct for the pass it
+measures. The same cell is 38 words today, because a separate finding — the row claimed a
+`get()` pair "occasionally does" catch a torn read, where five runs of the example gave 2, 0, 0,
+1 and 0 — replaced the assertion with what the counter can actually promise. A later edit for a
+different reason does not make the earlier measurement false, and does not license a third pass
+over a frozen body.
+
+**Two defects the same check turned up, neither of them a count.** Grepping every phrase this
+entry claims to have removed against the current working tree found one survivor:
+*"clears one set lower down"*, the native-speaker ellipsis the pass fixed in the README, was
+left standing in `part-2-reference.md`'s key table and in the CHANGELOG. One of three
+instances fixed, and the write-up said nothing about the other two, because the pass worked
+file by file and the count was never taken across files. Both are now fixed. Separately, and
+older than this branch: in `docs/adr/README.md` the `Superseded by ADR-NNNN` row sits *below*
+the paragraph that follows the status table, so it renders as a line of literal pipes rather
+than as a table row. `6e53dab` ([P8](#p8--status-line-drift-and-a-check-that-would-have-caught-it))
+inserted that paragraph into the middle of the table. The row is moved back inside it.
 
 The lesson is narrower than "verify claims", which this project already knew. It is that the
 discipline was applied asymmetrically — rigorously to the subject of the work, not at all to
@@ -887,8 +935,24 @@ a comment, or one printed line, so no behaviour changed. `build/check-docs.py` c
 **Status:** Done 2026-08-27 · **Branch:** `docs/documentation-reorganisation`
 
 Before touching anything for M6, the plan was to run the bundled examples by hand rather than
-trust that they still worked — the four provider modules had only ever been exercised through
-`-Pintegration verify`'s `ProviderIT` classes, never through the code a reader actually copies.
+trust that they still worked.
+
+**The premise first written here was wrong, and is corrected rather than deleted.** It said the
+four provider modules had only ever been exercised through `-Pintegration verify`'s `ProviderIT`
+classes, never through the code a reader actually copies.
+[P3](#p3--the-manual) contradicts that: it ran the tutorial's ten steps live on 2026-08-23, the
+day *before* [P6](#p6--the-integration-tests-against-live-apis) first reached a provider from an
+integration test. What is true is narrower, in two parts. The examples module depends on OpenAI
+and Anthropic only, so Gemini and GLM have never appeared in an example at all
+([P4](#p4--two-examples-for-the-two-undemonstrated-strengths), *Not done*). And no run of
+anything — example or test — had ever sent the combination that broke: a non-default
+`temperature` to `claude-sonnet-5`. The conclusion this task reached is unaffected; only the
+account of why the gap survived changes.
+
+One thing that leaves unresolved. At P3's commit the tutorial's step 5 already set
+`temperature = 0.2` on `claude-sonnet-5`, so either that step's chat was never actually sent —
+P3 captured the menu there but no answer — or Anthropic's deprecation landed between
+2026-08-23 and this task. Nothing in the repository decides it, and this entry does not guess.
 
 #### Result
 
@@ -941,6 +1005,9 @@ the time it took to write this paragraph.
 
 Verified: `mvn clean install` green; `ProviderSwap`, `ThreeModelCouncil` and `ConsoleChat` all
 re-run afterward and all answered. `build/check-docs.py` clean.
+
+---
+
 ### P13 — Branch protection on `main`
 
 **Status:** Done 2026-08-27 · **Branch:** `docs/documentation-reorganisation`

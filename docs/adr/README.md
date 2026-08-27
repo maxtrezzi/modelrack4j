@@ -23,12 +23,12 @@ narrows or widens part of one). Both default to `—`.
 | `Proposed` | Written up, not yet agreed |
 | `Accepted` | In force; implementation must follow it |
 | `Accepted — <aspect> amended by ADR-NNNN` | Still in force, but a later ADR narrowed or widened part of it; the later ADR wins where they differ |
+| `Superseded by ADR-NNNN` | Replaced wholesale; kept for the reasoning trail |
 
 `amended` may be `widened` or `narrowed` where that is more precise — ADR-0008 reads
 *"swap scope widened by ADR-0012"*. What may not vary is the rest of the shape: the row and
 the ADR's own `Status` line must match **exactly**, and the pointer must name an ADR number.
 `build/check-docs.py` enforces both.
-| `Superseded by ADR-NNNN` | Replaced wholesale; kept for the reasoning trail |
 
 Superseding or amending an ADR means editing only the old file's `Status` line and adding
 the pointer. Its body stays untouched — including the parts the newer ADR overrode, since

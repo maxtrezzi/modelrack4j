@@ -35,7 +35,7 @@ than listed as one long **Added** block.
 - An optional `description` key on each named block: one short line saying what the
   configuration is for, surfaced through `LlmConfig.description()`. Nothing in the library
   reads it. A present-but-blank description is rejected; `description = null` in a higher
-  layer clears one set lower down.
+  layer clears a description set in a lower layer.
 - Configuration errors are `ConfigValidationException` and name the offending block; an
   unknown name is `UnknownConfigurationException`.
 
