@@ -762,7 +762,8 @@ the pair both ways and count the mixed ones — via `snapshot()` the count is ze
 construction"*, which is accurate, short, and unreadable unless you already hold the mental
 model it describes. The manual's version of the same sentence had the same problem.
 
-**The distinction this settled, which is now the rule for this repository's prose.** Being
+**The distinction this settled, now recorded as
+[ADR-0039](../adr/0039-user-facing-prose-is-written-for-a-non-native-reader.md).** Being
 brief is not the defect; being brief *by way of a figure of speech the reader must unpack* is.
 A short sentence is fine as long as it explains itself on a first reading. And the audience
 is technical but does not read English as a first language, so idiom and rare vocabulary are
@@ -799,9 +800,11 @@ are frozen and `docs/tasks/` excluded as an internal record:
 `License` everywhere else and in the filename, now uniform. And the Java sample in *Why* uses
 `claude-sonnet-4-6` while every configuration example uses `claude-sonnet-5` — deliberate,
 because that sample's whole point is a `temperature` fixed in a builder call and
-`claude-sonnet-5` rejects a non-default temperature with a 400 (found by P6's live run). It
-read as an inconsistency, so the reason is now stated where `temperature` is already
-discussed.
+`claude-sonnet-5` rejects a non-default temperature with a 400 — found by
+[P12](#p12--testing-the-examples-by-hand-and-a-live-break-in-anthropics-sampling-parameters)
+running `ProviderSwap` by hand, not by P6, which this entry first credited in error and P12
+caught. It read as an inconsistency, so the reason is now stated where `temperature` is
+already discussed.
 
 **One thing this task got wrong about itself, worth recording.** The sentence added to
 explain the `claude-sonnet-4-6` choice was first written as *"a temperature welded into a
@@ -815,3 +818,65 @@ a comment, or one printed line, so no behaviour changed. `build/check-docs.py` c
 counts above were produced by grepping the whole user-facing set for each flagged phrase
 rather than from reading impressions, which is what turned "straddle" from one sighting into
 six.
+
+---
+
+### P12 — Testing the examples by hand, and a live break in Anthropic's sampling parameters
+
+**Status:** Done 2026-08-27 · **Branch:** `docs/plain-english-pass`
+
+Before touching anything for M6, the plan was to run the bundled examples by hand rather than
+trust that they still worked — the four provider modules had only ever been exercised through
+`-Pintegration verify`'s `ProviderIT` classes, never through the code a reader actually copies.
+
+#### Result
+
+`AtomicSnapshot` (no key, no request) reproduced the [ADR-0038](../adr/0038-snapshot-gives-callers-the-atomicity-the-swap-already-has.md)
+guarantee live: 2 mixed pairs in roughly 139 million reads through `get()`, 0 through
+`snapshot()`. `mvn -Pintegration verify` passed on all four providers, no skips. Then, with
+real keys, `ProviderSwap`'s Anthropic branch failed:
+
+```
+answer: [request failed: {"type":"error","error":{"type":"invalid_request_error",
+"message":"`temperature` is deprecated for this model."}}]
+```
+
+#### What broke, and why the existing tests never caught it
+
+Anthropic has deprecated non-default `temperature`/`top_p`/`top_k` on `claude-sonnet-5` (and
+on Opus 4.8 and Fable 5): the model's adaptive thinking now controls its own sampling, and a
+non-default value is a 400, not a warning. `AnthropicProviderIT` never saw this because it
+targets `claude-sonnet-4-6` and sets no `temperature` at all — this is a parameter rejected by
+one specific model, not an authentication or account failure, so nothing short of running that
+exact combination live could have found it. Same shape of gap as
+[P6](#p6--the-integration-tests-against-live-apis), one level down: there it was a model ID
+nothing had verified, here it is a parameter nothing had sent.
+
+#### Changed
+
+`council.conf`'s `SL` and `SH` lost `temperature`; they already differed in memory and
+streaming, so nothing new had to be invented to keep them distinct. `ProviderSwap.java`'s
+`anthropic()` block lost its `temperature` line the same way. `README.md` and
+`docs/manual/part-1-tutorial.md` were re-read against the fix and updated everywhere they
+quoted the old blocks, including step 8's layering demo, which used to show `local.conf`
+overriding `temperature` — it now overrides `timeout` instead, since that field survives
+contact with the real API.
+
+One unrelated drift caught in the same pass: step 4's shown console listing displayed `SL`'s
+description as *"short and cheap — the everyday answer"* before the file had that description
+— it still said *"my first model"* at that point in the walkthrough. Fixed to match the file
+as written at each step.
+
+#### A correction P11 needed, made after this entry pointed it out
+
+[P11](#p11--the-user-facing-text-read-as-a-non-native-reader-would-read-it), landed in the
+same commit as this task's fix, first explained the `claude-sonnet-4-6`/`claude-sonnet-5`
+split in the README's *Why* section as "found by P6's live run." It was not: P6 ran
+`claude-sonnet-4-6` with no `temperature` set and could not have hit this. The finding is
+this task's, from running `ProviderSwap` by hand rather than the integration tests. Flagged
+here rather than fixed directly, since the sentence belonged to an entry this task did not
+own — a second session, working the same checkout concurrently, corrected P11's wording in
+the time it took to write this paragraph.
+
+Verified: `mvn clean install` green; `ProviderSwap`, `ThreeModelCouncil` and `ConsoleChat` all
+re-run afterward and all answered. `build/check-docs.py` clean.
