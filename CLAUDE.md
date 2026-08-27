@@ -69,6 +69,20 @@ directly to `main` (ADR-0016). Name it after the work item — `task/0.1-pin-lan
 no task ID. One branch carries the work, its status update in `docs/tasks/`, and any ADR it
 produces.
 
+**This is now enforced on the remote, not merely asked (ADR-0040).** `main` requires a pull
+request, force-pushing and deleting it are blocked, and the five checks in
+`.github/workflows/build.yml` must pass and be current with the branch before a merge. No
+approving review is required, so a green build is the whole gate. One branch may carry
+several `docs/tasks/` entries when they are genuinely one piece of work — see the convention
+note in `docs/tasks/README.md`, and say so in the entries, so a branch matching no identifier
+reads as a decision rather than as drift.
+
+**ADR numbers are only safe once they are on `main`.** Two branches that each take "the next
+free number" are both correct and still collide, and `build/check-docs.py` cannot warn about
+it because from inside either branch nothing is wrong. Renumbering is cheap while nothing is
+pushed and the ADR is referenced from nowhere outside the repository, and stops being cheap
+after either. This has already happened once (P13).
+
 Content moves from the discussion log to the ADR by **rewriting**, never copying — the log
 is private material, the ADR is the distilled public result. Accepted ADRs are immutable:
 to change a decision, write a new ADR and mark the old one `Superseded by ADR-NNNN` (or
@@ -213,6 +227,24 @@ in-flight requests may still hold them.
   point and it outlived the phase: three of its eight verification tasks refuted the premise
   they were written with. Read the artifact with `javap` or `unzip`, query Central, fetch the
   upstream POM. "I believe the API is…" is how this project gets things wrong.
+- **That rule covers the numbers you use to describe your own work, and this is where it
+  gets broken.** Counts, word deltas, "N places", "the largest", "N precedents" — run the
+  command that produces the figure *before* writing the sentence, not after, and prefer the
+  measurement to an adjective so the next reader can re-run it. P11 is the cautionary tale:
+  the counts of what to fix were grepped and held, while every count describing the fix was
+  estimated and was wrong, three times, each wrong version written while correcting the
+  previous one. A superlative is a claim; if you have not measured it, do not write it. Note
+  that `build/check-docs.py` cannot catch any of this — it checks links, ADR status lines and
+  numbering, not whether a sentence is true.
+- **User-facing prose has a register, and it is not this file's (ADR-0039).** The README,
+  `docs/manual/`, public Javadoc, the commented `.conf` examples, `CONTRIBUTING.md` and the
+  CHANGELOG are written for a technical reader at roughly B2 English who does not read it as
+  a first language. Two tests per sentence: would a reader who does not yet know the
+  mechanism parse it, and would a non-native reader parse it without a dictionary? Brevity
+  stays the default — what the rule constrains is compressing meaning into metaphor or idiom,
+  not length. **`docs/adr/`, `docs/tasks/` and this file are deliberately exempt**: their
+  readers already hold the context, and an accepted ADR's body cannot be edited anyway. Do
+  not "fix" their register, and do not let a user-facing paragraph drift back toward it.
 - **`docs/tasks/open-decisions.md` needs the owner.** Ask; do not decide unilaterally.
   D1–D3 are all settled, so the file is currently a record rather than a queue — a new
   entry there is a question for the owner, not work to pick up.
