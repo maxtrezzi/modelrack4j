@@ -108,11 +108,14 @@ unenforceable by construction.
 read it, and the pass that established the rule also removed two false statements that had
 survived precisely because the surrounding prose discouraged close reading.
 
-**What is accepted.** Some documents get slightly longer, though measurably less than the
-rule's cost is usually assumed to be: the `AtomicSnapshot` row in the README, the worst case
-in the whole pass, grew by six words. The answer to "can this be shorter?" is yes, and it
-was, and it did not work — and the price of that finding turns out to be small enough that
-length is rarely the real argument against applying this rule.
+**What is accepted.** Some documents get longer. The figure is given as a measurement rather
+than an impression because three drafts of this paragraph estimated it instead, and all three
+were wrong: the commit that carried the pass took the README, both parts of the manual and
+the CHANGELOG from 11,597 words to 11,752, or **155 words — 1.34%**. That commit also carried
+an unrelated configuration fix, so a little of the 155 is not this rule's doing. The sentence
+that triggered the rule went from 26 words to 32 where the README describes `AtomicSnapshot`,
+and from 73 to 99 where the reference describes the same example. The answer to "can this be
+shorter?" is yes, and it was, and it did not work.
 
 **The rule is a habit, not a gate, and it will be violated.** It already was, inside the
 commit that established it: the sentence added to explain the `claude-sonnet-4-6` model

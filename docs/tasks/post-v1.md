@@ -814,21 +814,35 @@ from the paragraph fifty lines above. Caught immediately, but it says something 
 failure mode: the register is a habit, not a decision made once, and a pass like this does
 not inoculate the next paragraph written.
 
-**Three numbers in this work were wrong, and a later coherence check caught them.** The
-counts of *what to fix* were produced by grepping the whole user-facing set for each flagged
-phrase, and they held. The counts describing *the fix itself* were written from impression
-and did not:
+**Every number describing this work was wrong at least once.** The counts of *what to fix*
+were produced by grepping the whole user-facing set for each flagged phrase, and they held.
+The counts describing *the fix itself* were written from impression, and did not:
 
 | Claimed | Where | Actual |
 |---|---|---|
 | "straddle a reload" in **six** places | this entry, and commit `418ca5b`'s message | **five** |
 | the old README sentence was **eleven** words shorter | ADR-0039, Context | **six** (26 against 32) |
-| the `AtomicSnapshot` row grew by about **fifteen** words | ADR-0039, Consequences | **six** |
+| the README's `AtomicSnapshot` row grew by about **fifteen** words | ADR-0039, Consequences | **six** (35 against 41) |
 
 The last two describe the same edit and disagree with each other, which is what exposed them.
 Both sat in an ADR whose subject is careless writing, and the fifteen was in the sentence
 justifying the rule's cost — overstating that cost by two and a half times while arguing it
 was worth paying.
+
+**The first correction was itself wrong, and a second check caught that.** Replacing
+"fifteen" with the measured six, the rewritten sentence called that README row *"the worst
+case in the whole pass"* — asserted, not measured, and false: the same example's row in
+`part-2-reference.md` grew from 73 words to 99. The next attempt called *that* one the
+largest single expansion, which was also wrong; the largest hunk in the commit is a 13-to-63
+rewrite in the README, and it belongs to [P12](#p12--testing-the-examples-by-hand-and-a-live-break-in-anthropics-sampling-parameters)'s
+`temperature` explanation rather than to this rule, because that one commit carried two
+pieces of work. The paragraph now gives whole-file totals — 11,597 words to 11,752, 1.34% —
+and names the two sentences it can attribute, with no superlative at all.
+
+Three iterations to state one cost. Each wrong version was written while *correcting* the
+previous wrong version, which is the part worth keeping: the impulse to reach for a vivid
+figure survived being caught twice, and what finally stopped it was running the measurement
+before writing the sentence rather than after.
 
 **They were corrected in place in ADR-0039, which its accepted status would normally
 forbid.** The judgement: the freeze exists to stop a decision being rewritten after people
