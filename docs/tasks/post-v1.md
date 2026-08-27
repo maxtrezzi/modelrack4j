@@ -880,3 +880,46 @@ the time it took to write this paragraph.
 
 Verified: `mvn clean install` green; `ProviderSwap`, `ThreeModelCouncil` and `ConsoleChat` all
 re-run afterward and all answered. `build/check-docs.py` clean.
+### P13 — Branch protection on `main`
+
+**Status:** Done 2026-08-27 · **Branch:** `task/p13-branch-protection-on-main`
+
+[ADR-0016](../adr/0016-one-feature-branch-per-task.md) left "merge strategy and whether pull
+requests are used" open pending [D2](open-decisions.md#d2--repository-visibility). D2 has
+been settled since [ADR-0034](../adr/0034-the-repository-is-public-before-it-is-released.md);
+nothing on GitHub enforced either sentence in the meantime, though —
+`repos/.../branches/main/protection` returned `404 Branch not protected`, and the repository's
+only collaborator held unrestricted `admin` push access to `main`.
+
+**Applied**, via `gh api --method PUT repos/.../branches/main/protection`: the five checks
+`.github/workflows/build.yml` already runs (`JDK 17`, `JDK 21`, `JDK 25`, `docs consistency`,
+`offline, no API keys`) are now required and must be current with the branch; a pull request
+is required before merging, with the required approving-review count at `0`; force pushes and
+deletion are disallowed on `main`. `enforce_admins` is `false`.
+[ADR-0040](../adr/0040-protect-main-with-required-checks-not-required-review.md) records the
+decision, including the one non-obvious finding: `enforce_admins` is all-or-nothing on
+GitHub's side, so turning it off to avoid a fake single-maintainer review requirement also
+exempts the sole admin from the force-push and deletion protections, not just the review gate.
+Confirmed against GitHub's own documentation and changelog rather than assumed.
+
+**Numbering note, and how the collision it predicted was settled.** This work was done on a
+branch off `main`, whose history stops at P10 and ADR-0038, while a second unmerged branch
+independently held its own P11/P12 sections and a file already named `0039-...md`, for
+unrelated work. `build/check-docs.py` rejects any gap in ADR numbering, so neither branch
+could leave 0039 free for the other: each had to take `main`'s actual next free number, and
+this entry was written expecting the two `0039` files to collide and one to be renumbered by
+whichever merged second. Task identifiers have no such tooling check, so P13 was chosen over
+the technically-free P11/P12 to keep the collision confined to the one place a script forced
+it.
+
+That is what happened. The two branches were consolidated into this one, and this ADR was
+renumbered to [ADR-0040](../adr/0040-protect-main-with-required-checks-not-required-review.md)
+because the prose-register ADR was committed first and lands first in the merged history. The
+rule this leaves for next time: **an ADR number is only safe once it is on `main`.** Two
+branches that each take "the next free number" are both correct and still collide, and the
+checker cannot warn about it, because from inside either branch nothing is wrong. Renumbering
+is cheap while nothing is pushed and no ADR is referenced from outside the repository; it
+stops being cheap after either.
+
+**Not done.** No non-admin collaborator exists yet to observe the protection actually gating
+anything; today it is inert for the one person who can push.
