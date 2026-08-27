@@ -1,6 +1,6 @@
 # ADR-0016: One feature branch per task
 
-- **Status:** Accepted — the merge strategy amended by [ADR-0040](0040-protect-main-with-required-checks-not-required-review.md)
+- **Status:** Accepted
 - **Date:** 2026-07-26
 - **Supersedes:** —
 - **Amends:** —

@@ -982,5 +982,22 @@ checker cannot warn about it, because from inside either branch nothing is wrong
 is cheap while nothing is pushed and no ADR is referenced from outside the repository; it
 stops being cheap after either.
 
+**This ADR does not amend ADR-0016, and the markers saying it did were removed.** A later
+coherence check on this branch added `Amends: ADR-0016` to ADR-0040's header and the matching
+`Accepted — the merge strategy amended by ADR-0040` to ADR-0016's status, reasoning from the
+dozen existing amendment pairs in `docs/adr/` and from ADR-0016 having no forward pointer to
+where its open question was closed. That reasoning skipped the paragraph in ADR-0040's own
+Context that had already considered and rejected it: ADR-0016's decision — one branch per
+task, nothing direct to `main` — is untouched here, and the amend mechanism is for an ADR
+that *narrows or widens* an earlier decision, not for one that supplies a decision the
+earlier ADR explicitly declined to make. An independent review caught the header and the body
+contradicting each other, and the markers were removed rather than the paragraph rewritten.
+
+Recorded because the argument for adding them is a good one and someone will make it again.
+The forward pointer a reader of ADR-0016 might want is real, but the amend fields are the
+wrong instrument for it, and `build/check-docs.py` enforces them in pairs, so a marker added
+on one side silently forces the other. The relationship is stated in prose in this ADR's
+Context, which is where it belongs.
+
 **Not done.** No non-admin collaborator exists yet to observe the protection actually gating
 anything; today it is inert for the one person who can push.

@@ -3,8 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-08-27
 - **Supersedes:** —
-- **Amends:** [ADR-0016](0016-one-feature-branch-per-task.md) — settles the merge strategy
-  and pull-request question it deliberately left open
+- **Amends:** —
 
 ## Context
 
