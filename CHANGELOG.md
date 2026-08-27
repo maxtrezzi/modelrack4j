@@ -82,6 +82,11 @@ than listed as one long **Added** block.
   one while it runs changes the menu underneath you.
 - `ThreeModelCouncil`, an example that asks one question of three models configured together
   and prints the three answers, with no provider branch anywhere in the code.
+- The bundled examples set no `temperature` on their Anthropic blocks. Anthropic has
+  deprecated a non-default `temperature` on `claude-sonnet-5`, where the model's adaptive
+  thinking controls its own sampling and the API answers a non-default value with a 400. If
+  you copied `council.conf` from an earlier draft, remove that line. `gpt-5.1` still accepts
+  one.
 
 ### Build and artifacts
 

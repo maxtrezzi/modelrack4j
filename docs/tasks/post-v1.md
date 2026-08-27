@@ -754,7 +754,7 @@ delegation chain.
 
 ### P11 — The user-facing text, read as a non-native reader would read it
 
-**Status:** Done 2026-08-27 · **Branch:** `docs/plain-english-pass`
+**Status:** Done 2026-08-27 · **Branch:** `docs/documentation-reorganisation`
 
 Prompted by the owner failing to parse one of this repository's own sentences. The README
 described the `AtomicSnapshot` example as *"One save changes two models; four threads sample
@@ -823,7 +823,7 @@ six.
 
 ### P12 — Testing the examples by hand, and a live break in Anthropic's sampling parameters
 
-**Status:** Done 2026-08-27 · **Branch:** `docs/plain-english-pass`
+**Status:** Done 2026-08-27 · **Branch:** `docs/documentation-reorganisation`
 
 Before touching anything for M6, the plan was to run the bundled examples by hand rather than
 trust that they still worked — the four provider modules had only ever been exercised through
@@ -882,7 +882,7 @@ Verified: `mvn clean install` green; `ProviderSwap`, `ThreeModelCouncil` and `Co
 re-run afterward and all answered. `build/check-docs.py` clean.
 ### P13 — Branch protection on `main`
 
-**Status:** Done 2026-08-27 · **Branch:** `task/p13-branch-protection-on-main`
+**Status:** Done 2026-08-27 · **Branch:** `docs/documentation-reorganisation`
 
 [ADR-0016](../adr/0016-one-feature-branch-per-task.md) left "merge strategy and whether pull
 requests are used" open pending [D2](open-decisions.md#d2--repository-visibility). D2 has
