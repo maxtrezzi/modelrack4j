@@ -95,7 +95,8 @@ than listed as one long **Added** block.
 - Java 17 baseline, built and tested on JDK 17, 21 and 25.
 - Built against LangChain4j 1.19.0, with both the stable and community BOMs imported.
 - `modelrack4j-bom` versions every artifact from one coordinate.
-- Sources and javadoc jars attach to every published module.
+- Sources and javadoc jars attach to each of the five modules that produce a jar — core and
+  the four providers. The parent and `modelrack4j-bom` publish as POMs.
 - `LICENSE` and a `NOTICE` file ship inside `META-INF/` of every jar. The `NOTICE` is four
   lines and stays that way on purpose: Apache 2.0 §4(d) requires anyone redistributing this
   library, or a derivative of it, to carry its attribution along.

@@ -451,6 +451,13 @@ with `-sources` and `-javadoc` jars attached, the parent and the BOM install as 
 `deploy`, which is what "deliberately NOT published" in its POM description has to mean to
 be true.
 
+> **Corrected 2026-08-28 by [P14](post-v1.md#p14--a-coherence-pass-over-the-tracked-documentation),**
+> **marker added by [P15](post-v1.md#p15--a-second-coherence-pass-and-what-the-first-one-missed).**
+> This read "all six publishable modules install with `-sources` and `-javadoc` jars". Five
+> modules produce a jar — core and the four providers — and seven artifacts install, since
+> the parent and the BOM install as POMs. P14 fixed the sentence and recorded that it had
+> marked all three of its miscounts; this is the one that went unmarked.
+
 So M5 came down to the two documents that did not exist, plus one behaviour the act of
 writing them exposed.
 

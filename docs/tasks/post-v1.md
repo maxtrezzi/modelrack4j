@@ -249,8 +249,15 @@ decoration because sabotaging the swap makes it report tens of thousands.
 
 #### Completeness pass on Part 2
 
-Audited mechanically rather than by reading: every public API member (28 of 28) and every
-configuration key the loader reads (14 of 14) is documented. One real hole —
+Audited mechanically rather than by reading, **on 2026-08-24**: every public API member
+(28 of 28) and every configuration key the loader reads (14 of 14) was documented that day.
+A completeness audit is true only on the date it runs, and this one stopped being true two
+days later — [P9](#p9--the-three-things-that-had-to-be-right-before-a-first-release) added
+`snapshot()` and `LlmSnapshot`, and
+[P14](#p14--a-coherence-pass-over-the-tracked-documentation) found the reference had never
+taken them. The date is added by
+[P15](#p15--a-second-coherence-pass-and-what-the-first-one-missed): P14 named the missing
+date as the fix and applied it to M5's capture, not here. One real hole —
 `grep -cE "modelrack4j-bom|<dependency>|artifactId"` returned **0**, so a reference manual
 never said what to put in a POM. Added a `Dependencies` section: the BOM import, one artifact
 per provider, the rule that core knows no providers, core's actual dependency tree, and the
@@ -1219,3 +1226,125 @@ list, and the only one here that costs nothing at all.
 
 Verified: `mvn clean install` green, reactor 96/96, offline with no keys. `build/check-docs.py`
 clean. Every edit is prose, a comment or a table row; no behaviour changed.
+
+---
+
+### P15 — A second coherence pass, and what the first one missed
+
+**Status:** Done 2026-08-28 · **Branch:** `docs/documentation-reorganisation`
+
+The same request [P14](#p14--a-coherence-pass-over-the-tracked-documentation) answered, asked
+again the same day by a session with no memory of answering it. `build/check-docs.py` was
+clean across 40 ADRs and 54 files, and `mvn clean verify` was green offline (core 63, reactor
+96), so again nothing here is a defect either of those can see.
+
+Carried on the same branch as [P11](#p11--the-user-facing-text-read-as-a-non-native-reader-would-read-it),
+[P12](#p12--testing-the-examples-by-hand-and-a-live-break-in-anthropics-sampling-parameters),
+[P13](#p13--branch-protection-on-main) and P14, which is unmerged. **All eight files this task
+edits are files that branch has already changed** — `git status --short` compared against
+`git diff --name-only main..HEAD` — so a second branch off it would have stacked and then
+conflicted. Named after the work rather than after P15, per the convention note in
+[`README.md`](README.md#conventions).
+
+Five defects and two smaller items, counted into a list before this sentence was written. Two
+of the five are in P14's own write-up, which is the part worth keeping.
+
+#### The over-claim ADR-0038 corrected was standing in three places, not two
+
+P14 found it in `CHANGELOG.md` and in `AtomicSnapshot`'s Javadoc and fixed both. The third
+copy is the first place a reader meets the guarantee at all — point 3 of the README's *Why*:
+
+> …atomically across every configured model at once, **so a flow using `SL` and `SH` together
+> never sees one of them updated and the other not.**
+
+The README states the opposite 334 lines further down, under *Hot reload*: a reload can land
+between two consecutive `get()` calls, at roughly two per million pairs. Its own
+`AtomicSnapshot` row says a `get()` pair *can* catch a mix.
+
+`git log -L 57,61:README.md` dates it: the claim arrived with the README itself in M5 (#18),
+as *"a multi-model flow never sees a new `SL` next to an old `SH`"*, and #23 rewrote the
+sentence and kept the claim. The three copies are worded three different ways. The CHANGELOG's
+repeats the sentence ADR-0038 and
+[P9](#p9--the-three-things-that-had-to-be-right-before-a-first-release) both quote;
+`AtomicSnapshot`'s is a near-paraphrase of it, in the file ADR-0038 is about; this one
+restates the claim in a reader's own terms, in the pitch, far from where the guarantee is
+explained. Searching for the wording the ADR uses reaches the first and stands a fair chance
+at the second. Nothing about it reaches the third.
+
+The paragraph now says what ADR-0038 actually gives: the swap happens in one step across every
+configured model, so a half-applied configuration never exists, and a flow that needs two
+models from one version of the file asks for a snapshot.
+
+#### Two of P14's own fixes were not the fixes it recorded
+
+Neither is a miscount, and neither is reachable by a grep. Both are P14's sentences read
+against P14's diff.
+
+- **"All three are corrected in place with a dated marker."** Two were.
+  `grep -n "Corrected 2026-08-28" docs/tasks/milestones.md` returned two lines, both in
+  [M0](milestones.md#m0--skeleton-and-ci). [M5](milestones.md#m5--release-readiness)'s "all
+  six publishable modules install with `-sources` and `-javadoc` jars" was corrected to five
+  with no marker at all. The marker is added, and names who added it.
+- **"The fix in each case was a date, not a number."** P14 named
+  [P4](#p4--two-examples-for-the-two-undemonstrated-strengths)'s "every public API member
+  (28 of 28)" and M5's bundle-table capture as the two claims that were true when written and
+  became false when something else changed. M5's capture got its date. P4's audit did not, and
+  went on reading as a permanent fact — while `CLAUDE.md` was adopting the rule in the same
+  commit, quoting that exact figure. It is dated now, with what falsified it: P9 added
+  `snapshot()` and `LlmSnapshot` two days later.
+
+#### Two counts that contradict the documents around them
+
+- **`docs/manual/part-1-tutorial.md`, step 5: "Two of the four parts of a bundle are
+  optional."** Three of the four are — `StreamingChatModel`, `ModerationModel` and
+  `ChatMemoryProvider` — according to Part 2's *Concepts* row, the README's bundle table and
+  `LlmBundle` itself. The step adds two of the three, and the sentence generalised that to the
+  bundle. It now names all three and says where moderation is covered.
+- **`CHANGELOG.md`: "Sources and javadoc jars attach to every published module."**
+  `modelrack4j-bom` is a published module and produces neither — `modelrack4j-bom/target`
+  holds no jar at all. This is the same over-claim P14 corrected in M5, one file over, and
+  this copy is the user-facing one.
+
+#### Two smaller ones in the reference
+
+**The Anthropic `temperature` finding had reached every user-facing document except the
+reference.** [P12](#p12--testing-the-examples-by-hand-and-a-live-break-in-anthropics-sampling-parameters)
+recorded it in the README, the tutorial, the CHANGELOG and `council.conf`.
+`docs/manual/part-2-reference.md` described `temperature` as 0.0–2.0 with no note, carried no
+Anthropic entry among its per-provider notes, and had no troubleshooting row for the error a
+reader actually sees. Same shape as P14's finding that `snapshot()` never reached that page: a
+fact that landed everywhere except the page promising completeness. It gains a provider note,
+a troubleshooting row, and a pointer from the key table.
+
+**One cost taken deliberately.** Before this, `part-2-reference.md` named no model identifier
+anywhere — grep for `claude-sonnet`, `gpt-5`, `gemini-` and `glm-` returned nothing. The new
+note names `claude-sonnet-5` and `claude-sonnet-4-6`, so the reference now holds two strings
+that can rot, and this project has already lost two model IDs that way
+([P6](#p6--the-integration-tests-against-live-apis)). Both strings already appear in the README
+and the tutorial, so the surface grows by one file rather than from zero, and the alternative —
+stating the rule without naming a model — does not tell a reader whether it applies to the
+model they configured.
+
+**"Verified against all four live APIs" sat above a three-row table.** Anthropic is missing
+from the table because it did not fail.
+[ADR-0033](../adr/0033-provider-exceptions-pass-through-untranslated.md) words the same thing
+without the mismatch — "Three of the four runs failed" — and the page now follows it.
+
+#### What this leaves for next time
+
+Both rules `CLAUDE.md` gains come out of P14 rather than out of the documentation P14 was
+checking.
+
+**A write-up's account of its own fix is subject to the same rule as the fix.** P11 established
+"read the whole diff, not just a grep for the figure"; P14 quoted that rule and then described
+two corrections it had not fully made. Neither error is a count, so nothing about measuring
+before writing would have caught either — only reading P14's diff against P14's sentences did.
+
+**An over-claim can survive in wording the ADR never uses.** Three documents made ADR-0038's
+over-claim in three different forms, and the form furthest from the ADR's own wording is the
+one in the README's pitch — the one a first-time reader meets first, and the last one any
+search for the ADR's sentence would find. The passages that *make* a claim have to be re-read,
+not only the ones that repeat its wording.
+
+Verified: `mvn clean install` green offline, reactor 96/96. `build/check-docs.py` clean. Every
+edit is prose or a table row; no behaviour changed.

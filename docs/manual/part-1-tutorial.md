@@ -229,8 +229,9 @@ either all of it applies or none of it does.
 
 ## 5. Memory and streaming
 
-Two of the four parts of a bundle are optional and driven entirely by configuration. Edit
-`SL` to give it memory:
+Three of the four parts of a bundle are optional and driven entirely by configuration:
+streaming, memory and moderation. This step adds the first two. Moderation is OpenAI-only —
+step 6 shows what happens if you ask another provider for it. Edit `SL` to give it memory:
 
 ```hocon
   SL {

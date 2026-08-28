@@ -55,10 +55,10 @@ library:
    is four lines in a file.
 
 3. **Configuration changes while the process runs.** Edit the file and the registry rebuilds
-   what changed and swaps it — validated, and atomically across every configured model at
-   once, so a flow using `SL` and `SH` together never sees one of them updated and the other
-   not. If the new file is broken, nothing swaps and the previous configuration keeps
-   serving.
+   what changed and swaps it — validated, and in one step across every configured model, so a
+   half-applied configuration never exists. A flow that uses `SL` and `SH` together gets both
+   from the same version of the file by asking for a [snapshot](#hot-reload). If the new file
+   is broken, nothing swaps and the previous configuration keeps serving.
 
 The fourth thing is what makes the first three safe to rely on: **mistakes fail when the file
 loads, not at the first request.** Providers differ in what they can actually do — moderation

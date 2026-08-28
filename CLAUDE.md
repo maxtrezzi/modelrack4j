@@ -267,7 +267,17 @@ in-flight requests may still hold them.
   entry listed a metaphor it had *written* among the metaphors it had *removed*, and no count
   of anything would have caught it. Before you describe a change, run
   `git diff main..HEAD` over it and read the output to the end — including when it is long,
-  which is exactly when the previous session stopped.
+  which is exactly when the previous session stopped. **P15 shows the rule reaches a write-up's
+  account of its own fix.** P14 wrote that it had put a dated marker on all three of its
+  miscounts and had put one on two of them, and named a missing date as the fix for a stale
+  completeness audit without adding that date. Neither is a miscount, and both are visible
+  only by reading P14's diff against P14's sentences.
+- **An over-claim an ADR corrects can survive in wording the ADR never uses.** ADR-0038's was
+  made in three places in three different forms. P14 found two — one repeating the sentence
+  ADR-0038 quotes, one a near-paraphrase of it in the example ADR-0038 is about — and reported
+  the count as two. The third restated the claim in a reader's own terms, in the README's
+  opening pitch, where it had sat since M5 through one rewrite of its own paragraph (P15).
+  Re-read the passages that *make* a claim, not only the ones that repeat its wording.
 - **User-facing prose has a register, and it is not this file's (ADR-0039).** The README,
   `docs/manual/`, public Javadoc, the commented `.conf` examples, `CONTRIBUTING.md` and the
   CHANGELOG are written for a technical reader at roughly B2 English who does not read it as

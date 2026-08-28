@@ -153,7 +153,7 @@ llm {
 | `provider` | string | *required* | Must match a `ProviderFactory` on the classpath. An unknown value is an error that lists the providers actually available. |
 | `api-key` | string | *required* | Use `${VAR}`. Never blank. |
 | `model-name` | string | *required* | The provider's own identifier. **Not validated** — see below. |
-| `temperature` | number | *provider's own* | 0.0–2.0. Omitted means "do not set it", which is different from setting a default. |
+| `temperature` | number | *provider's own* | 0.0–2.0. Omitted means "do not set it", which is different from setting a default. Some models reject a non-default value — see [Providers](#providers). |
 | `timeout` | duration | `60s` | HOCON durations: `30s`, `2m`, `500ms`. Must be positive. |
 | `streaming` | boolean | `false` | Builds a `StreamingChatModel` alongside the chat model. |
 | `log-requests` | boolean | `false` | The provider logs requests. **Puts prompts, and therefore user data, in your logs.** |
@@ -358,8 +358,10 @@ Those three are the library's own, and they are thrown identically whichever pro
 names. **Everything a model call throws belongs to the provider instead**, and those types are
 not portable between providers.
 
-Verified against all four live APIs
-([P6](../tasks/post-v1.md#p6--the-integration-tests-against-live-apis)):
+All four providers were called against their live API in
+[P6](../tasks/post-v1.md#p6--the-integration-tests-against-live-apis). Three of the four
+runs failed before they were made to pass, and those three failures are what the table
+below records:
 
 | Provider | Condition | Type thrown |
 |---|---|---|
@@ -504,6 +506,10 @@ which is released on the community cycle, separately from the stable modules.
   `model-name` is deliberately not forwarded to it. Local token counting needs a model the
   bundled tokenizer recognises; an unknown one is reported as a configuration error naming the
   model, rather than surfacing later during memory eviction.
+- **Anthropic** — some models reject a non-default `temperature`. `claude-sonnet-5` answers
+  one with HTTP 400, because the model's adaptive thinking controls its own sampling;
+  `claude-sonnet-4-6` still accepts one. The schema takes any value from 0.0 to 2.0, so this
+  is the provider's rule rather than this library's, and you meet it on the first request.
 - **GLM** — has no whole-call timeout. Its client's `callTimeout` and `writeTimeout` are
   deprecated and marked for removal upstream, so `timeout` maps to connect and read only. Its
   `ChatModel.provider()` returns `OTHER`, so an application routing on that cannot tell GLM
@@ -588,6 +594,7 @@ Deliberate and permanent:
 | `ships no moderation model` | `moderation.enabled = true` on Anthropic, Gemini or GLM | Only OpenAI has one. Route moderation through an OpenAI configuration. |
 | `counts tokens by calling its API` | `token-window` on a remote counter | Add `allow-remote-token-counting = true`, or use `message-window`. |
 | `no token count estimator` | `token-window` on GLM | Use `message-window`. No flag helps. |
+| `` `temperature` is deprecated for this model `` | A non-default `temperature` on a model that rejects one, such as `claude-sonnet-5` | Remove the key. The model then uses its own sampling settings. |
 | `UnknownConfigurationException` at runtime | The name was removed from the file while running | Catch it and re-read `names()`, or keep the block. |
 | Reloads fire constantly | Something else writes into a watched directory | Only the configured filenames are matched, but a symlinked path matches any event in its directory by design. |
 | Half-written files are rejected as failures | The debounce is shorter than your writer takes | Raise `debounce(...)`. |
