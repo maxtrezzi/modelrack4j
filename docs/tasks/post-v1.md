@@ -1348,3 +1348,133 @@ not only the ones that repeat its wording.
 
 Verified: `mvn clean install` green offline, reactor 96/96. `build/check-docs.py` clean. Every
 edit is prose or a table row; no behaviour changed.
+
+---
+
+### P16 — A third coherence pass, and the surface the first two searched past
+
+**Status:** Done 2026-08-28 · **Branch:** `task/p16-javadoc-and-ci-comment-coherence`
+
+The same request [P14](#p14--a-coherence-pass-over-the-tracked-documentation) and
+[P15](#p15--a-second-coherence-pass-and-what-the-first-one-missed) answered, asked a third
+time by a session with no memory of the first two, this time with
+`docs/documentation-reorganisation` merged into `main` (#32). `build/check-docs.py` was clean
+across 40 ADRs and 54 files and `mvn clean install` was green offline (core 63, reactor 96,
+`[1/8]` through `[8/8]`), so as before nothing here is a defect either of those can see.
+
+Two defects, both fixed. One further finding is recorded below and deliberately not fixed,
+because it is an API question rather than a documentation one.
+
+#### The over-claim ADR-0038 corrected was standing in a fourth place: core's own Javadoc
+
+P15 found three copies — `CHANGELOG.md`, `AtomicSnapshot`'s class Javadoc, and the README's
+*Why* — and fixed all three. The fourth is in
+`modelrack4j-core/.../LlmRegistry.java`, in the class Javadoc's *Reload* section:
+
+> There is no state in which one name's new configuration is visible next to another's old
+> one.
+
+`get()`'s own Javadoc, **fifty-two lines below it in the same file**, says the opposite:
+*"two consecutive calls are not guaranteed to come from the same generation"*.
+`git log -L 58,62:...LlmRegistry.java` dates the sentence to [M3](milestones.md#m3--hot-reload)
+(#16), three days before
+[ADR-0038](../adr/0038-snapshot-gives-callers-the-atomicity-the-swap-already-has.md) narrowed
+the claim. It was not revised then, nor by either pass since.
+
+This is the same shape P15 recorded — a lead sentence claiming the caller guarantee, with the
+paragraph that refutes it further down the same file — and it survived both passes for a
+reason worth writing down. **Every copy the first two passes found is in a document or an
+example** — a changelog, `AtomicSnapshot`, a README. This one is in the library's
+own public Javadoc, which is user-facing under
+[ADR-0039](../adr/0039-user-facing-prose-is-written-for-a-non-native-reader.md) but is not a
+file anyone opens when checking *documentation*. Reading the ADR's subject matter means
+reading the class the ADR is about, not only the pages that describe it.
+
+The paragraph now claims what ADR-0038 actually gives — a half-applied snapshot never exists —
+and is followed by one that names the boundary and points at `snapshot()`.
+
+**The same block had the second half of P15's finding too.** Its *Reload* section never
+mentioned `snapshot()` at all, so the class-level overview of the API still described the
+pre-[P9](#p9--the-three-things-that-had-to-be-right-before-a-first-release) world. That is
+exactly the defect P15 found in `docs/manual/part-2-reference.md`, one surface over, and the
+new paragraph closes it.
+
+#### `build.yml`'s matrix comment gave the 21 leg a job ADR-0026 had replaced
+
+The comment above `jdk: ['17', '21', '25']` explained 21 as *"it was the development JDK"* and
+summarised the matrix as *"the floor, the dev JDK, and the current LTS"* — which is
+[ADR-0026](../adr/0026-ci-matrix-is-floor-dev-jdk-and-current-lts.md)'s **title**, not its
+Decision. The ADR's table gives 21 a live job the comment dropped: *"the most widely deployed
+LTS among likely consumers."* Read against the workflow, the summary also names three roles
+for legs where 25 does two of them, so 21 reads as vestigial.
+
+That matters more than a stale comment usually would, because ADR-0026 makes this specific
+comment load-bearing: *"the matrix is self-documenting — each leg's purpose is written into the
+workflow, so the next person can tell whether a leg is still earning its place instead of
+guessing."* The one leg a reader would have questioned is the one whose purpose had gone
+missing. The comment now carries the ADR's three jobs, one line each, and the rule for what to
+do when moving the 25 leg collides with the 21 leg.
+
+Where a summary and an ADR disagree, the ADR wins and the summary is the bug — the same rule
+`CLAUDE.md` states about itself, applied to a file nobody had thought of as a summary.
+
+#### Not done: three public members no document mentions
+
+`docs/manual/part-2-reference.md` promises *"every configuration key, every public method"*.
+`grep -rn 'configurationName\|unknownType\|fromBlock' docs/ README.md CHANGELOG.md` returns
+nothing, against three public members that exist:
+
+| Member | Reachable by a caller? |
+|---|---|
+| `UnknownConfigurationException.configurationName()` | yes — in the `catch` the troubleshooting table sends readers to |
+| `MemoryConfig.unknownType(String)` | only as an SPI implementer's error helper |
+| `LlmConfig.fromBlock(String, Config)` | called from its own package only |
+
+Only the first is a documentation gap. The other two look like accidental API surface —
+neither has a caller outside `io.github.maxtrezzi.modelrack4j` — so the fix is plausibly to
+narrow them rather than to document them, and narrowing a published member is an API change
+that wants its own item and its own reasoning. Documenting them first would make the accident
+permanent. Left open on purpose.
+
+#### Re-verified clean, so the next pass need not redo it
+
+Everything below was re-measured on 2026-08-28 rather than taken from an earlier entry, and
+matched:
+
+| Claim | How it was checked |
+|---|---|
+| the reference's *Every key* table is complete | 14 keys read by the loader, 14 rows |
+| core's four compile dependencies, and the tree the reference prints | `mvn dependency:tree` — the aggregate still adds no transitive jar |
+| `ProviderFactory` is "seven methods, three of which return `Optional.empty()`" | 7 and 3 |
+| the five checks in `build.yml`, and JDK 17/21/25 | the workflow |
+| `names()` sorted, the watcher's thread name, `OVERFLOW`, the one-second re-register retry, `close()` called from a listener, every logger name and level in the *Logging* table | read against the code |
+| the three ADR-0038 copies P15 narrowed | still narrowed |
+
+The completeness audit [P4](#p4--two-examples-for-the-two-undemonstrated-strengths) ran and
+P15 dated is **true again as of 2026-08-28** for configuration keys (14 of 14); for public API
+members it is true except the three above.
+
+#### What this leaves for next time
+
+**An ADR's blast radius includes the code it is about, not only the prose about it.** Three
+passes over the same over-claim found copies in a changelog, an example, a README, and finally
+the Javadoc of the class ADR-0038 exists to correct. That last one is the closest of the four
+to the decision and was the last to be found, because each pass scoped itself to "the
+documentation" and core's `src/main` is not filed under that heading.
+
+**And a grep did not find it here either.** The sweep this pass ran —
+`never (appears|observes|sees)`, `mixed pair`, `torn`, over `*.md`, `*.java` and `*.conf` —
+returned the three copies P15 had already narrowed and missed this one, because "there is no
+state in which one name's new configuration is visible next to another's old one" shares no
+phrase with any of them. It turned up while reading `LlmRegistry` end to end to check
+`names()`, `close()` and the logger names against the *Logging* table. That is the fourth
+different wording of one claim and the fourth time a search for the wording failed, which is
+the argument for reading the class an ADR is about rather than searching it.
+
+**A comment an ADR promises will be self-documenting is a tracked document.** Nothing in this
+repository treated `.github/workflows/build.yml` as prose subject to review, yet ADR-0026 wrote
+a consequence that only that comment can deliver.
+
+Verified: `mvn clean install` green offline, reactor 96/96, `build/check-docs.py` clean, and
+the workflow still parses as YAML with the matrix unchanged (`yaml.safe_load`). Every edit is
+a comment, prose or a table row; no behaviour changed.
