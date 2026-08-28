@@ -12,9 +12,11 @@ The tutorial builds on the runnable examples in
 [`modelrack4j-examples`](../../modelrack4j-examples). Nothing in it is pseudo-code — every
 command was run and every output block is a real capture.
 
-What each one shows, and what it costs to run, is tabulated once in the root README under
-[Runnable examples](../../README.md#runnable-examples) — that table links to each source
-file and is the single copy, so this page does not keep a second one to drift against.
+Two tables cover them, with different jobs, and this page keeps neither. The root README's
+[Runnable examples](../../README.md#runnable-examples) says what each one shows and what it
+costs to run, and links to each source file. [Part 2's
+Examples](part-2-reference.md#examples) says what claim each one pins down and which
+credentials it needs.
 
 The one worth knowing here: **`AtomicSnapshot` is free.** It reads configuration and sends
 no request, so it needs no credential and costs nothing — start there if you only want to

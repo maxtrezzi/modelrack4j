@@ -33,8 +33,9 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * Shows the guarantee that is hardest to see and easiest to lose: a reload swaps
- * <strong>every</strong> configured model at once, so nothing ever observes one of them
- * updated and another not.
+ * <strong>every</strong> configured model at once. It also shows where that guarantee stops
+ * — a caller who looks each model up separately can still catch one of them updated and the
+ * other not, and {@link LlmRegistry#snapshot()} is how a caller avoids it.
  *
  * <p>Two names, {@code SL} and {@code SH}, are both tagged {@code gen-1} in their
  * {@code description}. Four threads read the pair as fast as they can while a single save

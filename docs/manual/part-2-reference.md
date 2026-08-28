@@ -274,13 +274,41 @@ LlmRegistry registry = LlmRegistry.builder()
 | Method | Returns |
 |---|---|
 | `get(String name)` | The current bundle. Throws `UnknownConfigurationException` if the name is not configured *now*. |
+| `snapshot()` | The current generation, held still, as an `LlmSnapshot`. Every lookup on it belongs to that one generation. |
 | `names()` | The configured names, sorted. |
 | `onReload(Consumer<ReloadChange>)` | Registers a listener for successful reloads. |
 | `onReloadFailure(Consumer<ReloadFailure>)` | Registers a listener for rejected ones. |
 | `close()` | Stops watching. Idempotent. A closed registry keeps serving its last snapshot. |
 
-`get()` is a volatile read and a map lookup. It is meant to be called per request — that is
-the primary API, and listeners are secondary.
+`get()` is a volatile read, one small wrapper object, and a map lookup. It is meant to be
+called per request — that is the primary API, and listeners are secondary.
+
+### One lookup, or several that must agree
+
+`get()` reads the live configuration on every call. That is what makes a reload visible, and
+it means **a reload can land between two consecutive calls**, so the two calls return bundles
+built from different file contents. It is rare — measured at roughly two per million pairs of
+reads while a reload ran every few milliseconds — but it is reproducible, and where several
+models have to agree it is a correctness problem rather than a cosmetic one.
+
+`snapshot()` reads the published generation once and hands it back:
+
+```java
+LlmSnapshot models = registry.snapshot();   // one read of the current generation
+var fast = models.get("SL");
+var deep = models.get("SH");                // same generation as fast, guaranteed
+```
+
+| Method on `LlmSnapshot` | Returns |
+|---|---|
+| `get(String name)` | The bundle for that name in this generation. Throws `UnknownConfigurationException` if this generation has no such name. |
+| `names()` | The names in this generation, sorted. |
+| `contains(String name)` | Whether this generation has that name, without throwing. |
+
+A snapshot **never updates**. Take one per unit of work — per request, per council round —
+and drop it afterwards. Holding one for the lifetime of the application is the caching trap
+in a different shape. See
+[ADR-0038](../adr/0038-snapshot-gives-callers-the-atomicity-the-swap-already-has.md).
 
 ### Records
 

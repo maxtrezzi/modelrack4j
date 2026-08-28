@@ -156,7 +156,7 @@ away — each protects a specific failure mode, and the full reasoning is in `do
 the ADR before changing anything below; the summaries here are pointers, not the argument,
 and where a summary and an ADR disagree the ADR wins and the summary is the bug.
 
-**Snapshot-wide atomicity (ADR-0012, widening ADR-0008).** All config
+**Snapshot-wide atomicity (ADR-0012, widening ADR-0008, amended by ADR-0038).** All config
 files are merged in memory into ONE snapshot. A reload parses → validates → builds every
 changed bundle in a *staging area*, then swaps a single snapshot reference. Any failure
 anywhere means nothing swaps, the previous snapshot stays live, and `onReloadFailure`
@@ -165,6 +165,14 @@ fires exactly once. Success fires exactly ONE `onReload(change)` with `updated`/
 independently — two callbacks would let an application observe new-SL with old-SH, which
 is a correctness hazard for multi-model councils. The staging step is load-bearing:
 builders throw for reasons `validate()` cannot predict.
+
+**How much of that atomicity a caller gets is a separate question, and ADR-0038 answers it.**
+`get()` reads the live snapshot on every call, so two consecutive calls can straddle a swap
+and return bundles from different generations — measured at about two per million pairs.
+`snapshot()` reads the generation once and hands back an `LlmSnapshot`, and `get()` now
+delegates to it. Do not re-describe `get()` as "a volatile read and a map lookup": it also
+allocates that wrapper (P14). A held snapshot never updates, so one per unit of work, never
+one at startup — that is the caching trap again.
 
 **Resolve after merging, never per file (ADR-0007).** Typesafe Config separates parsing
 from resolution. Parse each layer with `ConfigFactory.parseFile(...)` only, merge with
@@ -247,7 +255,12 @@ in-flight requests may still hold them.
   superlative is a claim; if you have not measured it, do not write it. Note that
   `build/check-docs.py` cannot catch any of this — it checks links, ADR status lines and
   numbering, not whether a sentence is true. The check that did catch it was a session with
-  no memory of writing the text, which is the only kind that works here.
+  no memory of writing the text, which is the only kind that works here. P14 adds the cheaper
+  half of the same rule: three of its findings were enumerations that contradicted their own
+  leading number ("seven modules: parent, core, four providers, BOM, examples" is eight), so
+  count the list you just wrote before you name its size. And a completeness audit — "every
+  public member, 28 of 28" — is true only on the day it runs, so date it or it becomes a
+  false claim the next time the API grows.
 - **Grepping the figure is not enough; read the whole diff.** The two errors the third review
   of P11 found were invisible to a grep for the number, because the write-up was checked
   against one commit and the work spanned several. One of them was not a miscount at all: the

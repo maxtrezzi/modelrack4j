@@ -73,8 +73,10 @@ than listed as one long **Added** block.
 - A manual in `docs/manual/`: a tutorial built on the runnable examples, and a reference for
   the schema, the API, reload semantics, the provider matrix and troubleshooting.
 - `AtomicSnapshot`, an example that demonstrates snapshot-wide reload atomicity: four threads
-  sample two models while one save changes both, and the mixed pair never appears. Needs no
-  API key and sends no request, so it costs nothing to run.
+  sample two models while one save changes both, once through two `get()` calls and once
+  through a shared `snapshot()`. The `snapshot()` column never shows a mixed pair; the
+  `get()` column occasionally does, and `registry.snapshot()` is how a caller avoids that.
+  Needs no API key and sends no request, so it costs nothing to run.
 - `ProviderSwap`, an example that changes a running application's provider by editing a file
   and asks the same question again through the same call site.
 - `ConsoleChat`, an interactive example: a menu of every configured model, chat with the one

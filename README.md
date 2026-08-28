@@ -279,8 +279,9 @@ class Council {
 
 This is the one mistake that silently disables hot reload. Nothing throws, nothing logs, the
 reload genuinely happens — the caller is simply holding a bundle from a previous snapshot.
-`registry.get(name)` is a read of a volatile field and a map lookup; it is cheap enough to
-call per request, and it is the API's primary path. Listeners are secondary.
+`registry.get(name)` is a read of a volatile field, one small wrapper object, and a map
+lookup; it is cheap enough to call per request, and it is the API's primary path. Listeners
+are secondary.
 
 If you use a DI container, inject the **registry**, not a `ChatModel`.
 

@@ -15,11 +15,12 @@ library refuses to do and why.
 Every command and every output block on this page was run before it was written down. Where
 the output depends on a model's answer, it says so instead of inventing one.
 
-> **Most of it is free, and the free part comes first.** Steps 1, 2, 6, 7 and 8 send no
-> request at all: building, writing configuration, watching validation refuse a block a
-> provider cannot serve, and watching a broken file get rejected are all offline. Only
-> steps 3, 4, 5 and 9 talk to a provider — roughly a dozen short prompts if you follow the
-> page literally, of which step 9 sends three, one per model.
+> **Most of it is free, and the free part comes first.** Six of the ten steps — 1, 2, 6, 7, 8
+> and 10 — send no request at all: building, writing configuration, watching validation
+> refuse a block a provider cannot serve, watching a broken file get rejected, layering, and
+> setting the library up in your own project are all offline. Only steps 3, 4, 5 and 9 talk
+> to a provider — roughly a dozen short prompts if you follow the page literally, of which
+> step 9 sends three, one per model.
 >
 > **Every step needs one API key to be *set*, because substitution is mandatory** — an unset
 > variable fails at load, by design. Only those four steps need it to be valid and funded.

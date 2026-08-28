@@ -3,6 +3,10 @@
 Items waiting on the owner rather than on work. Do not resolve these unilaterally — each
 one closes by writing an ADR (see [ADR-0001](../adr/0001-record-decisions-as-adrs.md)).
 
+**D1, D2 and D3 are all settled**, so this file is a record rather than a queue right now. A
+new entry here is a question for the owner, not work to pick up. Entries stay in number order
+and keep the framing they were decided under, with the outcome at the top.
+
 ---
 
 ### D1 — GLM route if no maintained module exists
@@ -25,47 +29,6 @@ OpenAI-compatible endpoint: it works, but GLM-specific parameters are unreachabl
 the OpenAI-shaped API, and the library would be depending on an endpoint compatibility
 guarantee it does not control. Kept here because ADR-0022 forecloses it deliberately — the
 beta suffix on the native module is not a reason to revisit this.
-
----
-
-### D3 — Token-window memory on a remote estimator
-
-**Status:** Settled 2026-08-21 — **opt-in** ·
-**Raised by:** [Task 0.6](phase-0-verification.md#task-06--provider-capability-matrix) ·
-**Settled by:** [ADR-0027](../adr/0027-remote-token-counting-is-opt-in.md)
-
-The owner chose the opt-in option below. `memory.type = token-window` on a `REMOTE`-estimator
-provider fails validation unless `memory.allow-remote-token-counting = true` is set; the
-default is `false`, and the failure message must name the flag. `ABSENT` (GLM) is not
-escapable. On `LOCAL` providers the key is permitted and inert, so a config layer spanning
-several providers need not be split. M2 unblocked.
-
-[ADR-0021](../adr/0021-token-estimation-is-universal-but-two-cost-classes.md) established
-that all four providers ship a `TokenCountEstimator`, but only OpenAI's counts locally.
-Anthropic's and both Gemini ones make an HTTP call, with an API key and a timeout.
-
-`TokenWindowChatMemory` calls the estimator on eviction. So `memory.type = token-window` on
-those three providers puts a billed, rate-limited, failure-prone network call into ordinary
-conversation turns — inside a component applications reasonably assume is local bookkeeping.
-
-ADR-0021 fixes the *capability model* (three-valued, so validation can tell the cases apart)
-but deliberately not the *policy*, because each option changes the config schema, which is
-the plan's to change and not an ADR's:
-
-- **Reject** — `validate()` fails the configuration. Safest, and wrong for anyone who
-  genuinely wants accurate remote counts and has priced it in.
-- **Warn** — build it, log loudly once. Nothing is forbidden, but a warning in a log is a
-  weak signal for a per-turn cost, and this project's whole posture is fail-fast validation
-  ([ADR-0008](../adr/0008-fail-fast-validation-staged-build-atomic-swap.md)).
-- **Opt-in** — reject unless the config says so explicitly, e.g. a
-  `memory.allow-remote-token-counting` flag. Fail-fast by default, escapable on purpose.
-  Costs one schema key, and [ADR-0010](../adr/0010-discriminators-only-with-two-real-variants.md)
-  is hostile to keys that do not earn their place.
-
-**Blocks:** M2 (memory construction) and the `validate()` implementations in M4.
-
-**On settling:** write an ADR; if the answer adds a config key, the schema in the plan
-changes with it.
 
 ---
 
@@ -114,3 +77,44 @@ JitPack and the readability of the ADRs remain the two real arguments.
 
 **On settling:** write an ADR, and if the answer is "public at first release", note what
 triggers the switch so it does not drift.
+
+---
+
+### D3 — Token-window memory on a remote estimator
+
+**Status:** Settled 2026-08-21 — **opt-in** ·
+**Raised by:** [Task 0.6](phase-0-verification.md#task-06--provider-capability-matrix) ·
+**Settled by:** [ADR-0027](../adr/0027-remote-token-counting-is-opt-in.md)
+
+The owner chose the opt-in option below. `memory.type = token-window` on a `REMOTE`-estimator
+provider fails validation unless `memory.allow-remote-token-counting = true` is set; the
+default is `false`, and the failure message must name the flag. `ABSENT` (GLM) is not
+escapable. On `LOCAL` providers the key is permitted and inert, so a config layer spanning
+several providers need not be split. M2 unblocked.
+
+[ADR-0021](../adr/0021-token-estimation-is-universal-but-two-cost-classes.md) established
+that all four providers ship a `TokenCountEstimator`, but only OpenAI's counts locally.
+Anthropic's and both Gemini ones make an HTTP call, with an API key and a timeout.
+
+`TokenWindowChatMemory` calls the estimator on eviction. So `memory.type = token-window` on
+those three providers puts a billed, rate-limited, failure-prone network call into ordinary
+conversation turns — inside a component applications reasonably assume is local bookkeeping.
+
+ADR-0021 fixes the *capability model* (three-valued, so validation can tell the cases apart)
+but deliberately not the *policy*, because each option changes the config schema, which is
+the plan's to change and not an ADR's:
+
+- **Reject** — `validate()` fails the configuration. Safest, and wrong for anyone who
+  genuinely wants accurate remote counts and has priced it in.
+- **Warn** — build it, log loudly once. Nothing is forbidden, but a warning in a log is a
+  weak signal for a per-turn cost, and this project's whole posture is fail-fast validation
+  ([ADR-0008](../adr/0008-fail-fast-validation-staged-build-atomic-swap.md)).
+- **Opt-in** — reject unless the config says so explicitly, e.g. a
+  `memory.allow-remote-token-counting` flag. Fail-fast by default, escapable on purpose.
+  Costs one schema key, and [ADR-0010](../adr/0010-discriminators-only-with-two-real-variants.md)
+  is hostile to keys that do not earn their place.
+
+**Blocks:** M2 (memory construction) and the `validate()` implementations in M4.
+
+**On settling:** write an ADR; if the answer adds a config key, the schema in the plan
+changes with it.

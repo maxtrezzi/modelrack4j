@@ -198,6 +198,13 @@ torn pairs (SL and SH from different generations): 0
 no request ever sent — so it is **the only example that needs no API key and costs nothing**,
 which makes it the one to hand someone who wants to see something work in thirty seconds.
 
+**Corrected 2026-08-26 by [P9](#p9--the-three-things-that-had-to-be-right-before-a-first-release),
+pointer added by [P14](#p14--a-coherence-pass-over-the-tracked-documentation).** No mixed pair
+observed is not the same as no mixed pair possible. P9 measured about two per million pairs of
+`get()` calls under a much higher reload rate; this run reported zero because one save gives
+the window a single chance to open. The example now samples both ways and prints both
+columns.
+
 **It was verified by being made to fail.** A demonstration that cannot fail proves nothing, so
 `reload()` was temporarily sabotaged to publish `SL` five milliseconds before the rest of the
 snapshot. The example immediately reported the torn pair it exists to catch:
@@ -424,9 +431,15 @@ the project's favour.
 **Core is not accumulating dependencies.** The review reasoned from the ADR index that core
 had taken on the `langchain4j` aggregate, `com.typesafe:config` and `slf4j-api`, and that the
 cumulative effect worked against the original "`langchain4j-core` only" goal.
-`mvn dependency:tree` says otherwise: core's whole compile scope is **six artifacts**, and
+`mvn dependency:tree` says otherwise: core's whole compile scope is **eight artifacts**, and
 the aggregate contributes exactly one jar with **no new transitive dependency at all**. The
 number is now recorded in [M0's verification block](milestones.md#m0--skeleton-and-ci).
+
+> **Corrected 2026-08-28 by [P14](#p14--a-coherence-pass-over-the-tracked-documentation).**
+> This said "six artifacts" and M0 copied it. The tree has eight: `langchain4j-core`, its
+> three Jackson jars, `jspecify`, the aggregate, `com.typesafe:config` and `slf4j-api`. The
+> finding this paragraph reports — that core is not accumulating dependencies and the
+> aggregate costs one jar — is unaffected.
 
 **Nothing contradicted anything on GLM token estimation.** The review read ADR-0021's title
 ("token estimation is universal") against the README's provider table (GLM: none) and
@@ -1068,3 +1081,141 @@ Context, which is where it belongs.
 
 **Not done.** No non-admin collaborator exists yet to observe the protection actually gating
 anything; today it is inert for the one person who can push.
+
+---
+
+### P14 — A coherence pass over the tracked documentation
+
+**Status:** Done 2026-08-28 · **Branch:** `docs/documentation-reorganisation`
+
+Asked to check whether the tracked documentation is coherent. `build/check-docs.py` was clean
+and the reactor was green offline (core 63, reactor 96), so everything below is the class of
+defect that check cannot see: a sentence that contradicts another sentence, or a number that
+contradicts the command that produces it.
+
+Carried on the same branch as [P11](#p11--the-user-facing-text-read-as-a-non-native-reader-would-read-it),
+[P12](#p12--testing-the-examples-by-hand-and-a-live-break-in-anthropics-sampling-parameters)
+and [P13](#p13--branch-protection-on-main), which is unmerged. Eight of the eleven files this
+task edits are files that branch has already changed — `git diff --name-only main..HEAD`
+against the working tree — so a second branch off it would have stacked and then conflicted on
+the same paragraphs. Named after the work rather than after P14, per the convention note in
+[`README.md`](README.md#conventions).
+
+#### One API addition never reached the reference manual
+
+`registry.snapshot()` and `LlmSnapshot` landed in
+[P9](#p9--the-three-things-that-had-to-be-right-before-a-first-release) with
+[ADR-0038](../adr/0038-snapshot-gives-callers-the-atomicity-the-swap-already-has.md). The
+README, the CHANGELOG and `LlmRegistry`'s Javadoc all took the change. `docs/manual/part-2-reference.md`
+did not: its *Using it* table went straight from `get()` to `names()`, `LlmSnapshot` appeared
+nowhere on the page except one cell of the examples table, and *Reload semantics* still
+described the pre-ADR-0038 world in which the swap's atomicity reaches the caller unaided.
+
+That page is the one that promises "every configuration key, every public method". The
+audit behind that promise — "every public API member (28 of 28)" in
+[P4](#p4--two-examples-for-the-two-undemonstrated-strengths) — was run before P9 existed and
+nothing re-ran it. **A completeness audit is only true on the day it runs.** P4 wrote it as a
+permanent fact, so nothing signalled that adding a public method had invalidated it.
+
+Fixed: a `snapshot()` row in the method table, and a new *One lookup, or several that must
+agree* subsection carrying `LlmSnapshot`'s three methods, the two-per-million figure, the
+per-unit-of-work rule and the pointer to ADR-0038.
+
+#### The over-claim ADR-0038 corrected, still standing in two places
+
+ADR-0038 exists because the README said *"the mixed pair never appears"* and the measurement
+said otherwise. P9 quotes that sentence as the thing it fixed. Two copies of it survived:
+
+- **`CHANGELOG.md`** — "four threads sample two models while one save changes both, and the
+  mixed pair never appears". Now states both columns and what separates them.
+- **`AtomicSnapshot`'s class Javadoc**, whose opening sentence said "nothing ever observes one
+  of them updated and another not" fourteen lines above, in the same Javadoc block, a bullet
+  explaining that a `get()` pair does exactly that. The lead sentence now names the boundary
+  the example exists to show.
+
+Both are inside [ADR-0039](../adr/0039-user-facing-prose-is-written-for-a-non-native-reader.md)'s
+user-facing scope, and both were re-read by P11 for *register* without anyone checking them
+for *truth*. Worth keeping: a prose pass and a correctness pass do not substitute for one
+another, even over the same paragraph.
+
+#### `get()` is no longer only "a volatile read and a map lookup"
+
+The README and the reference both describe `get()` that way.
+[P10](#p10--a-code-review-of-llmsnapshot-and-a-self-correction-found-while-checking-the-fix)
+made `get()` delegate to `snapshot()` and explicitly asked whether that falsified those two
+sentences. It cleared the question by verifying that `Collections.unmodifiableMap` does not
+re-wrap a map that is already unmodifiable — which is true, and covers the map. It does not
+cover the `new LlmSnapshot(...)` that `snapshot()` allocates on every call, and which
+therefore now sits on every `get()`. "Cheap enough per request" still holds; the list of what
+happens did not. Both sentences now name the wrapper.
+
+The check that missed it was the right check applied to one of the two allocations in the
+change. Nothing here argues for removing the delegation — the duplication P10 removed was
+real, and the wrapper is a strong escape-analysis candidate.
+
+#### Three counts that disagree with the command that produces them
+
+| Claimed | Where | Actual |
+|---|---|---|
+| core's compile scope is **six** artifacts | [P7](#p7--closing-out-the-outside-review-of-the-public-repository), then copied into [M0](milestones.md#m0--skeleton-and-ci) | **eight** — `langchain4j-core`, three Jackson jars, `jspecify`, the aggregate, `config`, `slf4j-api` |
+| **seven** modules: "parent, core, four providers, BOM, examples" | [M0](milestones.md#m0--skeleton-and-ci) | that list is **eight**; the seven are the `<modules>` entries, and `mvn` prints `[1/8]` |
+| **six** publishable modules install with `-sources` and `-javadoc` jars | [M5](milestones.md#m5--release-readiness) | **five** produce those jars (core and the four providers); seven artifacts install, since the parent and the BOM install as POMs |
+
+None of the three changes a conclusion — the aggregate still costs one jar, the layout is
+still the planned one, and the examples module still publishes nothing. All three are
+corrected in place with a dated marker, on P11's precedent.
+
+The first is the interesting one. Six is the count in the *next paragraph* of the same
+entry — the dependencies the aggregate declares, which is correct — so the figure was carried
+up one paragraph by hand rather than mismeasured. The other two are enumerations that
+contradict their own leading number, readable without running anything. **All three were
+written in the same sentence as the list that refutes them**, which is a cheaper failure to
+catch than P11's: no command needed, only counting the items already on the page.
+
+#### `CLAUDE.md`'s amendment chain for ADR-0012 stopped short
+
+Its *Snapshot-wide atomicity* paragraph read "(ADR-0012, widening ADR-0008)" and stopped
+there, while `docs/adr/README.md` records ADR-0012 as *"Accepted — the width reaching a caller
+amended by ADR-0038"*. `snapshot()` and `LlmSnapshot` appeared nowhere in the file at all, so
+a session reading only `CLAUDE.md` would have learned the pre-P9 model of the reload boundary
+and would have had no reason to keep `snapshot()` working.
+
+Exactly the defect [P8](#p8--status-line-drift-and-a-check-that-would-have-caught-it) found in
+the same file's dependency list, where the chain stopped at ADR-0020 without reaching
+ADR-0028. It sat two lines under the sentence that predicts it — *"where a summary and an ADR
+disagree the ADR wins and the summary is the bug"* — and both times the `docs/adr/` index was
+the side that was right. The paragraph now names ADR-0038 and is followed by one that states
+the boundary, including the wrapper allocation above.
+
+#### Four smaller ones
+
+- **`docs/manual/README.md` claimed the root README's examples table "is the single copy"**
+  while `part-2-reference.md` carries a second table of the same four examples. The two have
+  different jobs — cost against required credentials — so both stay and the index now says
+  which is which.
+- **Part 1's free/paid callout listed five offline steps** (1, 2, 6, 7, 8) while its own
+  contents table and the manual index both say six of ten. Step 10 was the missing one.
+- **M5's capture of the README's bundle table** was introduced in the present tense; its
+  model identifiers have since moved twice (P6, P12). Dated.
+- **P4's "243 million observations, no mixed pair"** had no forward pointer to P9, which
+  refuted it — the convention this file uses everywhere else (M4 → P6, P11 → P12). Added.
+
+`docs/tasks/open-decisions.md` was also reordered to D1, D2, D3, matching the status board;
+it held D1, D3, D2. Its preamble now says all three are settled, which `CLAUDE.md` already
+said and the file did not.
+
+#### What this leaves for next time
+
+Eight substantive findings, counted into a list before this sentence was written: the
+reference's missing `snapshot()`, the two surviving copies of the "never appears" over-claim,
+`get()`'s description, three miscounts, and `CLAUDE.md`'s truncated amendment chain.
+
+Two findings, one substantive and one small, share a shape this repository has not been
+watching for. Both P4's "every public API member (28 of 28)" and M5's "the README's own bundle table" were
+**true on the day they were written and became false when something else changed** — no
+miscount, nothing to re-measure, nothing a rule about running the command first would have
+caught. The fix in each case was a date, not a number. That is the cheapest habit on this
+list, and the only one here that costs nothing at all.
+
+Verified: `mvn clean install` green, reactor 96/96, offline with no keys. `build/check-docs.py`
+clean. Every edit is prose, a comment or a table row; no behaviour changed.
