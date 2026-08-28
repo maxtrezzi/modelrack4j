@@ -1478,3 +1478,180 @@ a consequence that only that comment can deliver.
 Verified: `mvn clean install` green offline, reactor 96/96, `build/check-docs.py` clean, and
 the workflow still parses as YAML with the matrix unchanged (`yaml.safe_load`). Every edit is
 a comment, prose or a table row; no behaviour changed.
+
+### P17 — Mutation testing on core
+
+**Status:** Done 2026-08-28 · **Branch:** `task/p17-mutation-testing`
+
+PIT configured on `modelrack4j-core`, with the reasoning in
+[ADR-0041](../adr/0041-mutation-testing-on-core-only.md). The point was never the score. This
+library's promises are mostly negative — nothing swaps, nobody is notified, the flag is inert
+— and a test that asserts "nothing happened" also passes when the code is broken in the
+direction that makes nothing happen. Mutation testing is the only tool here that can tell
+those apart, and what it produces is a list of places to read.
+
+It found **four defects in the test suite and none in the code**. Every survivor was checked
+against `src/main` before being classified, and in each case the production logic was
+correct; what was missing was anything that would have complained if it had not been.
+
+#### The tooling question, answered by running it rather than by recalling it
+
+`pitest-maven` `1.30.0` and `pitest-junit5-plugin` `1.2.3`, both read from `maven-metadata.xml`
+on Central. The versions are three years apart in spirit: PIT `1.30.0` was published
+2026-08-27, the JUnit 5 plugin `1.2.3` on 2025-05-20, compiled against `pitest 1.15.2` and
+`junit-platform 1.9.2`. This repository is on **JUnit `6.1.3`**, which neither of them knew
+about, so whether the combination works at all was a real risk and not a formality. It works,
+first try, with no downgrade.
+
+Two mistakes in the first configuration, both found by running it:
+
+- **PIT's `*` is not recursive.** `io.github.maxtrezzi.modelrack4j.*` silently skips the `spi`
+  package. Both packages are now named.
+- **A bare class name does not match a nested class.** `excludedClasses` said `ConfigWatcher`,
+  and PIT mutated `ConfigWatcher$WatchedDirectory` anyway — four mutants, three of which timed
+  out, which is exactly the noise the exclusion exists to prevent. It says `ConfigWatcher*` now.
+
+#### The numbers
+
+Three runs, each inside an isolated network namespace (below):
+
+| | Mutants | Killed | Survived | Uncovered | Score | Test strength | Duration |
+|---|---|---|---|---|---|---|---|
+| Baseline | 113 | 102 | 5 | 6 | 90 % | 95 % | 3 min 56 s |
+| After the four defects | 113 | 108 | 1 | 4 | 96 % | 99 % | 3 min 35 s |
+| After the four smaller gaps, `toString` excluded | 112 | 112 | 0 | 0 | 100 % | 100 % | 3 min 24 s |
+
+Timeouts stayed at 12, 12 and 11 — 10.6 % of the baseline, against a guard of 30 %. **Expect
+the last two columns to move between runs of an identical configuration**: a timeout is a kill
+decided by the clock, so the final configuration measured 11 timeouts in 3 min 24 s on one run
+and 12 in 3 min 38 s on the next. The mutant total, the survivors and the uncovered count did
+not move.
+
+The suite went from 63 tests to 69: five went in for the four defects and one for the four
+smaller gaps, because three of those four were assertions added to tests that already existed.
+
+**As of 2026-08-28 there are no surviving and no uncovered mutants in core.** That is a
+statement about this date and this configuration, not a standing property: it stops being
+true the next time a class is added, and `mutationThreshold` is `0` precisely so that nothing
+pretends otherwise.
+
+#### A test that did not test what its name said
+
+`LlmRegistryTest.moderationRejectedByProvider` is named *"a provider without moderation
+rejects a config that enables it"* and asserted `hasMessageContaining("moderation")`. Deleting
+`factory.validate(config)` from `SnapshotLoader` did not make it fail. `fake-remote` returns
+`Optional.empty()` from `createModerationModel`, so the build step further down reports
+*"produced no moderation model"* — which also contains the word. The test could not tell the
+provider's own objection from an unrelated failure two steps later.
+
+The consequence is larger than one test. That call is the **only** thing in core that invokes
+`ProviderFactory.validate`, the SPI hook [ADR-0005](../adr/0005-provider-factory-spi-via-serviceloader.md)
+gives a provider for objections core cannot make on its behalf, and whose Javadoc describes
+the contract carefully. Nothing in the suite defended it: a refactoring that dropped the call
+would have gone green.
+
+Fixed on both sides. The assertion now names the factory's own wording, and a new
+`FakeStrictProviderFactory` rejects every model name but one — an objection that can come from
+nowhere else, so it pins the contract without depending on the moderation coincidence.
+
+#### A test that looked symmetrical and was not
+
+```java
+assertThatThrownBy(() -> new MemoryConfig.MessageWindow(0))    // zero
+assertThatThrownBy(() -> new MemoryConfig.TokenWindow(-1, false))  // minus one
+```
+
+Two parallel branches, two different values. The boundary is covered for message-window and
+not for token-window, so `maxTokens <= 0` could become `maxTokens < 0` and nothing objected:
+`max-tokens = 0` would have been accepted. Reading the block does not show this — the visual
+symmetry is what hides the asymmetry of the values.
+
+The fix is not the missing case. The bound is now a `@ParameterizedTest` parameter over
+`{0, -1}`, so both variants are necessarily checked against the same values and the defect is
+no longer expressible.
+
+#### The memory a bundle hands out was never used
+
+The three lambdas in `SnapshotLoader.buildMemoryProvider` were the only uncovered code in the
+module. Four tests asserted `chatMemoryProvider()).isPresent()`; **none called `.get(memoryId)`**.
+`max-messages` and `max-tokens` were read from configuration, passed to a builder and never
+observed by anything: a wrong constant, or the two branches swapped, would have left the suite
+green. The code is correct — this is the one place in the lot where an error would not have
+been noticed.
+
+Two tests now take the provider, ask it for a memory, add ten messages and check the
+configured bound holds. **That the assertions are not vacuous was checked directly**, not
+inferred from the mutants dying: raising the configured bounds from 3 to 50 while leaving the
+assertions alone fails both tests with *"Expected size: 3 but was: 10"* and *"to be less than
+or equal to 3 but was 10"*.
+
+#### Two required keys nobody had ever left blank
+
+`blankRequiredValuesAreRejected` exercised `api-key`. `LlmConfig`'s constructor calls
+`requireText` on four keys, and removing the check on `name` or on `provider` broke no test. A
+blank `provider` would then have failed much later, with a message about no provider module
+being on the classpath — a true statement about the wrong problem. The test now covers all
+four inside an `assertAll`.
+
+#### Four smaller gaps, and one exclusion
+
+| Mutant | Verdict |
+|---|---|
+| `SnapshotLoader:222` — a factory reporting `LOCAL` that supplies no estimator | The missing leg of a pattern that already existed: `FakeIncompleteProviderFactory` covered the same provider bug for streaming and moderation, not for the estimator. It does now |
+| `UnknownConfigurationException.configurationName()` | Public API with no coverage — and the member [P16](#p16--a-third-coherence-pass-and-the-surface-the-first-two-searched-past) recorded as the one real documentation gap of the three it found. Asserted where the exception is already caught |
+| `LlmBundle.name()` | Public API with no coverage. Asserted against the awkward-name case, where the key and the accessor could plausibly disagree |
+| `SnapshotLoader:119` — `Collections.sort` on the provider list in an error message | Kept and tested rather than excluded: `ServiceLoader` order is unspecified, so without the sort the same mistake produces a differently ordered message on another machine. The new test asserts the tail of the message `isSorted()`, so it does not need editing when a fake is added |
+| `LlmSnapshot.toString()` | **Excluded**, via `excludedMethods`. A debugging aid whose format nothing promises; killing it would pin that format against every later improvement |
+
+#### The filename filter is an optimisation, not a correctness boundary
+
+The most instructive survivor is one that no longer appears, because the watcher is now
+excluded. Forcing `WatchedDirectory.accepts` to return `true` disables filtering by filename,
+and `ReloadTest.unrelatedFileIsFilteredOut` **did not notice**. An event on an unrelated file
+causes a re-read, the re-read produces an identical snapshot, and the
+"identical content publishes nothing" rule
+([ADR-0029](../adr/0029-reload-callbacks-are-quiet-contained-and-not-a-heartbeat.md)) makes the
+difference invisible from outside.
+
+So the filter saves work; it is the snapshot comparison downstream that provides the
+guarantee. [ADR-0024](../adr/0024-watch-the-symlink-s-directory-not-its-real-path.md) settled
+*how* to filter and is not contradicted by this — but nothing in `docs/` said which of the two
+mechanisms the promise actually rests on, and a reader would reasonably have assumed the
+filter.
+
+#### What this says nothing about
+
+Mutants are deterministic syntactic edits and do not explore thread interleavings. The
+guarantee in the README that concurrent readers never observe a mixed pair of bundles
+([ADR-0038](../adr/0038-snapshot-gives-callers-the-atomicity-the-swap-already-has.md)) is
+untouched by any of these numbers, and `ReloadTest.getIsSafeDuringReload` — the test that
+covers more code than any other in the suite, 401 blocks by PIT's own count on the final
+run — proves no more
+about it after this work than before. A mutation score of 100 % is not evidence of concurrent
+correctness. The tool for that question is a stress harness such as OpenJDK's jcstress, which
+this project does not have and which is not scheduled.
+
+#### How the money guard was checked
+
+Mutation testing runs the suite hundreds of times, and four of this repository's modules have
+tests that call paid APIs. Rather than reason about it, all three PIT runs were executed
+inside an isolated network namespace:
+
+```
+unshare -rn -- env HOME=... sh -c 'ip link set lo up; mvn -o ... mutationCoverage'
+```
+
+Loopback only, Maven offline, and the namespace verified to block egress before starting —
+`/dev/tcp/151.101.0.0/443` answers `Network is unreachable`. **BUILD SUCCESS** in all three.
+Independently: `modelrack4j-core` contains no `*IT.java`, the `integration` profile has no
+`<activation>` block and `mvn -pl modelrack4j-core help:active-profiles` lists none, and a
+grep for `java.net|HttpClient|Socket|URL(|http://|https://` over the whole of core's `src`
+returns nothing.
+
+#### Verified
+
+`mvn clean install` green offline, 8/8 modules, core 69 tests and 102 across the reactor;
+`build/check-docs.py` clean. `git status` confirms **no file under `src/main/java` changed** —
+the diff is `modelrack4j-core/pom.xml`, three test classes, one new test fake and one line in
+the `META-INF/services` file. PIT is not in `.github/workflows/build.yml` and adding it is a
+separate decision, deliberately left open by ADR-0041.

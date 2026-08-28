@@ -14,6 +14,17 @@
   <name>modelrack4j :: core</name>
   <description>Registry, layered HOCON config loading, validation and file watching.</description>
 
+  <properties>
+    <!--
+      ADR-0041: mutation testing lives in this module alone, so its versions are pinned here
+      rather than in the parent — a parent declaration would inherit PIT into every module,
+      the four provider ones included, whose tests reach real APIs under -Pintegration. PIT
+      runs the covering tests once per mutant.
+    -->
+    <pitest.version>1.30.0</pitest.version>
+    <pitest.junit5.version>1.2.3</pitest.junit5.version>
+  </properties>
+
   <dependencies>
     <!-- ADR-0005: core takes no provider artifact, ever. -->
     <dependency>
@@ -56,4 +67,64 @@
       <scope>test</scope>
     </dependency>
   </dependencies>
+
+  <build>
+    <plugins>
+      <!--
+        PIT is never bound to a lifecycle phase: it runs only when its goal is named on the
+        command line.
+
+            mvn -pl modelrack4j-core org.pitest:pitest-maven:mutationCoverage
+
+        Report in target/pit-reports/.
+      -->
+      <plugin>
+        <groupId>org.pitest</groupId>
+        <artifactId>pitest-maven</artifactId>
+        <version>${pitest.version}</version>
+        <dependencies>
+          <dependency>
+            <groupId>org.pitest</groupId>
+            <artifactId>pitest-junit5-plugin</artifactId>
+            <version>${pitest.junit5.version}</version>
+          </dependency>
+        </dependencies>
+        <configuration>
+          <targetClasses>
+            <!-- `*` is not recursive, so the spi package needs its own line. -->
+            <param>io.github.maxtrezzi.modelrack4j.*</param>
+            <param>io.github.maxtrezzi.modelrack4j.spi.*</param>
+          </targetClasses>
+          <excludedClasses>
+            <!--
+              The watcher is the one class built on WatchService and a 300 ms debounce.
+              Mutating it yields timeouts rather than information. The trailing `*` is
+              load-bearing: the filtering lives in the nested WatchedDirectory class, which
+              a bare class name does not match.
+            -->
+            <param>io.github.maxtrezzi.modelrack4j.ConfigWatcher*</param>
+          </excludedClasses>
+          <excludedMethods>
+            <!--
+              toString is a debugging aid, not a contract. Killing its mutants would mean
+              asserting on a format nothing promises, which pins it against every later
+              improvement for no gain.
+            -->
+            <param>toString</param>
+          </excludedMethods>
+          <timeoutConstant>6000</timeoutConstant>
+          <!--
+            ADR-0041: the score is not a gate. What this run produces is the list of
+            surviving mutants, each of which is a question about the tests; failing the
+            build on a number would reward assertions written to raise it.
+          -->
+          <mutationThreshold>0</mutationThreshold>
+          <outputFormats>
+            <param>HTML</param>
+            <param>XML</param>
+          </outputFormats>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
 </project>

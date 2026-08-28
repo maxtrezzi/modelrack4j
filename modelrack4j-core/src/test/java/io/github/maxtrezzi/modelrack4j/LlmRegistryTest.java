@@ -17,7 +17,12 @@ package io.github.maxtrezzi.modelrack4j;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowable;
+import static org.assertj.core.api.Assertions.catchThrowableOfType;
 
+import dev.langchain4j.data.message.UserMessage;
+import dev.langchain4j.memory.ChatMemory;
+import io.github.maxtrezzi.modelrack4j.testing.FakeStrictProviderFactory;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -31,6 +36,9 @@ import org.junit.jupiter.api.io.TempDir;
 
 /** Building the registry: defaults, lookup, provider discovery and the capability rules. */
 class LlmRegistryTest {
+
+    /** The tail of the unknown-provider message is the sorted list of provider ids. */
+    private static final String AVAILABLE = "Available providers: ";
 
     @TempDir
     Path dir;
@@ -59,9 +67,13 @@ class LlmRegistryTest {
                 llm { SL { provider = fake-local, api-key = "k", model-name = "m" } }
                 """);
 
-        assertThatThrownBy(() -> registry.get("NOPE"))
-                .isInstanceOf(UnknownConfigurationException.class)
-                .hasMessageContaining("NOPE");
+        UnknownConfigurationException thrown = catchThrowableOfType(
+                UnknownConfigurationException.class, () -> registry.get("NOPE"));
+
+        // The name is on the exception as well as in its message, so a caller can branch on
+        // it without parsing prose.
+        assertThat(thrown).hasMessageContaining("NOPE");
+        assertThat(thrown.configurationName()).isEqualTo("NOPE");
         assertThat(registry.names()).containsExactly("SL");
     }
 
@@ -109,14 +121,58 @@ class LlmRegistryTest {
     }
 
     @Test
+    @DisplayName("the providers are listed in a fixed order, so the message does not vary by run")
+    void availableProvidersAreListedInOrder() {
+        // ServiceLoader does not specify its order, so without sorting the same mistake
+        // produces a differently ordered message on another machine or another JVM.
+        Throwable thrown = catchThrowable(() -> registryOf("""
+                llm { SL { provider = nope, api-key = "k", model-name = "m" } }
+                """));
+
+        String message = thrown.getMessage();
+        String listed = message.substring(message.indexOf(AVAILABLE) + AVAILABLE.length());
+        assertThat(listed.split(", ")).hasSizeGreaterThan(1).isSorted();
+    }
+
+    @Test
     @DisplayName("a provider without moderation rejects a config that enables it")
     void moderationRejectedByProvider() {
+        // The assertion names the factory's own wording rather than just "moderation". The
+        // looser version passed either way: when the config reaches the build step anyway,
+        // the missing model is reported downstream as "produced no moderation model", which
+        // also contains the word, so the test could not tell the two failures apart.
         assertThatThrownBy(() -> registryOf("""
                 llm { SL { provider = fake-remote, api-key = "k", model-name = "m"
                            moderation { enabled = true } } }
                 """))
                 .isInstanceOf(ConfigValidationException.class)
-                .hasMessageContaining("moderation");
+                .hasMessageContaining("fake-remote")
+                .hasMessageContaining("has no moderation model");
+    }
+
+    @Test
+    @DisplayName("an objection only the factory can raise reaches the caller")
+    void factoryValidationIsApplied() {
+        // Which model names exist is provider knowledge, so this rejection can come from
+        // nowhere but ProviderFactory.validate. It is what pins the SPI contract: no
+        // capability rule in core covers this case, so if the call went away nothing else
+        // would fail.
+        assertThatThrownBy(() -> registryOf("""
+                llm { SL { provider = fake-strict, api-key = "k", model-name = "made-up" } }
+                """))
+                .isInstanceOf(ConfigValidationException.class)
+                .hasMessageContaining("fake-strict")
+                .hasMessageContaining("does not offer model")
+                .hasMessageContaining("made-up");
+    }
+
+    @Test
+    @DisplayName("a configuration the factory accepts is built")
+    void factoryValidationAcceptsWhatItAllows() throws IOException {
+        var registry = registryOf("llm { SL { provider = fake-strict, api-key = \"k\""
+                + ", model-name = \"" + FakeStrictProviderFactory.SUPPORTED_MODEL + "\" } }");
+
+        assertThat(registry.get("SL").chatModel()).isNotNull();
     }
 
     @Test
@@ -228,6 +284,16 @@ class LlmRegistryTest {
                 + ", api-key = \"k\", model-name = \"m\", moderation { enabled = true } } }"))
                 .isInstanceOf(ConfigValidationException.class)
                 .hasMessageContaining("produced no moderation model");
+
+        // The estimator is the same bug one layer down: the capability rules in core pass,
+        // because the factory reports LOCAL, and the memory then cannot be built.
+        assertThatThrownBy(() -> registryOf("""
+                llm { SL { provider = fake-incomplete, api-key = "k", model-name = "m"
+                           memory { type = token-window, max-tokens = 500 } } }
+                """))
+                .isInstanceOf(ConfigValidationException.class)
+                .hasMessageContaining("fake-incomplete")
+                .hasMessageContaining("supplied no token count estimator");
     }
 
     @Test
@@ -263,6 +329,8 @@ class LlmRegistryTest {
 
         assertThat(registry.names()).containsExactly("SL.EU", "we\"ird");
         assertThat(registry.get("we\"ird").chatModel()).isNotNull();
+        // The convenience accessor has to agree with the key the bundle was found under.
+        assertThat(registry.get("we\"ird").name()).isEqualTo("we\"ird");
     }
 
     @Test
@@ -276,6 +344,60 @@ class LlmRegistryTest {
                 .hasMessageContaining("sliding-window")
                 .hasMessageContaining("message-window")
                 .hasMessageContaining("token-window");
+    }
+
+    /**
+     * A provider is built from configuration and then handed out. Only calling it shows that
+     * the configured bound reached the memory it produces: asserting that the provider is
+     * present leaves the bound itself unverified.
+     */
+    @Nested
+    @DisplayName("the memory a bundle hands out")
+    class MemoryIsUsable {
+
+        @Test
+        @DisplayName("message-window memory keeps the configured number of messages")
+        void messageWindowHonoursItsBound() throws IOException {
+            var registry = registryOf("""
+                    llm { SL { provider = fake-local, api-key = "k", model-name = "m"
+                               memory { type = message-window, max-messages = 3 } } }
+                    """);
+
+            ChatMemory memory = memoryOf(registry, "conversation-1");
+            addMessages(memory, 10);
+
+            assertThat(memory.id()).isEqualTo("conversation-1");
+            assertThat(memory.messages()).hasSize(3);
+        }
+
+        @Test
+        @DisplayName("token-window memory stays inside the configured token budget")
+        void tokenWindowHonoursItsBound() throws IOException {
+            // FakeTokenCountEstimator charges one token per message, so a budget of three
+            // tokens cannot hold more than three of these messages.
+            var registry = registryOf("""
+                    llm { SL { provider = fake-local, api-key = "k", model-name = "m"
+                               memory { type = token-window, max-tokens = 3 } } }
+                    """);
+
+            ChatMemory memory = memoryOf(registry, "conversation-2");
+            addMessages(memory, 10);
+
+            assertThat(memory.id()).isEqualTo("conversation-2");
+            assertThat(memory.messages()).isNotEmpty().hasSizeLessThanOrEqualTo(3);
+        }
+
+        private ChatMemory memoryOf(LlmRegistry registry, Object memoryId) {
+            return registry.get("SL").chatMemoryProvider()
+                    .orElseThrow(() -> new AssertionError("SL has no chat memory provider"))
+                    .get(memoryId);
+        }
+
+        private void addMessages(ChatMemory memory, int count) {
+            for (int i = 1; i <= count; i++) {
+                memory.add(UserMessage.from("message " + i));
+            }
+        }
     }
 
     private int fileCounter;

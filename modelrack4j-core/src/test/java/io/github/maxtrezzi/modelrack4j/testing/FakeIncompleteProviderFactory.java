@@ -15,6 +15,7 @@
  */
 package io.github.maxtrezzi.modelrack4j.testing;
 
+import dev.langchain4j.model.TokenCountEstimator;
 import dev.langchain4j.model.chat.StreamingChatModel;
 import dev.langchain4j.model.moderation.ModerationModel;
 import io.github.maxtrezzi.modelrack4j.LlmConfig;
@@ -52,6 +53,14 @@ public final class FakeIncompleteProviderFactory extends FakeProviderFactory {
 
     @Override
     public Optional<ModerationModel> createModerationModel(LlmConfig config) {
+        return Optional.empty();
+    }
+
+    @Override
+    public Optional<TokenCountEstimator> createTokenCountEstimator(LlmConfig config) {
+        // Reports LOCAL above, so core's capability rules let token-window memory through,
+        // and then supplies nothing. The estimator is the third capability this fake claims
+        // and does not deliver.
         return Optional.empty();
     }
 }

@@ -131,6 +131,7 @@ mvn -pl modelrack4j-core -am test        # build core and its deps, run core tes
 mvn -pl modelrack4j-core test -Dtest=LlmRegistryTest                        # single class
 mvn -pl modelrack4j-core test -Dtest='LlmRegistryTest#reloadSwapsAtomically' # single method
 mvn -Pintegration verify                 # provider tests against real APIs (keys from env)
+mvn -pl modelrack4j-core org.pitest:pitest-maven:mutationCoverage   # mutation testing, core only
 ```
 
 Scope `-Dtest=` to a module with `-pl`. Running it from the root across all modules fails
@@ -144,6 +145,19 @@ test scope is for).
 Toolchain on this machine: JDK 25.0.3 (Temurin), Maven 3.8.7. The language floor is Java 17
 and `maven.compiler.release` is set to it (ADR-0019); CI runs the floor, the development JDK
 and the current LTS (ADR-0026).
+
+**Mutation testing is configured on core and nowhere else, and that is a money rule
+(ADR-0041).** PIT runs the covering tests once per mutant; each provider module carries an
+`*IT.java` that calls a paid API under `-Pintegration`. Never add the plugin to a provider
+module, to `modelrack4j-examples`, or to the parent POM — the parent inherits it into every
+module, and because the goal is bound to no lifecycle phase this stays invisible until someone
+runs `mutationCoverage` from the reactor root, at which point the bill is the error message.
+`mvn clean install` is unaffected. `mutationThreshold` is `0` on purpose: the deliverable is
+the survivor list in `target/pit-reports/`, not the score, and a survivor is a question about
+the tests rather than a defect. P17 is the worked example — four defects in the suite, none in
+the code, and the most useful one was a test whose *name* described a contract its assertion
+never checked. Mutants are deterministic syntactic edits, so none of this bears on the
+concurrency guarantee in ADR-0038; do not read a high score as evidence for it.
 
 **Model identifiers rot, and only a live run catches it.** Two of the four are now outside
 upstream's enums, so `mvn -Pintegration verify` is the only check that a configured model
