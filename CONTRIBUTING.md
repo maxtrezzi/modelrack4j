@@ -35,6 +35,12 @@ are `*IT` classes behind `-Pintegration`, and each one skips itself when its own
 absent. A CI job runs the build with the credential environment scrubbed specifically to catch
 a test that quietly grew a dependency on a key.
 
+**Do not add the mutation testing plugin to another module, and do not move it to the parent
+`pom.xml`.** The parent passes its plugins to every module, including the four provider
+modules, whose `*IT` tests call paid APIs. Mutation testing runs the tests once for every
+change it makes, so one run in the wrong module can cost real money
+([ADR-0041](docs/adr/0041-mutation-testing-on-core-only.md)).
+
 Java 17 is the floor; CI runs 17, 21 and 25.
 
 ## Pull requests
@@ -48,6 +54,20 @@ Java 17 is the floor; CI runs 17, 21 and 25.
   approving review is required, so a green build is the whole gate.
 - New behaviour comes with a test. A test that cannot fail is worse than no test — if it
   guards against a specific fault, break the code and confirm it catches it.
+- If you changed logic in `modelrack4j-core`, run mutation testing before you open the pull
+  request. This is the automatic form of the rule above. Nothing enforces it: no build step
+  runs it and no CI check requires it.
+
+  ```bash
+  mvn -pl modelrack4j-core org.pitest:pitest-maven:mutationCoverage
+  ```
+
+  It changes the code in small ways and reports which changes no test noticed. Each one is a
+  question about the tests, not a defect in the library: write a test, exclude the code, or
+  decide the change means the same thing as the original. The report is written to
+  `modelrack4j-core/target/pit-reports/` and takes a few minutes. It reads core only, so it
+  has nothing to say about a change to a provider module, to the examples or to the
+  documentation.
 - If your change settles a design question, it needs an ADR. Copy
   [`docs/adr/0000-template.md`](docs/adr/0000-template.md), take the next free number after the
   ones already on `main`, and add a row to the index. Two open pull requests can pick the same

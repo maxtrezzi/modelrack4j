@@ -1648,6 +1648,24 @@ Independently: `modelrack4j-core` contains no `*IT.java`, the `integration` prof
 grep for `java.net|HttpClient|Socket|URL(|http://|https://` over the whole of core's `src`
 returns nothing.
 
+#### The contributor-facing half, added after the fact
+
+`CLAUDE.md` and ADR-0041 both carry the rule that PIT must never reach a provider module, and
+neither is read by an outside contributor — the same gap `CONTRIBUTING.md` already covers for
+ADR numbering. It now carries two things: the prohibition, next to the existing paragraph
+about the offline build and the API keys, because both protect against spending money by
+accident; and the expectation to run mutation testing after changing logic in core, as a
+bullet directly under *"a test that cannot fail is worse than no test"*.
+
+The wording of that expectation was corrected in review. Calling the tool **optional**
+describes the mechanism accurately and misleads about the value, and it would have
+contradicted the rule immediately above it, which `CONTRIBUTING.md` states as an obligation
+rather than a choice. The trigger was corrected too: not *"when you add something that needs
+tests"* but *"when you change logic in core"*. The three tests this task repaired were written
+at [M1](milestones.md#m1--core-without-watching) (#14) and the two code paths they failed to
+defend at [M3](milestones.md#m3--hot-reload) (#16), so nothing was being added when the
+defects were found — which is exactly the case the narrower trigger would have missed.
+
 #### Verified
 
 `mvn clean install` green offline, 8/8 modules, core 69 tests and 102 across the reactor;
