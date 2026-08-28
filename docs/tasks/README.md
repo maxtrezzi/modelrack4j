@@ -47,6 +47,15 @@ Branch before starting, never commit to `main`, and name the branch after the it
 `decision/d2-repository-visibility`. The branch carries the work, the status update here,
 and any ADR the task produces.
 
+**One branch may carry several entries when they are one piece of work.** P11 through P15
+share `docs/documentation-reorganisation` because they are one documentation
+reorganisation split into five records, not five tasks batched for convenience — and
+because two of them independently took the same next-free ADR number, which only a shared
+branch could reconcile. P14 joined them because most of what it corrects was written by the
+other three, and P15 because most of what it corrects was written by P14. Name such a branch
+after the work rather than after any one item, and say so in the entries, so that a branch
+matching no identifier reads as a decision rather than as drift.
+
 ## Status board
 
 Phase 0 gates everything else; nothing below M0 should start before its blockers clear.
@@ -77,6 +86,11 @@ Phase 0 gates everything else; nothing below M0 should start before its blockers
 | [P8](post-v1.md#p8--status-line-drift-and-a-check-that-would-have-caught-it) | Status-line drift, and a check for it | **Done** — 4 ADRs fixed; `build/check-docs.py` |
 | [P9](post-v1.md#p9--the-three-things-that-had-to-be-right-before-a-first-release) | Pre-release correctness and metadata | **Done** — `snapshot()`, ADR-0038 |
 | [P10](post-v1.md#p10--a-code-review-of-llmsnapshot-and-a-self-correction-found-while-checking-the-fix) | Review of `LlmSnapshot`, plus a self-caught perf regression | **Done** — delegation, no duplication |
+| [P11](post-v1.md#p11--the-user-facing-text-read-as-a-non-native-reader-would-read-it) | The user-facing text, read as a non-native reader would | **Done** — 2 stale claims, 23 phrases |
+| [P12](post-v1.md#p12--testing-the-examples-by-hand-and-a-live-break-in-anthropics-sampling-parameters) | Testing the examples by hand | **Done** — Anthropic dropped non-default `temperature` on claude-sonnet-5 |
+| [P13](post-v1.md#p13--branch-protection-on-main) | Branch protection on `main` | **Done** — required checks, PR required, 0 reviews; ADR-0040 |
+| [P14](post-v1.md#p14--a-coherence-pass-over-the-tracked-documentation) | A coherence pass over the tracked documentation | **Done** — 8 substantive findings, 3 of them miscounts |
+| [P15](post-v1.md#p15--a-second-coherence-pass-and-what-the-first-one-missed) | A second coherence pass over the same documentation | **Done** — 5 defects, 2 of them in P14's own write-up |
 | [D1](open-decisions.md#d1--glm-route-if-no-maintained-module-exists) | GLM route if no maintained module | **Closed** — never became live |
 | [D2](open-decisions.md#d2--repository-visibility) | Repository visibility | **Settled** — public, not released; ADR-0034 |
 | [D3](open-decisions.md#d3--token-window-memory-on-a-remote-estimator) | Token-window memory on a remote estimator | **Settled** — opt-in flag |

@@ -126,12 +126,12 @@ public final class LlmRegistry implements AutoCloseable {
     /**
      * Returns the current generation, held still, so several lookups agree with each other.
      *
-     * <p>{@link #get(String)} reads the live configuration on every call. Two consecutive
-     * calls can therefore straddle a reload and return bundles built from different file
-     * contents — rare, but reproducible, and a correctness hazard wherever several models
-     * are expected to be consistent with one another. This method reads the published
-     * generation exactly once and hands it back; everything taken from the result belongs to
-     * that one generation.
+     * <p>{@link #get(String)} reads the live configuration on every call. A reload can
+     * therefore land between two consecutive calls, so they return bundles built from
+     * different file contents — rare, but reproducible, and a correctness hazard wherever
+     * several models are expected to be consistent with one another. This method reads the
+     * published generation exactly once and hands it back; everything taken from the result
+     * belongs to that one generation.
      *
      * <pre>{@code
      * LlmSnapshot models = registry.snapshot();
@@ -140,8 +140,8 @@ public final class LlmRegistry implements AutoCloseable {
      * }</pre>
      *
      * <p>The returned snapshot never updates. Take one per unit of work — per request, per
-     * council round — and let it go. Holding one for the lifetime of the application is the
-     * caching trap in a new costume.
+     * council round — and discard it afterwards. Holding one for the lifetime of the
+     * application is the same caching trap in a different form.
      *
      * @return the current generation
      */
@@ -182,7 +182,8 @@ public final class LlmRegistry implements AutoCloseable {
      * <p>A rejected reload changes nothing: the previous snapshot stays live in full. Every
      * rejection is also logged at WARN by this class's logger, whether or not a listener is
      * registered, so a broken file on disk is never silent; register a listener to do
-     * something about it beyond logging — alert, expose a health signal, page someone.
+     * something about it beyond logging — raise an alert, expose a health signal, notify
+     * whoever is on call.
      *
      * <p>Listeners run on the watcher thread. An exception thrown by one is logged and
      * affects neither the other listeners nor later reloads.
@@ -203,8 +204,8 @@ public final class LlmRegistry implements AutoCloseable {
      *
      * @implNote Bundles are deliberately not closed, including bundles a reload superseded.
      *     An in-flight request may still hold one, and LangChain4j model instances are
-     *     immutable and complete normally; they become collectable once no caller holds a
-     *     reference.
+     *     immutable and complete normally; they become eligible for garbage collection once
+     *     no caller holds a reference.
      */
     @Override
     public void close() {
@@ -230,7 +231,7 @@ public final class LlmRegistry implements AutoCloseable {
         } catch (RuntimeException e) {
             // ADR-0031: logged whether or not anyone listens. Without this, a typo in a
             // config file makes every later edit stop taking effect with no trace anywhere,
-            // and the failure has no caller to be thrown at.
+            // and this runs on the watcher thread, where there is no caller to throw to.
             log.warn("modelrack4j reload rejected; the previous configuration stays live: {}",
                     e.getMessage(), e);
             notify(failureListeners, new ReloadFailure(configFiles, e), "failure");

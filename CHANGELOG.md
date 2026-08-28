@@ -22,7 +22,7 @@ than listed as one long **Added** block.
 - `registry.get(name)` returns the current `LlmBundle`; `names()` lists what is configured.
 - `registry.snapshot()` returns an `LlmSnapshot`: one generation held still, so several
   lookups are guaranteed to agree with each other. `get()` reads the live configuration on
-  every call, so two consecutive calls can straddle a reload — rare, reproducible, and a
+  every call, so a reload can land between two consecutive calls — rare, reproducible, and a
   correctness hazard where several models must be consistent. A snapshot never updates:
   take one per unit of work.
   Bundles are keyed by **configuration name**, never provider name, so two names may share
@@ -35,7 +35,7 @@ than listed as one long **Added** block.
 - An optional `description` key on each named block: one short line saying what the
   configuration is for, surfaced through `LlmConfig.description()`. Nothing in the library
   reads it. A present-but-blank description is rejected; `description = null` in a higher
-  layer clears one set lower down.
+  layer clears a description set in a lower layer.
 - Configuration errors are `ConfigValidationException` and name the offending block; an
   unknown name is `UnknownConfigurationException`.
 
@@ -73,8 +73,10 @@ than listed as one long **Added** block.
 - A manual in `docs/manual/`: a tutorial built on the runnable examples, and a reference for
   the schema, the API, reload semantics, the provider matrix and troubleshooting.
 - `AtomicSnapshot`, an example that demonstrates snapshot-wide reload atomicity: four threads
-  sample two models while one save changes both, and the mixed pair never appears. Needs no
-  API key and sends no request, so it costs nothing to run.
+  sample two models while one save changes both, once through two `get()` calls and once
+  through a shared `snapshot()`. The `snapshot()` column never shows a mixed pair; the
+  `get()` column occasionally does, and `registry.snapshot()` is how a caller avoids that.
+  Needs no API key and sends no request, so it costs nothing to run.
 - `ProviderSwap`, an example that changes a running application's provider by editing a file
   and asks the same question again through the same call site.
 - `ConsoleChat`, an interactive example: a menu of every configured model, chat with the one
@@ -82,13 +84,19 @@ than listed as one long **Added** block.
   one while it runs changes the menu underneath you.
 - `ThreeModelCouncil`, an example that asks one question of three models configured together
   and prints the three answers, with no provider branch anywhere in the code.
+- The bundled examples set no `temperature` on their Anthropic blocks. Anthropic has
+  deprecated a non-default `temperature` on `claude-sonnet-5`, where the model's adaptive
+  thinking controls its own sampling and the API answers a non-default value with a 400. If
+  you copied `council.conf` from an earlier draft, remove that line. `gpt-5.1` still accepts
+  one.
 
 ### Build and artifacts
 
 - Java 17 baseline, built and tested on JDK 17, 21 and 25.
 - Built against LangChain4j 1.19.0, with both the stable and community BOMs imported.
 - `modelrack4j-bom` versions every artifact from one coordinate.
-- Sources and javadoc jars attach to every published module.
+- Sources and javadoc jars attach to each of the five modules that produce a jar — core and
+  the four providers. The parent and `modelrack4j-bom` publish as POMs.
 - `LICENSE` and a `NOTICE` file ship inside `META-INF/` of every jar. The `NOTICE` is four
   lines and stays that way on purpose: Apache 2.0 §4(d) requires anyone redistributing this
   library, or a derivative of it, to carry its attribution along.

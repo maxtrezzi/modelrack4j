@@ -28,8 +28,8 @@ import java.util.Set;
  * a reload lands while you are asking.
  *
  * <p><strong>Why this exists.</strong> {@link LlmRegistry#get(String)} reads the live
- * configuration on every call, which is what makes reload work — but it also means two
- * consecutive calls can straddle a reload and return bundles from different generations:
+ * configuration on every call, which is what makes reload work — but it also means a reload
+ * can land between two consecutive calls, so they return bundles from different generations:
  *
  * <pre>{@code
  * ChatModel a = registry.get("SL").chatModel();   // generation N

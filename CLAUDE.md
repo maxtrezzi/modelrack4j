@@ -69,6 +69,29 @@ directly to `main` (ADR-0016). Name it after the work item — `task/0.1-pin-lan
 no task ID. One branch carries the work, its status update in `docs/tasks/`, and any ADR it
 produces.
 
+**`main` is protected on the remote (ADR-0040), but not against you.** A pull request is
+required, force-pushing and deleting are blocked, and the five checks in
+`.github/workflows/build.yml` must pass and be current with the branch before a merge, with
+no approving review needed — so for an outside contributor a green build is the whole gate.
+**`enforce_admins` is `false`, and the only collaborator is an admin**, which is every
+session working in this repository: none of those gates will actually stop you. Treat the
+branch rule as binding anyway. It is a rule you keep because it is right, not because
+something enforces it, and ADR-0040 accepts that trade deliberately — turning
+`enforce_admins` on is all-or-nothing on GitHub's side and would also impose a fake
+single-maintainer review requirement.
+
+One branch may carry several `docs/tasks/` entries when they are genuinely one piece of
+work — see the convention note in `docs/tasks/README.md`, and say so in the entries, so a
+branch matching no identifier reads as a decision rather than as drift.
+
+**ADR numbers are only safe once they are on `main`.** Two branches that each take "the next
+free number" are both correct and still collide, and `build/check-docs.py` cannot warn about
+it because from inside either branch nothing is wrong. Renumbering is cheap while nothing is
+pushed and the ADR is referenced from nowhere outside the repository, and stops being cheap
+after either. This has already happened once (P13). `CONTRIBUTING.md` carries the
+contributor-facing version of this rule, because an outside contributor never reads this
+file.
+
 Content moves from the discussion log to the ADR by **rewriting**, never copying — the log
 is private material, the ADR is the distilled public result. Accepted ADRs are immutable:
 to change a decision, write a new ADR and mark the old one `Superseded by ADR-NNNN` (or
@@ -133,7 +156,7 @@ away — each protects a specific failure mode, and the full reasoning is in `do
 the ADR before changing anything below; the summaries here are pointers, not the argument,
 and where a summary and an ADR disagree the ADR wins and the summary is the bug.
 
-**Snapshot-wide atomicity (ADR-0012, widening ADR-0008).** All config
+**Snapshot-wide atomicity (ADR-0012, widening ADR-0008, amended by ADR-0038).** All config
 files are merged in memory into ONE snapshot. A reload parses → validates → builds every
 changed bundle in a *staging area*, then swaps a single snapshot reference. Any failure
 anywhere means nothing swaps, the previous snapshot stays live, and `onReloadFailure`
@@ -142,6 +165,14 @@ fires exactly once. Success fires exactly ONE `onReload(change)` with `updated`/
 independently — two callbacks would let an application observe new-SL with old-SH, which
 is a correctness hazard for multi-model councils. The staging step is load-bearing:
 builders throw for reasons `validate()` cannot predict.
+
+**How much of that atomicity a caller gets is a separate question, and ADR-0038 answers it.**
+`get()` reads the live snapshot on every call, so two consecutive calls can straddle a swap
+and return bundles from different generations — measured at about two per million pairs.
+`snapshot()` reads the generation once and hands back an `LlmSnapshot`, and `get()` now
+delegates to it. Do not re-describe `get()` as "a volatile read and a map lookup": it also
+allocates that wrapper (P14). A held snapshot never updates, so one per unit of work, never
+one at startup — that is the caching trap again.
 
 **Resolve after merging, never per file (ADR-0007).** Typesafe Config separates parsing
 from resolution. Parse each layer with `ConfigFactory.parseFile(...)` only, merge with
@@ -213,6 +244,49 @@ in-flight requests may still hold them.
   point and it outlived the phase: three of its eight verification tasks refuted the premise
   they were written with. Read the artifact with `javap` or `unzip`, query Central, fetch the
   upstream POM. "I believe the API is…" is how this project gets things wrong.
+- **That rule covers the numbers you use to describe your own work, and this is where it
+  gets broken.** Counts, word deltas, "N places", "the largest", "N precedents" — run the
+  command that produces the figure *before* writing the sentence, not after, and prefer the
+  measurement to an adjective so the next reader can re-run it. P11 is the cautionary tale.
+  Do not read it as "the counts of what to fix were fine and only the write-up drifted" — an
+  early draft of that entry claimed exactly this, and an independent review refuted it from
+  the entry's own table. One figure went through three wrong versions in a row, each written
+  while correcting the previous one, and seven further counts were wrong once each. A
+  superlative is a claim; if you have not measured it, do not write it. Note that
+  `build/check-docs.py` cannot catch any of this — it checks links, ADR status lines and
+  numbering, not whether a sentence is true. The check that did catch it was a session with
+  no memory of writing the text, which is the only kind that works here. P14 adds the cheaper
+  half of the same rule: three of its findings were enumerations that contradicted their own
+  leading number ("seven modules: parent, core, four providers, BOM, examples" is eight), so
+  count the list you just wrote before you name its size. And a completeness audit — "every
+  public member, 28 of 28" — is true only on the day it runs, so date it or it becomes a
+  false claim the next time the API grows.
+- **Grepping the figure is not enough; read the whole diff.** The two errors the third review
+  of P11 found were invisible to a grep for the number, because the write-up was checked
+  against one commit and the work spanned several. One of them was not a miscount at all: the
+  entry listed a metaphor it had *written* among the metaphors it had *removed*, and no count
+  of anything would have caught it. Before you describe a change, run
+  `git diff main..HEAD` over it and read the output to the end — including when it is long,
+  which is exactly when the previous session stopped. **P15 shows the rule reaches a write-up's
+  account of its own fix.** P14 wrote that it had put a dated marker on all three of its
+  miscounts and had put one on two of them, and named a missing date as the fix for a stale
+  completeness audit without adding that date. Neither is a miscount, and both are visible
+  only by reading P14's diff against P14's sentences.
+- **An over-claim an ADR corrects can survive in wording the ADR never uses.** ADR-0038's was
+  made in three places in three different forms. P14 found two — one repeating the sentence
+  ADR-0038 quotes, one a near-paraphrase of it in the example ADR-0038 is about — and reported
+  the count as two. The third restated the claim in a reader's own terms, in the README's
+  opening pitch, where it had sat since M5 through one rewrite of its own paragraph (P15).
+  Re-read the passages that *make* a claim, not only the ones that repeat its wording.
+- **User-facing prose has a register, and it is not this file's (ADR-0039).** The README,
+  `docs/manual/`, public Javadoc, the commented `.conf` examples, `CONTRIBUTING.md` and the
+  CHANGELOG are written for a technical reader at roughly B2 English who does not read it as
+  a first language. Two tests per sentence: would a reader who does not yet know the
+  mechanism parse it, and would a non-native reader parse it without a dictionary? Brevity
+  stays the default — what the rule constrains is compressing meaning into metaphor or idiom,
+  not length. **`docs/adr/`, `docs/tasks/` and this file are deliberately exempt**: their
+  readers already hold the context, and an accepted ADR's body cannot be edited anyway. Do
+  not "fix" their register, and do not let a user-facing paragraph drift back toward it.
 - **`docs/tasks/open-decisions.md` needs the owner.** Ask; do not decide unilaterally.
   D1–D3 are all settled, so the file is currently a record rather than a queue — a new
   entry there is a question for the owner, not work to pick up.

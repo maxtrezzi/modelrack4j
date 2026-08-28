@@ -23,12 +23,12 @@ narrows or widens part of one). Both default to `—`.
 | `Proposed` | Written up, not yet agreed |
 | `Accepted` | In force; implementation must follow it |
 | `Accepted — <aspect> amended by ADR-NNNN` | Still in force, but a later ADR narrowed or widened part of it; the later ADR wins where they differ |
+| `Superseded by ADR-NNNN` | Replaced wholesale; kept for the reasoning trail |
 
 `amended` may be `widened` or `narrowed` where that is more precise — ADR-0008 reads
 *"swap scope widened by ADR-0012"*. What may not vary is the rest of the shape: the row and
 the ADR's own `Status` line must match **exactly**, and the pointer must name an ADR number.
 `build/check-docs.py` enforces both.
-| `Superseded by ADR-NNNN` | Replaced wholesale; kept for the reasoning trail |
 
 Superseding or amending an ADR means editing only the old file's `Status` line and adding
 the pointer. Its body stays untouched — including the parts the newer ADR overrode, since
@@ -120,3 +120,5 @@ by number, since the numbering only reflects the order of the original appendix.
 | [0001](0001-record-decisions-as-adrs.md) | Record decisions as ADRs; keep discussion logs out of the repo | Accepted |
 | [0015](0015-track-work-items-in-docs-tasks.md) | Track work items in `docs/tasks/`, alongside the ADRs | Accepted |
 | [0016](0016-one-feature-branch-per-task.md) | One feature branch per task | Accepted |
+| [0039](0039-user-facing-prose-is-written-for-a-non-native-reader.md) | Write user-facing prose for a non-native reader, terse but self-explaining | Accepted |
+| [0040](0040-protect-main-with-required-checks-not-required-review.md) | Protect `main` with required checks, not required review | Accepted |

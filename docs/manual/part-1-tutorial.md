@@ -15,11 +15,12 @@ library refuses to do and why.
 Every command and every output block on this page was run before it was written down. Where
 the output depends on a model's answer, it says so instead of inventing one.
 
-> **Most of it is free, and the free part comes first.** Steps 1, 2, 6, 7 and 8 send no
-> request at all: building, writing configuration, watching validation refuse a block a
-> provider cannot serve, and watching a broken file get rejected are all offline. Only
-> steps 3, 4, 5 and 9 talk to a provider — roughly a dozen short prompts if you follow the
-> page literally, of which step 9 sends three, one per model.
+> **Most of it is free, and the free part comes first.** Six of the ten steps — 1, 2, 6, 7, 8
+> and 10 — send no request at all: building, writing configuration, watching validation
+> refuse a block a provider cannot serve, watching a broken file get rejected, layering, and
+> setting the library up in your own project are all offline. Only steps 3, 4, 5 and 9 talk
+> to a provider — roughly a dozen short prompts if you follow the page literally, of which
+> step 9 sends three, one per model.
 >
 > **Every step needs one API key to be *set*, because substitution is mandatory** — an unset
 > variable fails at load, by design. Only those four steps need it to be valid and funded.
@@ -104,7 +105,7 @@ llm {
 }
 ```
 
-Four things to notice, because they are the whole schema in miniature:
+Four things to notice, because they are the whole schema in four points:
 
 - **`llm` is the root.** Everything the library reads lives under it.
 - **`SL` is a name you invented.** It is how your code will ask for this model. Short names
@@ -189,7 +190,7 @@ configured models
   1  SH           anthropic / claude-sonnet-5  streaming
          the same model, streamed, for long answers
   2  SL           anthropic / claude-sonnet-5
-         short, cheap, deterministic
+         my first model
 choose 1-2 by number or name, or /exit:
 ```
 
@@ -228,16 +229,16 @@ either all of it applies or none of it does.
 
 ## 5. Memory and streaming
 
-Two of the four parts of a bundle are optional and driven entirely by configuration. Edit
-`SL` to give it memory:
+Three of the four parts of a bundle are optional and driven entirely by configuration:
+streaming, memory and moderation. This step adds the first two. Moderation is OpenAI-only —
+step 6 shows what happens if you ask another provider for it. Edit `SL` to give it memory:
 
 ```hocon
   SL {
-    description = "short, cheap, deterministic"
+    description = "short and cheap — the everyday answer"
     provider    = anthropic
     api-key     = ${ANTHROPIC_API_KEY}
     model-name  = "claude-sonnet-5"
-    temperature = 0.2
     memory { type = message-window, max-messages = 20 }
   }
 ```
@@ -247,7 +248,7 @@ configured models
   1  SH           anthropic / claude-sonnet-5  streaming
          the same model, streamed, for long answers
   2  SL           anthropic / claude-sonnet-5  message-window
-         short, cheap, deterministic
+         short and cheap — the everyday answer
 ```
 
 Chat with `SL` now and the parenthesis is gone: tell it your name, ask what it is two
@@ -357,18 +358,18 @@ file, and something local for development. Split what you have:
 # defaults.conf — the baseline, checked in
 llm {
   SL {
-    description = "short, cheap, deterministic"
+    description = "short and cheap — the everyday answer"
     provider    = anthropic
     api-key     = ${ANTHROPIC_API_KEY}
     model-name  = "claude-sonnet-5"
-    temperature = 0.2
+    timeout     = 60s
   }
 }
 ```
 
 ```hocon
 # local.conf — yours, not checked in
-llm.SL { temperature = 0.9 }
+llm.SL { timeout = 10s }
 ```
 
 ```bash
@@ -378,14 +379,15 @@ mvn -q -pl modelrack4j-examples exec:java \
 ```
 
 **Lowest precedence first.** The last file wins on conflict, so `local.conf` overrides
-`temperature` and inherits everything else.
+`timeout` — a shorter timeout for an unreliable local connection, instead of the full
+minute — and inherits everything else.
 
-The subtle part is worth knowing before it bites you. All layers are merged **first** and
+The subtle part is worth knowing before it causes a problem. All layers are merged **first** and
 resolved **once**, at the end. So a `${VAR}` in a lower layer that a higher layer replaces is
 never evaluated — you can ship a `defaults.conf` demanding `${ANTHROPIC_API_KEY}` and override
 that whole key locally with a literal, on a machine where the variable does not exist.
-Resolve each file as you parse it, which is the obvious implementation, and that same setup
-throws.
+If instead you resolve each file as you parse it, which is the obvious implementation, that
+same setup fails.
 
 To *remove* something a lower layer set rather than replace it, use `null`:
 
@@ -399,7 +401,7 @@ llm.SL { description = null }
 
 The scenario the library was built for: several models cooperating, configured together, all
 reloaded together. `council.conf` in the checkout defines `SL`, `SH` and `CR` — two Anthropic
-models at different temperatures and an OpenAI model that also moderates.
+models that differ in memory and streaming, and an OpenAI model that also moderates.
 
 ```bash
 mvn -q -pl modelrack4j-examples exec:java \
@@ -470,7 +472,7 @@ try (LlmRegistry registry = LlmRegistry.builder()
 }
 ```
 
-One rule to take with you, and it is the only one that bites silently:
+One rule to take with you, and it is the only one that fails silently:
 
 ```java
 // ✅  ask at the point of use, every time

@@ -32,7 +32,7 @@ setting a temperature and a timeout is a constructor call — which means it is 
 ```java
 ChatModel model = AnthropicChatModel.builder()
         .apiKey(System.getenv("ANTHROPIC_API_KEY"))
-        .modelName("claude-sonnet-5")
+        .modelName("claude-sonnet-4-6")
         .temperature(0.2)
         .timeout(Duration.ofSeconds(60))
         .build();
@@ -40,7 +40,7 @@ ChatModel model = AnthropicChatModel.builder()
 
 Changing the provider means editing that, recompiling and redeploying. So does raising a
 temperature by 0.1. The abstraction is real, but the decision it was supposed to free you
-from is welded to the build.
+from is tied to the build.
 
 **modelrack4j moves that decision into a file.** Three things follow, and they are the whole
 library:
@@ -50,20 +50,20 @@ library:
    which one answered.
 
 2. **Several setups of the same model cost nothing.** `SL` and `SH` below are one provider and
-   one model at two temperatures, one of them streamed. In code that is two near-identical
+   one model, one bounded by memory and the other streamed. In code that is two near-identical
    builder blocks that drift apart over time; here it is two named blocks, and adding a third
    is four lines in a file.
 
 3. **Configuration changes while the process runs.** Edit the file and the registry rebuilds
-   what changed and swaps it — validated, and atomically across every configured model at
-   once, so a flow using `SL` and `SH` together never sees one of them updated and the other
-   not. If the new file is broken, nothing swaps and the previous configuration keeps
-   serving.
+   what changed and swaps it — validated, and in one step across every configured model, so a
+   half-applied configuration never exists. A flow that uses `SL` and `SH` together gets both
+   from the same version of the file by asking for a [snapshot](#hot-reload). If the new file
+   is broken, nothing swaps and the previous configuration keeps serving.
 
 The fourth thing is what makes the first three safe to rely on: **mistakes fail when the file
 loads, not at the first request.** Providers differ in what they can actually do — moderation
 is OpenAI-only among the four here, and token counting is local, remote or absent depending
-on who you ask — so the configuration is validated against the provider's real capabilities.
+on the provider — so the configuration is validated against the provider's real capabilities.
 Enabling moderation on Anthropic is a startup error naming the block, not an empty `Optional`
 you discover in production.
 
@@ -77,7 +77,8 @@ fallback — see [Out of scope](#out-of-scope).
 
 ## Should you use this?
 
-Often the answer is no, and it is cheaper to find that out here than three days in.
+Often the answer is no, and it is cheaper to find that out here than three days into the
+project.
 
 **If you are on Spring Boot or Quarkus, start with their LangChain4j starters.** They already
 configure models from properties at startup, and for most applications that is the whole job.
@@ -165,20 +166,18 @@ Requires **Java 17+**. Built against **LangChain4j 1.19.0**.
 # council.conf
 llm {
   SL {
-    description = "short, cheap, deterministic — the everyday answer"
+    description = "short, cheap — the everyday answer, twenty turns of memory"
     provider    = anthropic
     api-key     = ${ANTHROPIC_API_KEY}
     model-name  = "claude-sonnet-5"
-    temperature = 0.2
     memory { type = message-window, max-messages = 20 }
   }
 
   SH {
-    description = "the same model turned up, streamed for long answers"
+    description = "the same model, streamed for long answers"
     provider    = anthropic
     api-key     = ${ANTHROPIC_API_KEY}
     model-name  = "claude-sonnet-5"
-    temperature = 0.9
     streaming   = true
   }
 
@@ -194,7 +193,12 @@ llm {
 ```
 
 Note `SL` and `SH`: **two names, one provider, one model, different parameters.** Registry
-keys are configuration names, never provider names, which is what makes that work.
+keys are configuration names, never provider names, which is what makes that work. Neither
+sets `temperature`: `claude-sonnet-5`'s adaptive thinking controls its own sampling, and the
+API rejects a non-default value with a 400. The `gpt-5.1` block above still accepts one, and
+so does
+`claude-sonnet-4-6` — which is why the Java example in [Why](#why) uses that model to show a
+temperature fixed in a builder call.
 
 > **Use `${VAR}`, not `${?VAR}`, for secrets.** The mandatory form fails loudly at load time
 > when the variable is unset. The optional form silently yields no value, and the failure
@@ -234,12 +238,12 @@ Each one demonstrates a single claim from [Why](#why) rather than the library in
 
 | Example | Shows | Cost |
 |---|---|---|
-| [`AtomicSnapshot`](modelrack4j-examples/src/main/java/io/github/maxtrezzi/modelrack4j/examples/AtomicSnapshot.java) | One save changes two models; four threads sample the pair both ways and count the mixed ones — via `snapshot()` the count is zero by construction | **free, no API key** |
+| [`AtomicSnapshot`](modelrack4j-examples/src/main/java/io/github/maxtrezzi/modelrack4j/examples/AtomicSnapshot.java) | A single save changes two models at once, while four threads keep reading both; reading through `snapshot()` never catches a mix of old and new, reading through two `get()` calls can, though a single run often catches none | **free, no API key** |
 | [`ProviderSwap`](modelrack4j-examples/src/main/java/io/github/maxtrezzi/modelrack4j/examples/ProviderSwap.java) | The same call site answered by Anthropic, then by OpenAI, after a file edit | two requests |
 | [`ConsoleChat`](modelrack4j-examples/src/main/java/io/github/maxtrezzi/modelrack4j/examples/ConsoleChat.java) | An interactive menu of every configured model; edit the file while it runs and the menu changes | a conversation |
 | [`ThreeModelCouncil`](modelrack4j-examples/src/main/java/io/github/maxtrezzi/modelrack4j/examples/ThreeModelCouncil.java) | The scenario above: three models, one question, no provider branch in the code | three requests |
 
-Start with `AtomicSnapshot` if you want to see the least obvious guarantee for nothing:
+Start with `AtomicSnapshot` if you want to see the least obvious guarantee at no cost:
 
 ```bash
 mvn install
@@ -275,8 +279,9 @@ class Council {
 
 This is the one mistake that silently disables hot reload. Nothing throws, nothing logs, the
 reload genuinely happens — the caller is simply holding a bundle from a previous snapshot.
-`registry.get(name)` is a read of a volatile field and a map lookup; it is cheap enough to
-call per request, and it is the API's primary path. Listeners are secondary.
+`registry.get(name)` is a read of a volatile field, one small wrapper object, and a map
+lookup; it is cheap enough to call per request, and it is the API's primary path. Listeners
+are secondary.
 
 If you use a DI container, inject the **registry**, not a `ChatModel`.
 
@@ -308,8 +313,8 @@ Every named block lives under the `llm` root. Names are yours: `SL`, `CR`,
 convenient to type and say nothing on their own, so a block can carry one line explaining
 what it is for. Nothing in the library reads it — it is there for your own operators, your
 own admin screens, and the console example's menu. Two rules worth knowing: a present but
-**blank** description is rejected as a mistake, and a higher layer clears one set lower down
-with `description = null`, which removes the key outright.
+**blank** description is rejected as a mistake, and a higher layer can clear a description
+set in a lower layer with `description = null`, which removes the key outright.
 
 Because it is part of `LlmConfig`, editing a description alone counts as a change and
 rebuilds that one bundle on reload. That is deliberate — see
@@ -355,9 +360,9 @@ llm {
 
 That works, and the detail is load-bearing: all layers are **merged first and resolved
 exactly once**. `${ANTHROPIC_API_KEY}` in the lower layer is never resolved, because the
-higher layer replaced that key before resolution ran. Resolve each file as you parse it —
-the obvious implementation — and this throws instead, because the substitution is evaluated
-while the overriding layer is still invisible. It has its own regression suite.
+higher layer replaced that key before resolution ran. If instead you resolve each file as
+you parse it — the obvious implementation — this fails, because the substitution is
+evaluated while the overriding layer is still invisible. It has its own regression suite.
 
 Substitutions also see the merged result, so a lower layer may refer to a key only a higher
 layer defines.
@@ -384,8 +389,8 @@ registry.onReloadFailure(failure ->
 **What a reload guarantees:**
 
 - **Ask for consistency when you need it.** `registry.get(name)` reads the live
-  configuration on every call — that is what makes reload work, and it means **two
-  consecutive calls can straddle a reload** and return models built from different file
+  configuration on every call — that is what makes reload work, and it means **a reload can
+  land between two consecutive calls**, so they return models built from different file
   contents. Rare (measured at roughly two per million read pairs under a reload every few
   milliseconds) but reproducible, and a correctness hazard wherever several models must
   agree. Where they must, take a snapshot:
@@ -427,7 +432,7 @@ whatever you already use), or SLF4J prints its no-provider notice and everything
 discarded.
 
 Two things are reported through the log and nowhere else, because they happen on the watcher
-thread and have no caller to be thrown at:
+thread, where there is no caller to throw them to:
 
 - **A rejected reload**, at `WARN` from `io.github.maxtrezzi.modelrack4j.LlmRegistry`, with
   the cause. This is logged whether or not you registered `onReloadFailure`, which matters
@@ -458,14 +463,14 @@ Measured on **Linux** (inotify, Temurin 25), write → event observed, 20 sample
 | 0.37 ms | **0.50 ms** | 0.63 ms |
 
 Plus the debounce, so a save is live roughly 300 ms later by default. Events for one logical
-write arrive within ~2.5 ms, which is what the 300 ms default is sized against; lowering it
-below the time your writer takes to finish produces reloads of half-written files, which are
-rejected as failures rather than applied.
+write arrive within ~2.5 ms, which is the burst the 300 ms default is chosen to cover;
+lowering it below the time your writer takes to finish produces reloads of half-written
+files, which are rejected as failures rather than applied.
 
 > **macOS is not measured.** The JDK's `WatchService` there is polling-based internally, so
 > latency is expected to be substantially higher — on the order of seconds, not
-> sub-millisecond. This project has no macOS machine, and rather than quote a figure from
-> hearsay it states the gap: **if you run on macOS, measure it yourself.** Nothing about the
+> sub-millisecond. This project has no macOS machine, and rather than quote an unverified
+> figure it says so openly: **if you run on macOS, measure it yourself.** Nothing about the
 > design depends on the answer; only this paragraph does.
 
 ---
@@ -484,13 +489,13 @@ application configuring only Anthropic never has OpenAI's dependencies on its cl
 
 Read out of the LangChain4j 1.19.0 artifacts, not from documentation. Gemini is the stable
 `langchain4j-google-ai-gemini` module; GLM comes from `langchain4j-community-zhipu-ai`,
-which is on the community release train.
+which is released on the community cycle, separately from the stable modules.
 
 Capabilities are enforced at load time. `moderation { enabled = true }` on Anthropic,
 Gemini or GLM is a configuration error naming the block, not an empty `Optional` you
 discover at runtime.
 
-**Two provider notes worth knowing before you hit them:**
+**Three provider notes worth knowing before you hit them:**
 
 - **Moderation is ignored on the `AiServices` streaming path.** That is upstream LangChain4j
   behaviour ([#2779](https://github.com/langchain4j/langchain4j/issues/2779)), not something
@@ -526,15 +531,15 @@ depends entirely on the provider:
 
 | The provider counts | Behaviour |
 |---|---|
-| **locally** (OpenAI) | built, no ceremony |
+| **locally** (OpenAI) | built, with no extra configuration |
 | **remotely** (Anthropic, Gemini) | **rejected unless you opt in** with `allow-remote-token-counting = true` |
 | **not at all** (GLM) | rejected outright; the opt-in flag does not apply |
 
 The middle row is the point. On a remote counter, ordinary conversation turns make a billed,
 rate-limited, network-dependent HTTP call inside what the application reasonably assumes is
 in-memory bookkeeping. That is a decision, so it is opted into explicitly, and the rejection
-message names the flag that permits it. On a local counter the flag is inert rather than an
-error — one config layer commonly spans several providers.
+message names the flag that permits it. On a local counter the flag has no effect rather
+than being an error — one config layer commonly spans several providers.
 
 ---
 
@@ -587,7 +592,7 @@ CI runs JDK 17 (the floor), 21 and 25.
 `META-INF/` of every published jar, so they reach you whether you clone the repository or
 just take the artifact.
 
-If you redistribute this library or a derivative of it, §4(d) of the licence asks you to
+If you redistribute this library or a derivative of it, §4(d) of the License asks you to
 carry the `NOTICE`'s attribution along. It is four lines, and that is deliberate — see
 [ADR-0035](docs/adr/0035-ship-a-notice-file-for-attribution.md).
 

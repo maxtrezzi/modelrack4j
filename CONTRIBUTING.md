@@ -39,13 +39,20 @@ Java 17 is the floor; CI runs 17, 21 and 25.
 
 ## Pull requests
 
-- One branch per change, never committed straight to `main`.
-- The build stays green: `mvn clean verify` before you push.
+- One branch per change, never committed straight to `main`. This is enforced, not only
+  asked: `main` requires a pull request, and force-pushing and deletion are blocked
+  ([ADR-0040](docs/adr/0040-protect-main-with-required-checks-not-required-review.md)).
+- The build stays green: `mvn clean verify` before you push. The five checks in
+  `.github/workflows/build.yml` — JDK 17, 21 and 25, docs consistency, and the offline
+  no-API-keys build — must pass and be current with the branch before a PR can merge. No
+  approving review is required, so a green build is the whole gate.
 - New behaviour comes with a test. A test that cannot fail is worse than no test — if it
   guards against a specific fault, break the code and confirm it catches it.
 - If your change settles a design question, it needs an ADR. Copy
-  [`docs/adr/0000-template.md`](docs/adr/0000-template.md), take the next number, and add a row
-  to the index.
+  [`docs/adr/0000-template.md`](docs/adr/0000-template.md), take the next free number after the
+  ones already on `main`, and add a row to the index. Two open pull requests can pick the same
+  number and both be right, so renumber yours if another one merges first — an ADR number is
+  only settled once it is on `main`.
 
 ## License
 

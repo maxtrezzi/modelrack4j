@@ -85,8 +85,8 @@ Import the BOM once, then declare artifacts without versions:
 
 **Core knows no providers.** It contains no provider artifact and never will: each provider
 module registers itself through `ServiceLoader`, and a name whose `provider` has no module on
-the classpath is a configuration error listing the ones that are. An application configuring
-only Anthropic therefore never carries OpenAI's dependencies.
+the classpath is a configuration error that lists the providers actually available. An
+application configuring only Anthropic therefore never carries OpenAI's dependencies.
 
 What core brings with it, and nothing else:
 
@@ -111,7 +111,7 @@ claim rather than the library in general.
 
 | Example | Demonstrates | Needs |
 |---|---|---|
-| `AtomicSnapshot` | [Snapshot-wide atomicity](#reload-semantics): four threads read two models while one save changes both, sampling the pair two ways and counting the mixed ones. Via `snapshot()` the count is zero by construction; via two `get()` calls it is merely small. The count is real, not decorative: sabotaging the swap to publish one model 5 ms early makes it report tens of thousands. | **nothing** — reads configuration only, sends no request |
+| `AtomicSnapshot` | [Snapshot-wide atomicity](#reload-semantics): a single save changes two models at once, while four threads keep reading both — once via two separate `get()` calls, once via one `snapshot()` shared for both lookups. A `get()` pair can occasionally catch one model already updated and the other not (a torn read); a `snapshot()` pair never can, because both lookups read the same frozen snapshot. The counter is real, not decorative: sabotaging the swap to publish one model 5 ms early makes the `get()` count jump to tens of thousands. | **nothing** — reads configuration only, sends no request |
 | `ProviderSwap` | The provider as configuration: the same method, called twice around a file edit, answered by `AnthropicChatModel` and then `OpenAiChatModel`. The method names no provider and has no branch. | `ANTHROPIC_API_KEY` + `OPENAI_API_KEY`, two requests |
 | `ConsoleChat` | Everything interactively: a menu of configured models, streaming where configured, moderation on input where configured, memory across turns, and reload while you watch. | one provider key |
 | `ThreeModelCouncil` | The multi-model scenario: three names, one question, capabilities read from the bundle. | two provider keys |
@@ -149,11 +149,11 @@ llm {
 
 | Key | Type | Default | Notes |
 |---|---|---|---|
-| `description` | string | *none* | Human-readable. Nothing in the library reads it. Blank is rejected; `null` in a higher layer clears one set lower down. |
-| `provider` | string | *required* | Must match a `ProviderFactory` on the classpath. An unknown value lists the ones that are. |
+| `description` | string | *none* | Human-readable. Nothing in the library reads it. Blank is rejected; `null` in a higher layer clears a description set in a lower layer. |
+| `provider` | string | *required* | Must match a `ProviderFactory` on the classpath. An unknown value is an error that lists the providers actually available. |
 | `api-key` | string | *required* | Use `${VAR}`. Never blank. |
 | `model-name` | string | *required* | The provider's own identifier. **Not validated** — see below. |
-| `temperature` | number | *provider's own* | 0.0–2.0. Omitted means "do not set it", which is different from setting a default. |
+| `temperature` | number | *provider's own* | 0.0–2.0. Omitted means "do not set it", which is different from setting a default. Some models reject a non-default value — see [Providers](#providers). |
 | `timeout` | duration | `60s` | HOCON durations: `30s`, `2m`, `500ms`. Must be positive. |
 | `streaming` | boolean | `false` | Builds a `StreamingChatModel` alongside the chat model. |
 | `log-requests` | boolean | `false` | The provider logs requests. **Puts prompts, and therefore user data, in your logs.** |
@@ -207,8 +207,9 @@ key outright.
 ### Missing and malformed files
 
 A layer that does not exist, or cannot be read, is a `ConfigValidationException` naming the
-path. There is no "skip what is missing" mode: a configuration file the operator expected to
-be read and which silently was not is a worse outcome than a failed start.
+path. There is no "skip what is missing" mode. The reason: an operator expects every listed
+file to be read, and a file that was silently skipped is a worse outcome than a start that
+fails immediately.
 
 ---
 
@@ -228,7 +229,7 @@ memory { type = message-window, max-messages = 20 }
 
 | The provider counts | Behaviour |
 |---|---|
-| **locally** (OpenAI, via a bundled tokenizer) | built, no ceremony |
+| **locally** (OpenAI, via a bundled tokenizer) | built, with no extra configuration |
 | **remotely** (Anthropic, Gemini) | **rejected unless** `allow-remote-token-counting = true` |
 | **not at all** (GLM) | rejected outright; the flag does not apply |
 
@@ -242,8 +243,8 @@ rate-limited, network-dependent HTTP call inside what your application treats as
 bookkeeping. That is a decision, so it is opted into explicitly rather than discovered on a
 bill.
 
-On a local counter the flag is inert rather than an error, because one configuration layer
-commonly spans several providers.
+On a local counter the flag has no effect rather than being an error, because one
+configuration layer commonly spans several providers.
 
 ---
 
@@ -273,13 +274,41 @@ LlmRegistry registry = LlmRegistry.builder()
 | Method | Returns |
 |---|---|
 | `get(String name)` | The current bundle. Throws `UnknownConfigurationException` if the name is not configured *now*. |
+| `snapshot()` | The current generation, held still, as an `LlmSnapshot`. Every lookup on it belongs to that one generation. |
 | `names()` | The configured names, sorted. |
 | `onReload(Consumer<ReloadChange>)` | Registers a listener for successful reloads. |
 | `onReloadFailure(Consumer<ReloadFailure>)` | Registers a listener for rejected ones. |
 | `close()` | Stops watching. Idempotent. A closed registry keeps serving its last snapshot. |
 
-`get()` is a volatile read and a map lookup. It is meant to be called per request — that is
-the primary API, and listeners are secondary.
+`get()` is a volatile read, one small wrapper object, and a map lookup. It is meant to be
+called per request — that is the primary API, and listeners are secondary.
+
+### One lookup, or several that must agree
+
+`get()` reads the live configuration on every call. That is what makes a reload visible, and
+it means **a reload can land between two consecutive calls**, so the two calls return bundles
+built from different file contents. It is rare — measured at roughly two per million pairs of
+reads while a reload ran every few milliseconds — but it is reproducible, and where several
+models have to agree it is a correctness problem rather than a cosmetic one.
+
+`snapshot()` reads the published generation once and hands it back:
+
+```java
+LlmSnapshot models = registry.snapshot();   // one read of the current generation
+var fast = models.get("SL");
+var deep = models.get("SH");                // same generation as fast, guaranteed
+```
+
+| Method on `LlmSnapshot` | Returns |
+|---|---|
+| `get(String name)` | The bundle for that name in this generation. Throws `UnknownConfigurationException` if this generation has no such name. |
+| `names()` | The names in this generation, sorted. |
+| `contains(String name)` | Whether this generation has that name, without throwing. |
+
+A snapshot **never updates**. Take one per unit of work — per request, per council round —
+and drop it afterwards. Holding one for the lifetime of the application is the caching trap
+in a different shape. See
+[ADR-0038](../adr/0038-snapshot-gives-callers-the-atomicity-the-swap-already-has.md).
 
 ### Records
 
@@ -329,8 +358,10 @@ Those three are the library's own, and they are thrown identically whichever pro
 names. **Everything a model call throws belongs to the provider instead**, and those types are
 not portable between providers.
 
-Verified against all four live APIs
-([P6](../tasks/post-v1.md#p6--the-integration-tests-against-live-apis)):
+All four providers were called against their live API in
+[P6](../tasks/post-v1.md#p6--the-integration-tests-against-live-apis). Three of the four
+runs failed before they were made to pass, and those three failures are what the table
+below records:
 
 | Provider | Condition | Type thrown |
 |---|---|---|
@@ -342,12 +373,12 @@ Read rows one and three together: the *same* real condition arrives as two diffe
 depending on which provider the configuration names. GLM's message is in Chinese, and its
 detail code is reachable only via a provider-specific `getCode()`.
 
-So the swap guarantee has a precise width. **Which objects exist, who builds them, with what
+So the swap guarantee covers exactly this much. **Which objects exist, who builds them, with what
 credentials, model, timeout and memory — all config-shaped, all swap freely. What a failing
 call throws does not.** Catch `dev.langchain4j.exception.LangChain4jException` and your
-handling survives any swap; all four providers throw beneath it. Reach below that and you have
-written provider-specific code, which is fine as long as it is deliberate — after a swap it
-does not break loudly, it simply stops being entered.
+handling survives any swap; all four providers throw beneath it. Catching anything more
+specific is provider-specific code, which is fine as long as it is deliberate — after a swap
+it does not fail loudly, the catch block simply stops matching.
 
 The library does not translate these, and
 [ADR-0033](../adr/0033-provider-exceptions-pass-through-untranslated.md) records why:
@@ -389,7 +420,7 @@ removed from it is removed, and `get()` on it then throws. Long-running code hol
 must be ready for that — the console example catches it and returns to its menu.
 
 **Superseded bundles are not closed.** An in-flight request may still hold one. They become
-collectable when nothing references them.
+eligible for garbage collection when nothing references them.
 
 ---
 
@@ -408,7 +439,7 @@ deduplicated set of parent directories and filters events by filename.
 | Watched directory deleted | Re-registration is retried once a second until it succeeds. |
 | `OVERFLOW` | Treated as "something changed": a reload is scheduled. |
 
-The symlink handling is deliberately asymmetric and is not a tidy-up candidate. Resolving a
+The symlink handling is deliberately asymmetric, and it must not be refactored away. Resolving a
 symlink to its real path at registration — the obvious implementation — makes a ConfigMap swap
 **completely invisible**: it produces no event at all under that strategy.
 
@@ -421,7 +452,7 @@ Measured on Linux (inotify, Temurin 25), write to event observed, 20 samples:
 | 0.37 ms | **0.50 ms** | 0.63 ms |
 
 Add the debounce, so a saved file is live roughly 300 ms later by default. Events for one
-logical write arrive within ~2.5 ms, which is what the default is sized against. Lowering it
+logical write arrive within ~2.5 ms, which is the burst the default is chosen to cover. Lowering it
 below the time your writer takes to finish produces reloads of half-written files, which are
 rejected as failures rather than applied.
 
@@ -467,7 +498,7 @@ configuring only Anthropic never has OpenAI's dependencies on its classpath.
 
 Read out of the LangChain4j 1.19.0 artifacts rather than from documentation. Gemini is the
 stable `langchain4j-google-ai-gemini` module; GLM comes from `langchain4j-community-zhipu-ai`,
-which is on the community release train.
+which is released on the community cycle, separately from the stable modules.
 
 **Per-provider notes:**
 
@@ -475,6 +506,10 @@ which is on the community release train.
   `model-name` is deliberately not forwarded to it. Local token counting needs a model the
   bundled tokenizer recognises; an unknown one is reported as a configuration error naming the
   model, rather than surfacing later during memory eviction.
+- **Anthropic** — some models reject a non-default `temperature`. `claude-sonnet-5` answers
+  one with HTTP 400, because the model's adaptive thinking controls its own sampling;
+  `claude-sonnet-4-6` still accepts one. The schema takes any value from 0.0 to 2.0, so this
+  is the provider's rule rather than this library's, and you meet it on the first request.
 - **GLM** — has no whole-call timeout. Its client's `callTimeout` and `writeTimeout` are
   deprecated and marked for removal upstream, so `timeout` maps to connect and read only. Its
   `ChatModel.provider()` returns `OTHER`, so an application routing on that cannot tell GLM
@@ -506,7 +541,7 @@ public interface ProviderFactory {
 ```
 
 `tokenEstimation()` is three-valued rather than boolean on purpose. Every provider except GLM
-ships an estimator, so a boolean would return true almost everywhere and bless every
+ships an estimator, so a boolean would return true almost everywhere and accept every
 configuration — the check would exist and catch nothing. What varies is the *cost*.
 
 `validate()` is where capability mismatches are caught. Throw `ConfigValidationException` with
@@ -559,6 +594,7 @@ Deliberate and permanent:
 | `ships no moderation model` | `moderation.enabled = true` on Anthropic, Gemini or GLM | Only OpenAI has one. Route moderation through an OpenAI configuration. |
 | `counts tokens by calling its API` | `token-window` on a remote counter | Add `allow-remote-token-counting = true`, or use `message-window`. |
 | `no token count estimator` | `token-window` on GLM | Use `message-window`. No flag helps. |
+| `` `temperature` is deprecated for this model `` | A non-default `temperature` on a model that rejects one, such as `claude-sonnet-5` | Remove the key. The model then uses its own sampling settings. |
 | `UnknownConfigurationException` at runtime | The name was removed from the file while running | Catch it and re-read `names()`, or keep the block. |
 | Reloads fire constantly | Something else writes into a watched directory | Only the configured filenames are matched, but a symlinked path matches any event in its directory by design. |
 | Half-written files are rejected as failures | The debounce is shorter than your writer takes | Raise `debounce(...)`. |

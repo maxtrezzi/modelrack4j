@@ -25,7 +25,13 @@ date. The v2 hot-swap wrapper is designed for but not built
 ([ADR-0026](../adr/0026-ci-matrix-is-floor-dev-jdk-and-current-lts.md)). Seven modules per
 the plan's layout, at `io.github.maxtrezzi:modelrack4j-*`
 ([ADR-0025](../adr/0025-fix-coordinates-under-io-github-maxtrezzi.md)):
-parent, core, four providers, BOM, examples.
+core, four providers, BOM, examples — eight Maven projects in the reactor, the aggregating
+parent included.
+
+> **Corrected 2026-08-28 by [P14](post-v1.md#p14--a-coherence-pass-over-the-tracked-documentation).**
+> This sentence used to list the parent among the seven and so enumerated eight while saying
+> seven. The seven are the `<modules>` entries; `mvn` prints `[1/8]` because it counts the
+> parent too.
 
 **Verified rather than assumed:**
 
@@ -40,8 +46,16 @@ dependency tree but never recorded its size, and an unmeasured cost is what invi
 periodic argument to drop the aggregate exception
 ([ADR-0020](../adr/0020-core-depends-on-langchain4j-aggregate.md) says not to, and the
 number is why). `mvn dependency:tree -pl modelrack4j-core` puts core's whole compile scope
-at **six artifacts**: `langchain4j-core` with its three Jackson jars and `jspecify`,
+at **eight artifacts**: `langchain4j-core` with its three Jackson jars and `jspecify`,
 `com.typesafe:config`, `slf4j-api`, and the aggregate.
+
+> **Corrected 2026-08-28 by [P14](post-v1.md#p14--a-coherence-pass-over-the-tracked-documentation).**
+> This read "six artifacts" while enumerating eight, in this entry and in
+> [P7](post-v1.md#p7--closing-out-the-outside-review-of-the-public-repository), which is
+> where the figure was first written. Six is the count in the *next* paragraph — the
+> dependencies the aggregate declares — and it appears to have been carried up one paragraph
+> by hand. The tree is re-run above; nothing about the conclusion changes, since the
+> argument rests on the aggregate adding one jar and no transitive dependency.
 
 **The aggregate adds 317 KB and no new transitive dependency at all.** It declares six of
 its own, and every one is either already present or excluded — `langchain4j-core` and
@@ -431,10 +445,18 @@ is deliberately separate and not scheduled.
 **Most of this milestone was already done, and the useful part was finding out which.** M0
 set up the POM metadata, the license-header check, and the sources and javadoc jars, because
 retrofitting a clean Javadoc build is worse than starting with one. Re-checked here rather
-than assumed: all six publishable modules install with `-sources` and `-javadoc` jars
-attached, and `modelrack4j-examples` installs nothing at all — it skips both `install` and
+than assumed: the five modules that produce a jar — core and the four providers — install
+with `-sources` and `-javadoc` jars attached, the parent and the BOM install as POMs, and
+`modelrack4j-examples` installs nothing at all — it skips both `install` and
 `deploy`, which is what "deliberately NOT published" in its POM description has to mean to
 be true.
+
+> **Corrected 2026-08-28 by [P14](post-v1.md#p14--a-coherence-pass-over-the-tracked-documentation),**
+> **marker added by [P15](post-v1.md#p15--a-second-coherence-pass-and-what-the-first-one-missed).**
+> This read "all six publishable modules install with `-sources` and `-javadoc` jars". Five
+> modules produce a jar — core and the four providers — and seven artifacts install, since
+> the parent and the BOM install as POMs. P14 fixed the sentence and recorded that it had
+> marked all three of its miscounts; this is the one that went unmarked.
 
 So M5 came down to the two documents that did not exist, plus one behaviour the act of
 writing them exposed.
@@ -452,7 +474,11 @@ SH: provider=anthropic model=claude-sonnet-4-6   streaming=true  moderation=fals
 SL: provider=anthropic model=claude-sonnet-4-6   streaming=false moderation=false memory=true
 ```
 
-— which is the README's own bundle table, produced by the README's own configuration.
+— which was the README's own bundle table on 2026-08-23, produced by the README's own
+configuration. The model identifiers have moved on twice since
+([P6](post-v1.md#p6--the-integration-tests-against-live-apis),
+[P12](post-v1.md#p12--testing-the-examples-by-hand-and-a-live-break-in-anthropics-sampling-parameters)),
+so this is a capture of that day rather than of the current README.
 
 **Writing the reload section found a silent failure mode, now fixed
 ([ADR-0031](../adr/0031-a-rejected-reload-is-always-logged.md)).** With `watch(true)` and no

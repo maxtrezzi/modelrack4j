@@ -33,8 +33,9 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * Shows the guarantee that is hardest to see and easiest to lose: a reload swaps
- * <strong>every</strong> configured model at once, so nothing ever observes one of them
- * updated and another not.
+ * <strong>every</strong> configured model at once. It also shows where that guarantee stops
+ * — a caller who looks each model up separately can still catch one of them updated and the
+ * other not, and {@link LlmRegistry#snapshot()} is how a caller avoids it.
  *
  * <p>Two names, {@code SL} and {@code SH}, are both tagged {@code gen-1} in their
  * {@code description}. Four threads read the pair as fast as they can while a single save
@@ -67,7 +68,7 @@ import java.util.concurrent.TimeUnit;
  *
  * @implNote <strong>No API key, and no cost.</strong> This reads configuration only — it
  *     never sends a request, so the credentials in the generated file are literals rather
- *     than substitutions. It is the one example that runs anywhere, for nothing.
+ *     than substitutions. It is the one example that runs anywhere, at no cost.
  */
 public final class AtomicSnapshot {
 
@@ -165,7 +166,8 @@ public final class AtomicSnapshot {
         if (tornSnapshot > 0) {
             System.out.println("BUG: a snapshot tore. The swap is no longer atomic.");
         } else if (torn > 0) {
-            System.out.println("As designed: two get() calls straddled a reload; the snapshot never did.");
+            System.out.println("As designed: a reload landed between two get() calls; "
+                    + "no snapshot ever tore.");
         } else {
             System.out.println("No tear either way this run — the get() window is narrow, not absent.");
             System.out.println("Only the snapshot column is guaranteed to stay at zero.");
@@ -217,7 +219,9 @@ public final class AtomicSnapshot {
 
     private static String configuration(String generation) {
         // Literal keys: nothing here ever calls a provider, so no credential is needed and
-        // the example costs nothing to run.
+        // the example costs nothing to run. No temperature either, even though nothing here
+        // would reject one: claude-sonnet-5 answers a non-default temperature with a 400, and
+        // an example is configuration people copy into files that do send requests.
         return """
                 llm {
                   SL {
@@ -225,7 +229,6 @@ public final class AtomicSnapshot {
                     provider    = anthropic
                     api-key     = "unused-no-request-is-sent"
                     model-name  = "claude-sonnet-5"
-                    temperature = 0.2
                   }
 
                   SH {
@@ -233,7 +236,7 @@ public final class AtomicSnapshot {
                     provider    = anthropic
                     api-key     = "unused-no-request-is-sent"
                     model-name  = "claude-sonnet-5"
-                    temperature = 0.9
+                    streaming   = true
                   }
                 }
                 """.formatted(generation, generation);
