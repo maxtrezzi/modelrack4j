@@ -16,10 +16,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # ADR-0019 requires 17 and 21: 17 because it is the claimed floor and nothing else
-        # proves the floor holds, 21 because it was the development JDK. Development has
-        # since moved to 25 (ADR-0026), so 25 is the third leg — the matrix is the floor,
-        # the dev JDK, and the current LTS.
+        # ADR-0026 gives each leg its own job, so that a later reader can tell whether a
+        # leg still earns its place:
+        #   17 — the claimed floor. Nothing else proves the floor holds.
+        #   21 — the most widely deployed LTS among likely consumers.
+        #   25 — the development JDK, and the current LTS.
+        # The 25 leg tracks the development machine rather than the number. If moving it
+        # ever collides with the 21 leg, drop to two legs (ADR-0026) instead of keeping a
+        # leg whose job another one already covers.
         jdk: ['17', '21', '25']
     steps:
       - uses: actions/checkout@v4

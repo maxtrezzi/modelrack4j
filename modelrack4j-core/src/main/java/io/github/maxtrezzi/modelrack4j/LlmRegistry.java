@@ -57,8 +57,14 @@ import org.slf4j.LoggerFactory;
  * picked up without a restart. A reload is atomic across the <em>whole</em> snapshot: every
  * changed block is rebuilt in a staging area, and only once all of them succeed is a single
  * reference swapped. If any block fails to parse, validate or build, nothing is swapped —
- * the previous snapshot stays live in full and {@link #onReloadFailure} fires once. There is
- * no state in which one name's new configuration is visible next to another's old one.
+ * the previous snapshot stays live in full and {@link #onReloadFailure} fires once. A
+ * half-applied snapshot never exists, not even briefly.
+ *
+ * <p><strong>How much of that reaches a caller is a separate question.</strong>
+ * {@link #get(String)} reads the live configuration on every call, so a reload can land
+ * between two consecutive calls, and the two calls then return bundles built from different
+ * file contents. Where several models have to agree with each other, take a
+ * {@link #snapshot()} and look all of them up in it.
  *
  * <p>Unchanged blocks are not rebuilt: the diff is record equality on the parsed
  * configuration, and a name whose block did not change keeps the very bundle instance it
