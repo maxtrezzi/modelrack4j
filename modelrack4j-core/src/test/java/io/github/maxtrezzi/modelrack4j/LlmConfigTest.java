@@ -17,6 +17,7 @@ package io.github.maxtrezzi.modelrack4j;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.assertAll;
 
 import java.time.Duration;
 import java.util.Optional;
@@ -35,9 +36,15 @@ class LlmConfigTest {
     @ValueSource(strings = {"", "   "})
     @DisplayName("a blank required value is rejected, naming the key")
     void blankRequiredValuesAreRejected(String blank) {
-        assertThatThrownBy(() -> config().withApiKey(blank).build())
-                .isInstanceOf(ConfigValidationException.class)
-                .hasMessageContaining("api-key");
+        // All four keys, and assertAll so one broken key does not hide the other three.
+        // Checking a single key left `name` and `provider` unverified: dropping either check
+        // still built a configuration, and a blank provider then failed much later with an
+        // unrelated message about no provider module being on the classpath.
+        assertAll(
+                () -> assertRejectsBlank(config().withName(blank), ".name is required"),
+                () -> assertRejectsBlank(config().withProvider(blank), "provider is required"),
+                () -> assertRejectsBlank(config().withApiKey(blank), "api-key is required"),
+                () -> assertRejectsBlank(config().withModelName(blank), "model-name is required"));
     }
 
     @Test
@@ -73,15 +80,21 @@ class LlmConfigTest {
                 .hasMessageContaining("timeout");
     }
 
-    @Test
+    @ParameterizedTest
+    @ValueSource(ints = {0, -1})
     @DisplayName("memory bounds must be positive")
-    void memoryBoundsMustBePositive() {
-        assertThatThrownBy(() -> new MemoryConfig.MessageWindow(0))
-                .isInstanceOf(ConfigValidationException.class)
-                .hasMessageContaining("max-messages");
-        assertThatThrownBy(() -> new MemoryConfig.TokenWindow(-1, false))
-                .isInstanceOf(ConfigValidationException.class)
-                .hasMessageContaining("max-tokens");
+    void memoryBoundsMustBePositive(int bound) {
+        // The bound is a parameter so that both variants are checked against the same values.
+        // Written out, the two branches looked symmetrical while testing 0 against one
+        // variant and -1 against the other, which left the boundary itself unverified on
+        // token-window: accepting max-tokens = 0 broke no test.
+        assertAll(
+                () -> assertThatThrownBy(() -> new MemoryConfig.MessageWindow(bound))
+                        .isInstanceOf(ConfigValidationException.class)
+                        .hasMessageContaining("max-messages"),
+                () -> assertThatThrownBy(() -> new MemoryConfig.TokenWindow(bound, false))
+                        .isInstanceOf(ConfigValidationException.class)
+                        .hasMessageContaining("max-tokens"));
     }
 
     @ParameterizedTest
@@ -145,16 +158,34 @@ class LlmConfigTest {
         return new Fixture();
     }
 
+    private static void assertRejectsBlank(Fixture fixture, String expectedFragment) {
+        assertThatThrownBy(fixture::build)
+                .isInstanceOf(ConfigValidationException.class)
+                .hasMessageContaining(expectedFragment);
+    }
+
     /** A valid configuration that each test bends in exactly one direction. */
     private static final class Fixture {
+        private String name = "SL";
         private Optional<String> description = Optional.empty();
+        private String provider = "fake-local";
         private String apiKey = "key";
         private String modelName = "model";
         private Optional<Double> temperature = Optional.empty();
         private Duration timeout = Duration.ofSeconds(60);
 
+        Fixture withName(String value) {
+            this.name = value;
+            return this;
+        }
+
         Fixture withDescription(String value) {
             this.description = Optional.ofNullable(value);
+            return this;
+        }
+
+        Fixture withProvider(String value) {
+            this.provider = value;
             return this;
         }
 
@@ -179,7 +210,7 @@ class LlmConfigTest {
         }
 
         LlmConfig build() {
-            return new LlmConfig("SL", description, "fake-local", apiKey, modelName, temperature,
+            return new LlmConfig(name, description, provider, apiKey, modelName, temperature,
                     timeout, false, false, false, Optional.empty(), false);
         }
     }

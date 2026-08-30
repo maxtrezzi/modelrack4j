@@ -122,3 +122,4 @@ by number, since the numbering only reflects the order of the original appendix.
 | [0016](0016-one-feature-branch-per-task.md) | One feature branch per task | Accepted |
 | [0039](0039-user-facing-prose-is-written-for-a-non-native-reader.md) | Write user-facing prose for a non-native reader, terse but self-explaining | Accepted |
 | [0040](0040-protect-main-with-required-checks-not-required-review.md) | Protect `main` with required checks, not required review | Accepted |
+| [0041](0041-mutation-testing-on-core-only.md) | Run mutation testing on core only, never on a provider module | Accepted |
