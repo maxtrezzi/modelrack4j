@@ -126,6 +126,12 @@ mvn -q -pl modelrack4j-examples exec:java \
     -Dexec.mainClass=io.github.maxtrezzi.modelrack4j.examples.AtomicSnapshot
 ```
 
+`./run-atomic.sh` from the repository root does the same thing, and installs first if it has
+to. There is one script per example — `run-atomic.sh`, `run-swap.sh`, `run-chat.sh`,
+`run-council.sh` — and each `--help` gives what that example shows, what it costs, which keys
+it needs and the plain `mvn` command to use on Windows, since there are no `.bat`
+counterparts.
+
 ---
 
 ## Configuration

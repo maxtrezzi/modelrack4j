@@ -8,6 +8,21 @@ consistent `ChatModel` + `StreamingChatModel` + `ModerationModel` + `ChatMemoryP
 per name. Edit the file and the registry picks the change up atomically, validated, without
 a restart.
 
+```hocon
+# llm.conf
+llm {
+  SL { provider = anthropic, api-key = ${ANTHROPIC_API_KEY}, model-name = "claude-sonnet-5" }
+  CR { provider = openai,    api-key = ${OPENAI_API_KEY},    model-name = "gpt-5.1" }
+}
+```
+
+```java
+LlmRegistry registry = LlmRegistry.builder().configFiles(List.of(Path.of("llm.conf"))).build();
+String answer = registry.get("SL").chatModel().chat("Why is the sky blue?");
+```
+
+That is the whole idea. [Quick start](#quick-start) has the dependencies and the full schema.
+
 > **Unofficial and independent.** modelrack4j is not affiliated with, endorsed by, or part
 > of the LangChain4j project. It depends on LangChain4j; it does not speak for it. That is
 > also why no artifact here uses the `langchain4j-` prefix.
@@ -163,7 +178,7 @@ Requires **Java 17+**. Built against **LangChain4j 1.19.0**.
 ### 2. Write the configuration
 
 ```hocon
-# council.conf
+# llm.conf
 llm {
   SL {
     description = "short, cheap — the everyday answer, twenty turns of memory"
@@ -208,7 +223,7 @@ temperature fixed in a builder call.
 
 ```java
 try (LlmRegistry registry = LlmRegistry.builder()
-        .configFiles(List.of(Path.of("council.conf")))
+        .configFiles(List.of(Path.of("llm.conf")))
         .watch(true)
         .build()) {
 
@@ -244,6 +259,15 @@ Each one demonstrates a single claim from [Why](#why) rather than the library in
 | [`ThreeModelCouncil`](modelrack4j-examples/src/main/java/io/github/maxtrezzi/modelrack4j/examples/ThreeModelCouncil.java) | The scenario above: three models, one question, no provider branch in the code | three requests |
 
 Start with `AtomicSnapshot` if you want to see the least obvious guarantee at no cost:
+
+```bash
+./run-atomic.sh
+```
+
+One script per example — `run-atomic.sh`, `run-swap.sh`, `run-chat.sh`, `run-council.sh` —
+each with a `--help` that says what it shows and what it costs. They install the project first
+if they have to, because `exec:java` resolves `modelrack4j-core` from `~/.m2` rather than from
+the reactor. There are no `.bat` counterparts: on Windows, run the command `--help` prints.
 
 ```bash
 mvn install

@@ -39,14 +39,14 @@ import java.util.concurrent.TimeUnit;
  * An interactive console: pick a configured model from a menu, chat with it, {@code /menu}
  * to come back and pick another.
  *
- * <p>Run it with any configuration file — the bundled {@code council.conf} needs
+ * <p>Run it with any configuration file — the bundled {@code examples.conf} needs
  * {@code ANTHROPIC_API_KEY} and {@code OPENAI_API_KEY}, and it spends money:
  *
  * <pre>{@code
  * mvn install                                     # exec:java reads ~/.m2, not the reactor
  * mvn -q -pl modelrack4j-examples exec:java \
  *     -Dexec.mainClass=io.github.maxtrezzi.modelrack4j.examples.ConsoleChat \
- *     -Dexec.args=modelrack4j-examples/src/main/resources/council.conf
+ *     -Dexec.args=modelrack4j-examples/src/main/resources/examples.conf
  * }</pre>
  *
  * <p>Pass several files to see layering: they are applied lowest precedence first, so the
