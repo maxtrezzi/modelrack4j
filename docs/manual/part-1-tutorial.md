@@ -400,13 +400,13 @@ llm.SL { description = null }
 ## 9. Three models at once
 
 The scenario the library was built for: several models cooperating, configured together, all
-reloaded together. `council.conf` in the checkout defines `SL`, `SH` and `CR` — two Anthropic
+reloaded together. `examples.conf` in the checkout defines `SL`, `SH` and `CR` — two Anthropic
 models that differ in memory and streaming, and an OpenAI model that also moderates.
 
 ```bash
 mvn -q -pl modelrack4j-examples exec:java \
     -Dexec.mainClass=io.github.maxtrezzi.modelrack4j.examples.ThreeModelCouncil \
-    -Dexec.args=modelrack4j-examples/src/main/resources/council.conf
+    -Dexec.args=modelrack4j-examples/src/main/resources/examples.conf
 ```
 
 Needs both `ANTHROPIC_API_KEY` and `OPENAI_API_KEY`. It asks each model the same question and
@@ -423,7 +423,7 @@ for (String name : registry.names()) {
 
 There is no `if (provider.equals("openai"))` anywhere. The names come from the file, the
 capabilities come from the bundle, and adding a fourth model to the council is an edit to
-`council.conf` — not a recompile.
+`examples.conf` — not a recompile.
 
 This is also why one reload has to swap every bundle at once. If `SL` and `SH` are answering
 the same question and a reload updated them one at a time, there would be a window where the

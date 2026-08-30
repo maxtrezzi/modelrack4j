@@ -1673,3 +1673,120 @@ defects were found — which is exactly the case the narrower trigger would have
 the diff is `modelrack4j-core/pom.xml`, three test classes, one new test fake and one line in
 the `META-INF/services` file. PIT is not in `.github/workflows/build.yml` and adding it is a
 separate decision, deliberately left open by ADR-0041.
+
+### P18 — The distance between arriving and running something
+
+**Status:** Done 2026-08-30 · **Branch:** `task/p18-examples-and-readme-ergonomics`
+
+Four small things, one theme: what a reader has to get through before the library does
+anything for them. None of it changes behaviour. One shell script is added; the only edits
+under a `src/main/java` are three Javadoc comment lines in two examples, carrying the renamed
+configuration file. No statement in any class changed.
+
+#### The README showed Java and XML before it showed configuration
+
+The first HOCON block was at **line 165 of 600**. Before reaching it a reader passed the pitch
+at line 5 — *"Declare `SL`, `SH` and `CR` in a config file"* — then a **Java** snippet at line
+32 (the `builder()` anti-example that *Why* argues against) and **two XML** `pom.xml` blocks at
+127 and 147.
+
+So a README whose whole argument is *configuration instead of code* showed code, then build
+metadata, and only then configuration, 27 % of the way down.
+
+The fix is not a reordering of *Quick start* — dependencies really do come first when someone
+follows it. It is a six-line HOCON block and the two lines of Java that use it, placed
+immediately after the opening paragraph, where the promise is made. **The first HOCON block is
+now at line 11 of 624.**
+
+#### `council.conf` named one of the two examples that read it
+
+| Example | Configuration |
+|---|---|
+| `ThreeModelCouncil` | reads the file given as an argument |
+| `ConsoleChat` | reads the file given as an argument |
+| `ProviderSwap` | writes its own at run time, in a temporary directory |
+| `AtomicSnapshot` | writes its own at run time, in a temporary directory |
+
+Two of four, not all four — so the file was misnamed rather than overloaded. Renamed to
+`examples.conf`, and its header comment now says which examples read it and which do not.
+
+Renaming beat splitting because both readers want the same `SL`/`SH`/`CR` set: two files would
+be 43 duplicated lines to keep in step, for no gain.
+
+`council.conf` appeared **12 times across 6 files**. Nine were updated, in `README.md`,
+`CHANGELOG.md`, `part-1-tutorial.md`, `ConsoleChat` and `ThreeModelCouncil`. **The remaining
+three, in [P12](#p12--testing-the-examples-by-hand-and-a-live-break-in-anthropics-sampling-parameters),
+were deliberately left alone**: that entry records what happened on a particular day, and
+editing a past record to match a later rename would make it describe something that did not
+happen. `check-docs.py` does not flag them because they are prose, not links.
+
+#### Running an example took a command nobody would type twice
+
+```
+mvn -q -pl modelrack4j-examples exec:java -Dexec.mainClass=io.github.maxtrezzi.modelrack4j.examples.ThreeModelCouncil -Dexec.args=...
+```
+
+There is now **one script per example** at the repository root — `run-atomic.sh`,
+`run-swap.sh`, `run-chat.sh`, `run-council.sh` — each with a `--help` that gives what that
+example shows, what it costs, which keys it needs and the plain `mvn` command for Windows.
+
+Four commands, one implementation. The first draft was a single `run-example.sh <name>`
+dispatcher; four visible commands are better, because the examples are then discoverable from
+a directory listing instead of by running something to ask what exists. Each of the four is
+therefore a single `exec` line into `build/run-example.sh`, which holds the argument handling,
+the per-example help and the checks below — 128 lines of code that four copies would drift out
+of step. The argument for four commands is about the interface, not about the implementation.
+Calling the shared script directly says so and exits.
+
+Those checks are the three things the raw command gets wrong:
+
+- **`mvn install` is a prerequisite, not a detail.** `exec:java` resolves `modelrack4j-core`
+  from `~/.m2` and not from the reactor, so the script installs when the artifact is absent,
+  and `--build` forces it — a stale install silently runs old library code.
+- **A missing key is reported, not thrown.** The paid examples name the variables that are
+  missing and point at `atomic`, which costs nothing, instead of failing inside a provider.
+- **Arguments are checked before anything is announced.** An earlier draft printed *"this
+  example sends real requests to a paid API"* and then rejected a mistyped file name, which is
+  the wrong order to tell someone those two things in.
+
+**There is no `.bat`, by decision.** This machine is Linux only, so a Windows script could not
+be run even once, and the precedent in this repository is the macOS `WatchService` latency in
+[Task 0.8](phase-0-verification.md#task-08--watch-strategy-spike): state the gap rather than
+ship a plausible untested figure. The README, the reference and the script's own help all say
+to use the underlying `mvn` command on Windows.
+
+#### Where the Java idiom rule lives, and where it does not
+
+The request was to record in the documentation that the `java-best-practices-modern` skill is
+used. It is now recorded in exactly two places, and deliberately not in a third:
+
+- **`CLAUDE.md`** already named the skill; the bullet said too little to act on. It now says
+  the skill is version-aware and loads one profile, that this project is Java 17, and which
+  constructs are therefore unavailable however new the local JDK is — pattern matching for
+  `switch`, record patterns, virtual threads, `ExecutorService` in try-with-resources.
+- **`CONTRIBUTING.md`** carries the same rule stated as an idiom rather than as a tool: write
+  modern Java, target the floor, `maven.compiler.release` is 17.
+- **Not the README.** It is written for someone using the library, who has no use for the
+  authoring tools, and naming one there reads as promotion rather than as information.
+
+The reasoning for the split is that a Claude Code plugin skill is unusable advice to an
+outside contributor, who has no access to it — the same gap
+[P17](#p17--mutation-testing-on-core) closed for the mutation testing rule. What a human
+contributor can act on is the constraint on the code, so that is what `CONTRIBUTING.md` states.
+The skill governs the Java in this repository, most recently P17's tests, which were written
+under its Java 17 profile.
+
+#### Verified
+
+- `mvn clean install` green offline — 8/8 modules, core 69, reactor 102.
+- `build/check-docs.py` clean across 41 ADRs and 55 tracked files.
+- `examples.conf` confirmed inside `modelrack4j-examples-0.1.0-SNAPSHOT.jar` after the rename,
+  read with `unzip -l` rather than assumed.
+- The scripts exercised on every path they have: `--help` for an example that takes a
+  configuration file and one that does not, a configuration file passed to an example that
+  writes its own, a file that does not exist, `build/run-example.sh` invoked directly, and a
+  missing key — the last in an isolated copy with the keys unset, because the guard has to be
+  proven to stop *before* Maven starts. **`./run-atomic.sh` was then run end to end**, twice
+  across the two script layouts, printing its two generations and its torn-pair counts.
+- The paid examples were not run. Nothing in this task required it, and P12 is the entry that
+  records them being exercised against live APIs.

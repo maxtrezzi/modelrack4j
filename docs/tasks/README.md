@@ -93,6 +93,7 @@ Phase 0 gates everything else; nothing below M0 should start before its blockers
 | [P15](post-v1.md#p15--a-second-coherence-pass-and-what-the-first-one-missed) | A second coherence pass over the same documentation | **Done** — 5 defects, 2 of them in P14's own write-up |
 | [P16](post-v1.md#p16--a-third-coherence-pass-and-the-surface-the-first-two-searched-past) | A third coherence pass, over the code's own Javadoc too | **Done** — 2 defects; a 4th copy of the ADR-0038 over-claim |
 | [P17](post-v1.md#p17--mutation-testing-on-core) | Mutation testing on core | **Done** — 4 defects in the suite, none in the code; ADR-0041 |
+| [P18](post-v1.md#p18--the-distance-between-arriving-and-running-something) | README ordering, a launcher for the examples, and where the Java idiom rule lives | **Done** — config example moved from line 165 to line 11; one `run-*.sh` per example; `examples.conf` |
 | [D1](open-decisions.md#d1--glm-route-if-no-maintained-module-exists) | GLM route if no maintained module | **Closed** — never became live |
 | [D2](open-decisions.md#d2--repository-visibility) | Repository visibility | **Settled** — public, not released; ADR-0034 |
 | [D3](open-decisions.md#d3--token-window-memory-on-a-remote-estimator) | Token-window memory on a remote estimator | **Settled** — opt-in flag |

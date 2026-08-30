@@ -31,7 +31,7 @@ import java.util.List;
  * mvn install                                     # exec:java reads ~/.m2, not the reactor
  * mvn -q -pl modelrack4j-examples exec:java \
  *     -Dexec.mainClass=io.github.maxtrezzi.modelrack4j.examples.ThreeModelCouncil \
- *     -Dexec.args=modelrack4j-examples/src/main/resources/council.conf
+ *     -Dexec.args=modelrack4j-examples/src/main/resources/examples.conf
  * }</pre>
  *
  * <p>Note what this demonstrates about the API: the registry is asked for a bundle at the

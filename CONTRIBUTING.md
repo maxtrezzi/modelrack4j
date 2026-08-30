@@ -43,6 +43,14 @@ change it makes, so one run in the wrong module can cost real money
 
 Java 17 is the floor; CI runs 17, 21 and 25.
 
+**Write modern Java, but target the floor.** `maven.compiler.release` is 17, so the build
+rejects anything newer whichever JDK you compile with. Inside that limit, prefer what the
+language already gives you: records for data, sealed types for a closed set of cases,
+`instanceof` patterns, switch expressions, text blocks, and `Optional` rather than a `null`
+return. Do not reach for what arrived after 17 — pattern matching for `switch`, record
+patterns, virtual threads, `ExecutorService` in try-with-resources — however new your own JDK
+is.
+
 ## Pull requests
 
 - One branch per change, never committed straight to `main`. This is enforced, not only

@@ -132,6 +132,7 @@ mvn -pl modelrack4j-core test -Dtest=LlmRegistryTest                        # si
 mvn -pl modelrack4j-core test -Dtest='LlmRegistryTest#reloadSwapsAtomically' # single method
 mvn -Pintegration verify                 # provider tests against real APIs (keys from env)
 mvn -pl modelrack4j-core org.pitest:pitest-maven:mutationCoverage   # mutation testing, core only
+./run-atomic.sh                          # run an example (also swap, chat, council; --help each)
 ```
 
 Scope `-Dtest=` to a module with `-pl`. Running it from the root across all modules fails
@@ -327,4 +328,9 @@ in-flight requests may still hold them.
   Deleting it as redundant silently empties every provider's `META-INF/services` file and
   breaks `ServiceLoader` with no compile error.
 - The `java-best-practices-modern` plugin skill is enabled for this project; use it for
-  non-trivial Java.
+  non-trivial Java. It is version-aware and loads exactly one profile: **this project is
+  Java 17**, so the profile is `java-17` and everything from 21 on — pattern matching for
+  `switch`, record patterns, virtual threads, `ExecutorService` in try-with-resources — is
+  unavailable however new the local JDK is. `CONTRIBUTING.md` carries the human-readable half
+  of the same rule, stated as an idiom rather than as a tool, because an outside contributor
+  has no access to the skill.
