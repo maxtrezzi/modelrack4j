@@ -62,9 +62,7 @@ final class ConfigLoader {
             // malformed database row reports "llm_config#42: 7: ..." rather than losing the
             // provenance a file used to get for free.
             try {
-                layers.add(ConfigFactory.parseString(
-                        text(source),
-                        ConfigParseOptions.defaults().setOriginDescription(source.id())));
+                layers.add(parse(source));
             } catch (ConfigException e) {
                 // Wrapped so a malformed layer arrives as this library's own failure, which
                 // is what LlmRegistry.build() and reload() document. The message already
@@ -95,6 +93,31 @@ final class ConfigLoader {
             throw new ConfigValidationException(
                     "Configuration could not be resolved: " + e.getMessage(), e);
         }
+    }
+
+    /**
+     * Turns one source into an unresolved {@link Config}.
+     *
+     * @implNote A file is parsed with {@code parseFile} and not by reading its text, because
+     *     {@code include "sibling.conf"} in a HOCON file resolves <strong>relative to that
+     *     file</strong>, and only {@code parseFile} knows which file it is. Handing the same
+     *     bytes to {@code parseString} makes the includer fall back to the classpath, and
+     *     because an include is allow-missing by default the included block then vanishes
+     *     with no error at all. Any other source is text with no directory of its own, so it
+     *     gets Typesafe Config's documented behaviour for text: an include is looked up on
+     *     the classpath.
+     */
+    private static Config parse(ConfigSource source) {
+        ConfigParseOptions options =
+                ConfigParseOptions.defaults().setOriginDescription(source.id());
+        if (source instanceof FileConfigSource fileSource) {
+            // setAllowMissing(false) so a layer that disappeared is an error rather than an
+            // empty layer; FileConfigSource.text() makes the same check for every other
+            // caller of the source.
+            return ConfigFactory.parseFile(
+                    fileSource.file().toFile(), options.setAllowMissing(false));
+        }
+        return ConfigFactory.parseString(text(source), options);
     }
 
     private static String text(ConfigSource source) {

@@ -227,6 +227,82 @@ Without both keys it explains what it needs and exits rather than failing, and p
 `AtomicSnapshot` as the free alternative. A rejected key is caught and reported per call, so a
 bad credential does not hide the swap the example exists to show.
 
+#### An outside review, and the regression it caught
+
+`/code-review` over the whole branch, by a reader with no memory of writing it. Seven
+findings; the first is the most serious defect this item produced.
+
+**`parseString` silently disabled HOCON `include`.** `include "sibling.conf"` resolves
+relative to the file that contains the line, and only `ConfigFactory.parseFile` knows which
+file that is. Reading a file's bytes and parsing them as text moves the includer to the
+classpath — and because an include is **allow-missing by default, nothing throws**: the
+included block simply disappears. An existing user whose `llm.conf` includes `models.conf`
+would have upgraded into a registry quietly missing those names.
+
+Measured rather than argued, and the first attempt at measuring it was wrong: the experiment
+put the configuration directory on the classpath, where `parseString` found the include after
+all and the result came out backwards. Run again with the directory off the classpath,
+`parseFile` resolves the include and `parseString` does not.
+
+`ConfigLoader` now parses a file source with `parseFile` and everything else with
+`parseString`. The `instanceof` that chooses is deliberate and is now in ADR-0042, in
+`CLAUDE.md` and in the manual: an include is a directive about a *directory*, and a layer with
+no directory of its own has no answer to give. There is a regression test, checked to fail
+without the fix.
+
+**Four smaller ones, all real.** `close()` promised that no listener runs after it returns,
+which `FileChangeNotifier` only best-efforts — its join times out after five seconds — and
+which a third-party notifier never promised at all; the Javadoc now says what is actually
+guaranteed. A user-supplied notifier was dropped unclosed when a *layer* was invalid, because
+`chooseNotifier()` runs before the load; the same ownership rule now covers that path.
+`FileConfigSource.id()` was the raw path, so `a.conf` and `./a.conf` passed as two layers
+while the same file listed twice was rejected; the id is now absolute and normalised.
+`CLAUDE.md` still told the next session to use `ConfigFactory.parseFile(...)` *only* — the
+instruction ADR-0042 had just reversed — and said nothing about `ConfigSource` or the reload
+lock, so a future session would have undone both. Fixed in this commit, which is what
+`CLAUDE.md` asks for.
+
+**Two in this entry's own write-up.** The mutation-testing line said "147 mutants, 146 killed"
+and then described a timeout, which leaves 148 out of 147 — the P14 pattern, and self-refuting
+from its own numbers. It also read "Two further / further mutant timed out", a botched edit
+that **a grep for `further further` does not find, because the duplication spans a line
+break**. That is the "read the diff, do not grep it" rule turned on the person applying it.
+
+**One the review got half right.** It reported that `origin().filename()` is `null` because of
+`parseString`. `filename()` is indeed `null`, and the cause is `setOriginDescription`, which
+replaces it — measured on both routes. The finding stands, the explanation did not.
+
+**And one consequence the mutation run reported immediately.** With the loader parsing files
+through `parseFile`, `FileConfigSource.text()` stopped being called by the library at all and
+came back `NO_COVERAGE` on both its lines. It is still public behaviour through the interface,
+so it now has its own tests — the UTF-8 read, the re-read, and the message for a file that is
+not there.
+
+#### A fifth example, because the two new features had none
+
+Every v1 feature has a runnable example; P19's two did not, which is the gap
+[P18](#p18--the-distance-between-arriving-and-running-something) exists to close.
+`DatabaseSource` holds its configuration in memory instead of in a file, standing in for a
+row, and calls `reload()` itself. It shows all four answers `reload()` gives — a name added, a
+name updated, nothing changed, and a rejected reload after which the previous configuration is
+still live — and it needs no key and sends no request, like `AtomicSnapshot`. `run-database.sh`
+joins the four launchers, and `docs/manual/part-1-tutorial.md` gained the section the reference
+already had: the tutorial is where reload is *taught*, and it only knew about files.
+
+The first version of the example was wrong in a way only running it showed. Step 2 announced
+"the user edits SL" and edited both names, because it rewrote the text with a string replace
+that matched the identical `SH` block as well. It now builds each block from a name and a
+model name, and prints `updated=[SL]`.
+
+#### An accepted ADR was edited, deliberately
+
+ADR-0042 never mentioned includes, and the fix above is exactly the kind of consequence its
+*Consequences* section is for. The body of an accepted ADR is frozen, so this needs saying
+plainly: **it was edited anyway**, because it has never been on `main`, is referenced from
+nowhere outside this branch, and is part of the same unmerged change as the code it describes
+— the same reasoning `CLAUDE.md` applies to renumbering an ADR before it is pushed. Once this
+merges, the freeze applies normally and a further correction goes in a new ADR.
+
 #### Verified
 
 `AtomicSnapshot` end to end, including its failure mode. `ProviderSwap` end to end **except
@@ -1817,6 +1893,14 @@ design turns on what the library actually does rather than on what it is expecte
 | Does an *unresolved* layer round-trip? | **Yes.** Parsed without `resolve()`, `${OPENAI_API_KEY}` survives verbatim; written, re-read and resolved, the value came back from the environment. The secret never reaches the file |
 | Is per-key provenance available? | **Yes**, `origin().filename()` and `lineNumber()` gave `base.conf:3` against `local.conf:1`. But `Config.getValue()` **throws** `ConfigException$NotResolved` on a substitution — the unresolved tree is reachable only by traversing `root()` |
 
+That last row was measured on a plain parse, and **the loader as shipped does not behave that
+way**: it passes `setOriginDescription(source.id())`, which replaces `filename()` with the id.
+Measured on both routes afterwards, `filename()` is `null` and `description()` reads
+`"etichetta: 2"` — so error messages keep their provenance, which is what the option is for,
+while a future task wanting per-key provenance reads `description()` and `lineNumber()`, or
+parses a second time without the option. The row is left as it was measured, with this note
+under it, rather than rewritten to describe a spike that was not run.
+
 `ConfigFactory.parseString` and `ConfigParseOptions.setOriginDescription` were confirmed present
 with `javap`, so replacing `parseFile` costs no new dependency and keeps error provenance.
 
@@ -1942,22 +2026,30 @@ suppressed rather than lost.
 #### Verified
 
 - `mvn clean install` green offline. **8 modules** — parent, core, four providers, BOM,
-  examples — and **119 tests**: core 86 (69 before this item, plus 17 new), and 7, 8, 8, 10
+  examples — and **124 tests**: core 91 (69 before this item, plus 22 new), and 7, 8, 8, 10
   across the four provider modules.
 - **Exactly one existing test needed changing**, `ReloadTest`'s assertion on
   `ReloadFailure.configFiles()`, which now reads the sources' ids. Nothing else in the suite
   noticed, because `configFiles(List<Path>)` still means what it meant.
 - `build/check-docs.py` clean across 42 ADRs and 56 tracked files.
-- **Mutation testing on core: 147 mutants, 146 killed.** The one survivor is
-  `EmptyObjectReturnValsMutator` on `LlmRegistry.reload()`'s `return Optional.empty()` — the
-  mutation substitutes `Optional.empty()`, so the mutant and the original are the same
-  program and no test can tell them apart. An equivalent mutant, not a gap. Two further
-  further mutant timed out rather than being killed, `NullReturnValsMutator` making
-  `chooseNotifier` return null: a registry that then watches nothing leaves a waiting test
-  hanging, which is the "hung minion instead of a finding" that
-  [ADR-0041](../adr/0041-mutation-testing-on-core-only.md) predicts for watcher code.
-  The report was re-run on a tree that had stopped changing: the first run's line numbers
-  were written while the source was still being edited, and were therefore not usable.
+- `./run-database.sh` run end to end, and its `--help` read: it prints the four `reload()`
+  outcomes and ends with the previous configuration still live after the rejected one.
+- **Mutation testing on core: 153 mutants — 151 killed, 1 timed out, 1 survived.** PIT's own
+  headline says "Killed 152" because it counts a timeout as detected; the breakdown above is
+  from `mutations.xml`, and the two ways of counting are why an earlier draft of this line
+  claimed a total that did not add up.
+  **The survivor is equivalent.** `EmptyObjectReturnValsMutator` replaces whatever an object
+  method returns with an empty or default instance of that type — for `Optional`, with
+  `Optional.empty()`. It landed on `LlmRegistry.reload()`'s own `return Optional.empty()`, so
+  it rewrote that line to itself: the mutant and the original are the same bytecode, and no
+  test can distinguish them. The line is covered — `unchangedReloadIsEmpty` asserts exactly
+  that path — so this is a known PIT artefact rather than a gap in the suite.
+  **The timeout is the one ADR-0041 predicts.** `NullReturnValsMutator` makes
+  `chooseNotifier` return null, the registry then watches nothing, and a waiting test hangs:
+  "a hung minion, not a finding".
+  The report has to be read on a tree that has stopped changing. The first run's line numbers
+  were produced while the source was still being edited and were unusable, which is why every
+  figure here comes from a re-run.
 
 #### Carried over to the write item
 

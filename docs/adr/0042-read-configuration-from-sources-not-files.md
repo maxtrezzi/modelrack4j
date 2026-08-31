@@ -155,6 +155,17 @@ documented as the provider SPI discovered through `ServiceLoader`, and these two
 to the builder by hand. Filing them there would promise a discovery mechanism that does not
 exist for them.
 
+**A file layer is still parsed as a file, and that is not an implementation detail.**
+`include "sibling.conf"` in HOCON resolves relative to the file that contains it, and only
+`ConfigFactory.parseFile` knows which file that is. Parsing a file's bytes as text moves the
+includer to the classpath, and since an include is allow-missing by default the included
+block then disappears **with no error of any kind**. So `ConfigLoader` parses a file source
+with `parseFile` and everything else with `parseString`. The `instanceof` that chooses
+between them is the one place the loader knows what a source is, and it is deliberate: an
+include is a directive about a *directory*, and a layer with no directory of its own has no
+answer to give. A source that is not a file therefore gets Typesafe Config's documented
+behaviour for text, which is to look an include up on the classpath.
+
 **No new dependency.** `parseString` and `setOriginDescription` are already in the
 `com.typesafe:config` artefact core declares, so ADR-0005's four compile dependencies stand.
 

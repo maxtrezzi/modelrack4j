@@ -19,6 +19,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -181,6 +184,25 @@ class ConfigSourceTest {
     }
 
     @Test
+    @DisplayName("a file layer still resolves an include relative to itself")
+    void aFileLayerResolvesItsIncludes() throws IOException {
+        Files.writeString(dir.resolve("extra.conf"), block("SH", "included"),
+                StandardCharsets.UTF_8);
+        Path base = dir.resolve("base.conf");
+        Files.writeString(base, "include \"extra.conf\"\n" + block("SL", "own"),
+                StandardCharsets.UTF_8);
+
+        try (LlmRegistry registry =
+                LlmRegistry.builder().configFiles(List.of(base)).build()) {
+            // Reading the file and parsing the text loses this: the includer then looks on
+            // the classpath, finds nothing, and drops SH in silence because an include is
+            // allow-missing.
+            assertThat(registry.names()).containsExactly("SH", "SL");
+            assertThat(registry.get("SH").config().modelName()).isEqualTo("included");
+        }
+    }
+
+    @Test
     @DisplayName("watch(true) without files to watch is refused, not silently ignored")
     void watchingWithoutFilesIsRefused() {
         assertThatThrownBy(() -> LlmRegistry.builder()
@@ -213,6 +235,58 @@ class ConfigSourceTest {
                 .build())
                 .isInstanceOf(ConfigValidationException.class)
                 .hasMessageContaining("same");
+    }
+
+    @Test
+    @DisplayName("a file source reads its file as UTF-8, every time it is asked")
+    void aFileSourceReadsItsFile() throws IOException {
+        Path file = dir.resolve("app.conf");
+        Files.writeString(file, "# città, naïve\n" + block("SL", "m"), StandardCharsets.UTF_8);
+        ConfigSource source = ConfigSource.ofFile(file);
+
+        assertThat(source.text()).contains("città, naïve").contains("SL");
+
+        Files.writeString(file, block("SL", "edited"), StandardCharsets.UTF_8);
+        assertThat(source.text()).contains("edited");
+    }
+
+    @Test
+    @DisplayName("a file source that cannot read names the file and the reason")
+    void aFileSourceThatCannotReadSaysSo() {
+        ConfigSource source = ConfigSource.ofFile(dir.resolve("absent.conf"));
+
+        assertThatThrownBy(source::text)
+                .isInstanceOf(ConfigValidationException.class)
+                .hasMessageContaining("absent.conf")
+                .hasMessageContaining("does not exist or is not readable");
+    }
+
+    @Test
+    @DisplayName("two spellings of one file are the duplicate layer they are")
+    void twoSpellingsOfOneFileAreOneLayer() throws IOException {
+        Path file = dir.resolve("app.conf");
+        Files.writeString(file, block("SL", "m"), StandardCharsets.UTF_8);
+
+        assertThatThrownBy(() -> LlmRegistry.builder()
+                .configFiles(List.of(file, dir.resolve(".").resolve("app.conf")))
+                .build())
+                .isInstanceOf(ConfigValidationException.class)
+                .hasMessageContaining("distinct ids");
+    }
+
+    @Test
+    @DisplayName("a bad layer closes the notifier the caller had handed over")
+    void aBadLayerClosesTheSuppliedNotifier() {
+        NoopNotifier notifier = new NoopNotifier();
+
+        assertThatThrownBy(() -> LlmRegistry.builder()
+                .sources(List.of(ConfigSource.of("row#1", "llm { SL { provider = fake-local } }")))
+                .notifier(notifier)
+                .build())
+                .isInstanceOf(ConfigValidationException.class);
+
+        // build() threw, so the caller never got the registry that owns it.
+        assertThat(notifier.closed).isTrue();
     }
 
     @Test

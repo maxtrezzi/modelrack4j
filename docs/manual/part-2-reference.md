@@ -9,7 +9,7 @@ wrong. [Part 1](part-1-tutorial.md) is the way in; this is the page you come bac
 |---|---|
 | [Concepts](#concepts) | five words used precisely |
 | [Dependencies](#dependencies) | what to put in your POM |
-| [Examples](#examples) | four runnable programs, one claim each |
+| [Examples](#examples) | five runnable programs, one claim each |
 | [Configuration](#configuration) | file format, layering, every key |
 | [Memory](#memory) | the two variants and the cost rule |
 | [Java API](#java-api) | builder, registry, records, exceptions |
@@ -112,6 +112,7 @@ claim rather than the library in general.
 | Example | Demonstrates | Needs |
 |---|---|---|
 | `AtomicSnapshot` | [Snapshot-wide atomicity](#reload-semantics): a single save changes two models at once, while four threads keep reading both — once via two separate `get()` calls, once via one `snapshot()` shared for both lookups. A `get()` pair can occasionally catch one model already updated and the other not (a torn read); a `snapshot()` pair never can, because both lookups read the same frozen snapshot. The counter is real, not decorative: sabotaging the swap to publish one model 5 ms early makes the `get()` count jump to tens of thousands. | **nothing** — reads configuration only, sends no request |
+| `DatabaseSource` | [Configuration that is not a file](#configuration-that-is-not-a-file): a layer held in memory, standing in for a database row, with the application calling `reload()` itself. It shows all four answers `reload()` can give — a name added, a name updated, nothing changed, and a rejected reload that leaves the previous configuration live. | **nothing** — sends no request |
 | `ProviderSwap` | The provider as configuration: the same method, called twice around a file edit, answered by `AnthropicChatModel` and then `OpenAiChatModel`. The method names no provider and has no branch. | `ANTHROPIC_API_KEY` + `OPENAI_API_KEY`, two requests |
 | `ConsoleChat` | Everything interactively: a menu of configured models, streaming where configured, moderation on input where configured, memory across turns, and reload while you watch. | one provider key |
 | `ThreeModelCouncil` | The multi-model scenario: three names, one question, capabilities read from the bundle. | two provider keys |
@@ -127,8 +128,8 @@ mvn -q -pl modelrack4j-examples exec:java \
 ```
 
 `./run-atomic.sh` from the repository root does the same thing, and installs first if it has
-to. There is one script per example — `run-atomic.sh`, `run-swap.sh`, `run-chat.sh`,
-`run-council.sh` — and each `--help` gives what that example shows, what it costs, which keys
+to. There is one script per example — `run-atomic.sh`, `run-database.sh`, `run-swap.sh`,
+`run-chat.sh`, `run-council.sh` — and each `--help` gives what that example shows, what it costs, which keys
 it needs and the plain `mvn` command to use on Windows, since there are no `.bat`
 counterparts.
 
@@ -317,6 +318,14 @@ LlmRegistry registry = LlmRegistry.builder()
 ```
 
 Files and other sources mix freely, in the same order rule: lowest precedence first.
+
+**`include` works in a file layer and not in the others.** HOCON's
+`include "other.conf"` looks for the file next to the one that contains the line, so it keeps
+working for `configFiles(...)` and for `ConfigSource.ofFile(...)`. A layer that is not a file
+has no directory of its own, so an include in it is looked up on the classpath instead —
+and a HOCON include that finds nothing is **not an error**, it simply adds nothing. If you
+store configuration in a database, assemble the text yourself rather than relying on
+`include`.
 
 Three things to know about writing one.
 

@@ -189,11 +189,28 @@ delegates to it. Do not re-describe `get()` as "a volatile read and a map lookup
 allocates that wrapper (P14). A held snapshot never updates, so one per unit of work, never
 one at startup — that is the caching trap again.
 
-**Resolve after merging, never per file (ADR-0007).** Typesafe Config separates parsing
-from resolution. Parse each layer with `ConfigFactory.parseFile(...)` only, merge with
-`withFallback` (lowest → highest precedence), then call `.resolve()` exactly ONCE on the
-merged result. Resolving per file breaks mandatory `${VAR}` substitution in layered
-setups. This has a dedicated regression test; keep it.
+**Resolve after merging, never per layer (ADR-0007).** Typesafe Config separates parsing
+from resolution. Parse each layer **without resolving**, merge with `withFallback`
+(lowest → highest precedence), then call `.resolve()` exactly ONCE on the merged result.
+Resolving per layer breaks mandatory `${VAR}` substitution in layered setups. This has a
+dedicated regression test; keep it.
+
+**A layer is a `ConfigSource`, not a file (ADR-0042).** `ConfigSource` is `id()` plus
+`text()` and names no file, path or URL, so a layer can be a database row; `ChangeNotifier`
+carries "how do I learn this changed" separately, and `FileChangeNotifier` wraps the existing
+watcher unchanged. Two consequences that look like tidying and are not:
+
+- **A file layer is parsed with `parseFile`, everything else with `parseString`, and the
+  `instanceof` in `ConfigLoader.parse` is load-bearing.** `include "sibling.conf"` resolves
+  relative to the file containing it, and only `parseFile` knows which file that is. Give the
+  same bytes to `parseString` and the includer falls back to the classpath — and because an
+  include is allow-missing by default, the included block then **disappears with no error**.
+  P19 shipped that regression and a review caught it; there is now a regression test.
+- **`LlmRegistry.reload()` is public, and the `synchronized (reloadLock)` around the
+  compare-then-swap is not removable.** The watcher thread is no longer the only writer: an
+  application can reload too, and two reloads at once would both read the same snapshot and
+  the later would discard the earlier in silence, after its listeners had announced it.
+  Readers do not take that lock, so ADR-0038 is unaffected.
 
 **Core dependency isolation (ADR-0005, amended by ADR-0020 and then ADR-0028).**
 `modelrack4j-core` declares exactly four compile dependencies: `langchain4j-core`,

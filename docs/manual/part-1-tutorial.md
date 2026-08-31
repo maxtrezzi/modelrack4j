@@ -41,6 +41,7 @@ the output depends on a model's answer, it says so instead of inventing one.
 | [8. Layering](#8-layering) | defaults, environment, local override | offline |
 | [9. Three models at once](#9-three-models-at-once) | the council | **sends requests** |
 | [10. In your own project](#10-in-your-own-project) | the dependency and ten lines of Java | offline |
+| [If your configuration is not in a file](#if-your-configuration-is-not-in-a-file) | a layer from a database, and `reload()` | offline |
 
 ---
 
@@ -484,6 +485,40 @@ Council(LlmRegistry registry) { this.model = registry.get("SL").chatModel(); }
 
 Nothing throws when you get this wrong. The reload happens, the file changes, and your model
 quietly stays as it was. Inject the **registry**, not a `ChatModel`.
+
+---
+
+## If your configuration is not in a file
+
+Everything above keeps configuration in files, which the library can watch on its own. It does
+not have to be there. A layer can be a row in a database or a value from a configuration
+service — anything that can give the library some text:
+
+```java
+ConfigSource row = new ConfigSource() {
+    public String id()   { return "llm_config#42"; }   // a label for error messages
+    public String text() { return jdbc.readConfigText(42); }
+};
+
+LlmRegistry registry = LlmRegistry.builder()
+        .sources(List.of(ConfigSource.ofFile(basePath), row))   // a file, then the row
+        .build();
+```
+
+Nothing watches a database row, so you say when to re-read it:
+
+```java
+jdbc.updateConfigText(42, newText);
+registry.reload();   // returns what changed, or nothing if it did not
+```
+
+The rest behaves exactly as it does for a file, including section 7: an invalid row is
+rejected and the previous configuration stays live. `./run-database.sh` runs this end to end
+and costs nothing.
+
+The reference has the details, in
+[Configuration that is not a file](part-2-reference.md#configuration-that-is-not-a-file) and
+[Asking for a reload](part-2-reference.md#asking-for-a-reload).
 
 ---
 

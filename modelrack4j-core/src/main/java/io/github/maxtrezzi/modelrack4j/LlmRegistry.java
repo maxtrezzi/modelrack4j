@@ -231,9 +231,14 @@ public final class LlmRegistry implements AutoCloseable {
     /**
      * Stops the notifier, if there is one.
      *
-     * <p>Waits for a reload the notifier had already started, so none of its listeners runs
-     * after this returns. It does not wait for a {@link #reload()} another thread is running;
-     * that call finishes on its own, and its listeners run. Calling this more than once is
+     * <p>What it waits for depends on the notifier. {@link FileChangeNotifier} joins its
+     * watcher thread, for up to five seconds, so in practice a reload it had already started
+     * finishes first — but the join can time out, and a {@link ChangeNotifier} of your own is
+     * only asked to stop and release what it held. So <strong>a listener may still run after
+     * this returns</strong>, and an application that must not be called back after closing
+     * has to arrange that in the listener. It also does not wait for a {@link #reload()}
+     * another thread is running; that call finishes on its own, and its listeners run.
+     * Calling this more than once is
      * harmless — the notifier is closed exactly once whoever calls — and a registry that is
      * closed keeps serving the snapshot it last published. {@link #reload()} still works on
      * one: closing stops what was watching, not the registry.
@@ -471,9 +476,20 @@ public final class LlmRegistry implements AutoCloseable {
          */
         public LlmRegistry build() {
             List<ConfigSource> layers = ConfigSources.validated(sources);
+            // Chosen before the layers are loaded so that an impossible combination —
+            // watch(true) with no files — is reported before any work, rather than after a
+            // slow load.
             ChangeNotifier chosen = chooseNotifier();
-            SnapshotLoader loader = new SnapshotLoader(layers);
-            LlmRegistry registry = new LlmRegistry(layers, loader, loader.load(Map.of()));
+            LlmRegistry registry;
+            try {
+                SnapshotLoader loader = new SnapshotLoader(layers);
+                registry = new LlmRegistry(layers, loader, loader.load(Map.of()));
+            } catch (RuntimeException e) {
+                // A bad layer must not leave a notifier the caller thinks we took ownership
+                // of: build() does not return, so nobody else can close it.
+                closeSuppressing(chosen, e);
+                throw e;
+            }
             if (chosen != null) {
                 registry.notifier.set(chosen);
                 startOrClose(chosen, registry);
@@ -492,12 +508,20 @@ public final class LlmRegistry implements AutoCloseable {
             try {
                 notifier.start(registry::reloadQuietly);
             } catch (RuntimeException e) {
-                try {
-                    notifier.close();
-                } catch (RuntimeException closeFailed) {
-                    e.addSuppressed(closeFailed);
-                }
+                closeSuppressing(notifier, e);
                 throw e;
+            }
+        }
+
+        /** Closes {@code notifier}, attaching a failing close to {@code primary}. */
+        private static void closeSuppressing(ChangeNotifier notifier, RuntimeException primary) {
+            if (notifier == null) {
+                return;
+            }
+            try {
+                notifier.close();
+            } catch (RuntimeException closeFailed) {
+                primary.addSuppressed(closeFailed);
             }
         }
 

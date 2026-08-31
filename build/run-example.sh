@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 #
-# Shared implementation behind the four run-*.sh scripts in the repository root. Not meant to
-# be called directly: run ./run-atomic.sh, ./run-swap.sh, ./run-chat.sh or ./run-council.sh.
+# Shared implementation behind the five run-*.sh scripts in the repository root. Not meant to
+# be called directly: run ./run-atomic.sh, ./run-database.sh, ./run-swap.sh, ./run-chat.sh
+# or ./run-council.sh.
 #
 # The exec:java command these examples need is long, and three parts of it are easy to get
 # wrong: the fully qualified main class, the path to the configuration file, and the fact
@@ -24,6 +25,12 @@ case "${1-}" in
         shows="One save changes two models at once while four threads read both. Reading through
 snapshot() never catches a mixed pair; reading through two get() calls sometimes does."
         ;;
+    database)
+        script="run-database.sh"; main="DatabaseSource";   needs_keys=false; takes_config=false
+        cost="free, and sends no request"
+        shows="Configuration held in memory instead of a file, standing in for a database row,
+with the application calling reload() itself. Shows all four answers reload() can give."
+        ;;
     swap)
         script="run-swap.sh";    main="ProviderSwap";      needs_keys=true;  takes_config=false
         cost="two requests"
@@ -42,7 +49,7 @@ runs and the menu changes underneath you."
         ;;
     *)
         echo "run-example.sh is the shared implementation behind ./run-atomic.sh," >&2
-        echo "./run-swap.sh, ./run-chat.sh and ./run-council.sh. Run one of those." >&2
+        echo "./run-database.sh, ./run-swap.sh, ./run-chat.sh and ./run-council.sh. Run one of those." >&2
         exit 2
         ;;
 esac

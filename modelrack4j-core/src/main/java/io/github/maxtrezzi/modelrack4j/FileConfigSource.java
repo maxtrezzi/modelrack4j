@@ -34,9 +34,17 @@ record FileConfigSource(Path file) implements ConfigSource {
         Objects.requireNonNull(file, "file");
     }
 
+    /**
+     * {@inheritDoc}
+     *
+     * @implNote The absolute, normalised path, so that two spellings of one file — {@code
+     *     a.conf} and {@code ./a.conf} — are recognised as the duplicate layer they are
+     *     rather than passing as two. It also makes the path in an error message findable
+     *     without knowing the working directory the application was started from.
+     */
     @Override
     public String id() {
-        return file.toString();
+        return file.toAbsolutePath().normalize().toString();
     }
 
     @Override
