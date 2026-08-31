@@ -1879,22 +1879,61 @@ documentation. Both are fixed. The third, in [M3](milestones.md#m3--hot-reload)'
 match a later change would make it describe something that did not happen — the same call
 [P18](#p18--the-distance-between-arriving-and-running-something) made about `council.conf`.
 
+#### A review of the code this item wrote, and what it found
+
+The new classes were reviewed against the project's Java skill after they were green, not
+instead of being green. Four findings, all in code written by this item.
+
+**A silent swallow.** `reloadQuietly()` catches `RuntimeException` on the grounds that
+`reload()` has already logged it and told the failure listeners — true for the load, which is
+inside the `try`, and **false for the diff**, which was outside it. A failure in
+`ReloadChange.between` would have been swallowed with no log and no listener called, which is
+the worst of the two shapes: before this item the same failure escaped to the watcher thread,
+loudly. The `try` now covers the diff as well, and stops before the swap, so the message it
+prints — the previous configuration stays live — stays true.
+
+**A notifier nobody could close.** `build()` assigned the notifier to the registry and then
+started it. If `start()` threw, `build()` did not return, so the caller never received the
+registry that owned it, and anything the notifier had allocated leaked with no reference left
+to close it. It now closes the notifier and attaches a failing close to the original failure
+rather than letting it mask it. `FileChangeNotifier` itself never leaked —
+`ConfigWatcher`'s constructor already closes its watch service on failure, checked rather than
+assumed — but the interface is public and a third-party notifier has no such guarantee.
+
+**A guard that did not guard.** `FileChangeNotifier.start()` tested a volatile field for null
+and then assigned it, so two callers could both pass the test and start two watcher threads,
+one of them unreachable and never closed — against a Javadoc line promising
+`IllegalStateException` on a second start. It also allowed a *closed* notifier to be started
+again, because `close()` nulled the same field. Both are now one three-state transition under
+a private lock, with the close itself performed outside that lock, because closing joins the
+watcher thread.
+
+**An unreachable check.** `ConfigSources.validated` null-checked each element after
+`List.copyOf`, which rejects null elements itself — confirmed by running it rather than by
+reading the Javadoc.
+
+**Mutation testing then found that two of these fixes had no test.** The notifier-ownership
+path came back `NO_COVERAGE` on both of its lines: a safety path added and never exercised,
+which is precisely the case [ADR-0041](../adr/0041-mutation-testing-on-core-only.md) buys the
+tool for. Two tests now cover it, including the one where the close *also* fails and must be
+suppressed rather than lost.
+
 #### Verified
 
 - `mvn clean install` green offline. **8 modules** — parent, core, four providers, BOM,
-  examples — and **115 tests**: core 82 (69 before this item, plus 13 new), and 7, 8, 8, 10
+  examples — and **118 tests**: core 85 (69 before this item, plus 16 new), and 7, 8, 8, 10
   across the four provider modules.
 - **Exactly one existing test needed changing**, `ReloadTest`'s assertion on
   `ReloadFailure.configFiles()`, which now reads the sources' ids. Nothing else in the suite
   noticed, because `configFiles(List<Path>)` still means what it meant.
 - `build/check-docs.py` clean across 42 ADRs and 56 tracked files.
-- **Mutation testing on core: 143 mutants, 142 killed.** The one survivor is
+- **Mutation testing on core: 146 mutants, 145 killed.** The one survivor is
   `EmptyObjectReturnValsMutator` on `LlmRegistry.reload()`'s `return Optional.empty()` — the
   mutation substitutes `Optional.empty()`, so the mutant and the original are the same
   program and no test can tell them apart. An equivalent mutant, not a gap. Two further
-  mutants timed out rather than being killed, both `NullReturnValsMutator` making a
-  `FileChangeNotifier` construction return null: a registry that then watches nothing leaves
-  a waiting test hanging, which is the "hung minion instead of a finding" that
+  further mutant timed out rather than being killed, `NullReturnValsMutator` making
+  `chooseNotifier` return null: a registry that then watches nothing leaves a waiting test
+  hanging, which is the "hung minion instead of a finding" that
   [ADR-0041](../adr/0041-mutation-testing-on-core-only.md) predicts for watcher code.
   The report was re-run on a tree that had stopped changing: the first run's line numbers
   were written while the source was still being edited, and were therefore not usable.

@@ -31,8 +31,10 @@ import java.util.Objects;
  * The reasoning is in ADR-0013 and ADR-0024, and none of it changed when notification became
  * an interface.
  *
- * <p>Built for you by {@link LlmRegistry.Builder#watch(boolean)}. Construct one directly only
- * to watch files that are not themselves the registry's sources.
+ * <p>Built for you by {@link LlmRegistry.Builder#watch(boolean)}, which is the usual way to
+ * get one. Construct it yourself when the layers were given through
+ * {@link LlmRegistry.Builder#sources(java.util.List)} — a file layer under a database layer,
+ * say — and the file half should still be watched.
  *
  * @implNote One instance covers the whole list, sharing a single watch service and a single
  *     daemon thread across the deduplicated set of parent directories. One notifier per file
@@ -40,11 +42,25 @@ import java.util.Objects;
  */
 public final class FileChangeNotifier implements ChangeNotifier {
 
+    private enum State {
+        NEW,
+        STARTED,
+        CLOSED
+    }
+
     private final List<Path> files;
     private final Duration debounce;
 
-    /** Null until {@link #start(Runnable)}, and again after {@link #close()}. */
-    private volatile ConfigWatcher watcher;
+    /**
+     * Guards the transition between states. Private, so nothing outside can hold it while
+     * this notifier is starting or stopping.
+     */
+    private final Object lock = new Object();
+
+    private State state = State.NEW;
+
+    /** Null until a successful {@link #start(Runnable)}, and again after {@link #close()}. */
+    private ConfigWatcher watcher;
 
     private FileChangeNotifier(List<Path> files, Duration debounce) {
         this.files = files;
@@ -71,24 +87,44 @@ public final class FileChangeNotifier implements ChangeNotifier {
         return new FileChangeNotifier(copy, debounce);
     }
 
+    /**
+     * {@inheritDoc}
+     *
+     * @throws IllegalStateException if this notifier is already started, or was closed — a
+     *     closed one is spent, not reusable
+     * @throws UncheckedIOException if a watched directory cannot be registered
+     */
     @Override
     public void start(Runnable onChange) {
         Objects.requireNonNull(onChange, "onChange");
-        if (watcher != null) {
-            throw new IllegalStateException("This notifier has already been started");
-        }
-        try {
-            watcher = ConfigWatcher.start(files, debounce, onChange);
-        } catch (IOException e) {
-            throw new UncheckedIOException(
-                    "Cannot watch the configuration files: " + e.getMessage(), e);
+        // Tested and set under one lock. Read-then-assign on a volatile field would let two
+        // callers both pass the check and start two watcher threads, one of which would then
+        // be unreachable and never closed.
+        synchronized (lock) {
+            if (state != State.NEW) {
+                throw new IllegalStateException(
+                        "A FileChangeNotifier starts once; this one is already " + state);
+            }
+            try {
+                watcher = ConfigWatcher.start(files, debounce, onChange);
+            } catch (IOException e) {
+                throw new UncheckedIOException(
+                        "Cannot watch the configuration files: " + e.getMessage(), e);
+            }
+            state = State.STARTED;
         }
     }
 
     @Override
     public void close() {
-        ConfigWatcher running = watcher;
-        watcher = null;
+        ConfigWatcher running;
+        synchronized (lock) {
+            running = watcher;
+            watcher = null;
+            state = State.CLOSED;
+        }
+        // Outside the lock on purpose: closing joins the watcher thread, and holding a lock
+        // across a join is how a future callback that needed this lock would deadlock.
         if (running != null) {
             running.close();
         }

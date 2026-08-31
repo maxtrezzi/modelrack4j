@@ -16,26 +16,33 @@
 package io.github.maxtrezzi.modelrack4j;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /**
  * Configuration that does not come from a file, and the reload an application asks for
  * (ADR-0042).
  */
 class ConfigSourceTest {
+
+    @TempDir
+    private Path dir;
 
     private static String block(String name, String modelName) {
         return "llm { " + name + " { provider = fake-local, api-key = \"k\""
@@ -285,14 +292,15 @@ class ConfigSourceTest {
         };
 
         ExecutorService pool = Executors.newFixedThreadPool(threads);
+        List<Future<?>> running = new ArrayList<>(threads);
         try (LlmRegistry registry = LlmRegistry.builder().sources(List.of(slow)).build()) {
             for (int i = 0; i < threads; i++) {
-                pool.submit(() -> {
+                running.add(pool.submit(() -> {
                     ready.countDown();
                     go.await();
                     registry.reload();
                     return null;
-                });
+                }));
             }
             assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
             go.countDown();
@@ -302,7 +310,89 @@ class ConfigSourceTest {
             pool.shutdownNow();
         }
 
+        // A submitted task's exception lands in its Future and nowhere else, so without this
+        // a reload that threw would leave the high-water mark at 1 and the test green.
+        for (Future<?> f : running) {
+            assertThatCode(f::get).doesNotThrowAnyException();
+        }
         assertThat(highWaterMark).hasValue(1);
+    }
+
+    @Test
+    @DisplayName("a file notifier starts once, and a closed one is spent rather than reusable")
+    void aFileNotifierStartsOnce() {
+        FileChangeNotifier notifier =
+                FileChangeNotifier.of(List.of(dir.resolve("app.conf")), Duration.ofMillis(50));
+        try {
+            notifier.start(() -> { });
+
+            assertThatThrownBy(() -> notifier.start(() -> { }))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("STARTED");
+        } finally {
+            notifier.close();
+        }
+
+        assertThatThrownBy(() -> notifier.start(() -> { }))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("CLOSED");
+    }
+
+    @Test
+    @DisplayName("a notifier that fails to start is closed, because nobody else could")
+    void aNotifierThatFailsToStartIsClosed() {
+        FailingNotifier notifier = new FailingNotifier(null);
+
+        assertThatThrownBy(() -> LlmRegistry.builder()
+                .sources(List.of(ConfigSource.of("row#1", block("SL", "m"))))
+                .notifier(notifier)
+                .build())
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("cannot watch");
+
+        // build() never returns, so the caller has no registry to close it with.
+        assertThat(notifier.closed).isTrue();
+    }
+
+    @Test
+    @DisplayName("a close that also fails is attached to the start failure, not swallowed")
+    void aFailingCloseIsSuppressedRatherThanLost() {
+        FailingNotifier notifier = new FailingNotifier(new IllegalStateException("close broke"));
+
+        assertThatThrownBy(() -> LlmRegistry.builder()
+                .sources(List.of(ConfigSource.of("row#1", block("SL", "m"))))
+                .notifier(notifier)
+                .build())
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("cannot watch")
+                .satisfies(thrown -> assertThat(thrown.getSuppressed())
+                        .singleElement()
+                        .extracting(Throwable::getMessage)
+                        .isEqualTo("close broke"));
+    }
+
+    /** A notifier whose {@code start} always fails, and whose {@code close} may. */
+    private static final class FailingNotifier implements ChangeNotifier {
+
+        private final RuntimeException closeFailure;
+        private boolean closed;
+
+        FailingNotifier(RuntimeException closeFailure) {
+            this.closeFailure = closeFailure;
+        }
+
+        @Override
+        public void start(Runnable onChange) {
+            throw new IllegalStateException("cannot watch");
+        }
+
+        @Override
+        public void close() {
+            closed = true;
+            if (closeFailure != null) {
+                throw closeFailure;
+            }
+        }
     }
 
     /** A notifier that does nothing until a test fires it by hand. */

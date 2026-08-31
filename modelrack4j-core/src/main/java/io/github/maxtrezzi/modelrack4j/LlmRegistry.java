@@ -274,8 +274,12 @@ public final class LlmRegistry implements AutoCloseable {
         synchronized (reloadLock) {
             Map<String, LlmBundle> previous = bundles;
             Map<String, LlmBundle> staged;
+            ReloadChange change;
             try {
                 staged = loader.load(previous);
+                // Inside the try as well: everything that can fail must be reported, or
+                // reloadQuietly() would swallow it with no log and no listener called.
+                change = ReloadChange.between(previous, staged);
             } catch (RuntimeException e) {
                 // ADR-0031: logged whether or not anyone listens, and whether or not this
                 // reload has a caller to throw to. Without it, a typo in a config file makes
@@ -287,7 +291,6 @@ public final class LlmRegistry implements AutoCloseable {
                 throw e;
             }
 
-            ReloadChange change = ReloadChange.between(previous, staged);
             if (change.isEmpty()) {
                 // A wakeup that turned out to change nothing: an unrelated file in a watched
                 // directory, a save that rewrote the same bytes, or an application asking
@@ -466,9 +469,29 @@ public final class LlmRegistry implements AutoCloseable {
             LlmRegistry registry = new LlmRegistry(layers, loader, loader.load(Map.of()));
             if (chosen != null) {
                 registry.notifier = chosen;
-                chosen.start(registry::reloadQuietly);
+                startOrClose(chosen, registry);
             }
             return registry;
+        }
+
+        /**
+         * Starts the notifier, closing it if starting fails.
+         *
+         * @implNote Without this, a notifier that allocated something before throwing would
+         *     be left open with nobody holding a reference to close it: {@code build()} does
+         *     not return, so the caller never sees the registry that owns it.
+         */
+        private static void startOrClose(ChangeNotifier notifier, LlmRegistry registry) {
+            try {
+                notifier.start(registry::reloadQuietly);
+            } catch (RuntimeException e) {
+                try {
+                    notifier.close();
+                } catch (RuntimeException closeFailed) {
+                    e.addSuppressed(closeFailed);
+                }
+                throw e;
+            }
         }
 
         private ChangeNotifier chooseNotifier() {

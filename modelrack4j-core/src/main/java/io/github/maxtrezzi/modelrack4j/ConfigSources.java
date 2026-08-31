@@ -59,7 +59,8 @@ final class ConfigSources {
         Set<String> seen = new HashSet<>();
         List<String> duplicates = new ArrayList<>();
         for (ConfigSource source : copy) {
-            Objects.requireNonNull(source, "configuration source");
+            // No null check on the source itself: List.copyOf above already rejects a null
+            // element, so a check here could never fire.
             String id = requireUsableId(source.id());
             if (!seen.add(id)) {
                 duplicates.add(id);
