@@ -31,7 +31,8 @@ wrong. [Part 1](part-1-tutorial.md) is the way in; this is the page you come bac
 | **Name** | A key under `llm` in the configuration — `SL`, `CR`, `summariser-eu`. You invent it, your code asks for it, and it is the registry's only key. Two names may use the same provider and the same model, differing only in parameters. |
 | **Bundle** | Everything built from one name: a `ChatModel`, and optionally a `StreamingChatModel`, a `ModerationModel` and a `ChatMemoryProvider`. Immutable. |
 | **Snapshot** | The complete map of name to bundle at one instant. There is exactly one live snapshot, and a reload replaces it wholesale. |
-| **Layer** | One configuration file. Layers merge into one snapshot; they do not each produce their own. |
+| **Layer** | One piece of configuration text, given as a `ConfigSource`. Usually a file, but it can be a row in a database or anything else that produces text. Layers merge into one snapshot; they do not each produce their own. |
+| **Notifier** | What tells the registry that a layer changed, as a `ChangeNotifier`. Files get one built in; a layer nothing can watch has none, and the application calls `reload()` instead. |
 | **Provider** | A LangChain4j integration, wrapped in a `ProviderFactory` and discovered on the classpath. Never a registry key. |
 
 ---
@@ -377,6 +378,27 @@ Use it for a mechanism the library does not provide — a database `LISTEN`/`NOT
 Kubernetes informer, a message from a queue. For files, `watch(true)` already builds the
 right notifier, and the two cannot both be set.
 
+The one the library ships is `FileChangeNotifier`, described under
+[The watcher](#the-watcher). `watch(true)` builds it for you, and that is the usual way to get
+one. Build it yourself when the layers came through `sources(...)` and the file half of them
+should still be watched:
+
+```java
+LlmRegistry.builder()
+        .sources(List.of(ConfigSource.ofFile(basePath), row))
+        .notifier(FileChangeNotifier.of(List.of(basePath), Duration.ofMillis(300)))
+        .build();
+```
+
+| Method | Contract |
+|---|---|
+| `FileChangeNotifier.of(List<Path>, Duration)` | A notifier for those files, not yet started. At least one file; the duration must be positive. |
+| `start(Runnable)` | Called once by `build()`. Starting twice, or starting one that was closed, throws `IllegalStateException` — a closed notifier is spent. |
+| `close()` | Called by `LlmRegistry.close()`. Stops the daemon thread. |
+
+The registry owns whatever notifier it was given, from a successful `build()` until
+`close()`.
+
 ### One lookup, or several that must agree
 
 `get()` reads the live configuration on every call. That is what makes a reload visible, and
@@ -519,6 +541,10 @@ eligible for garbage collection when nothing references them.
 ---
 
 ## The watcher
+
+The watcher is `FileChangeNotifier`, the `ChangeNotifier` the library ships for layers held in
+files. `watch(true)` builds one over the files given to `configFiles(...)`; everything below
+describes what that one does, and none of it applies to a layer that is not a file.
 
 `WatchService` registers on **directories**, not files, so the watcher registers the
 deduplicated set of parent directories and filters events by filename.
@@ -695,7 +721,10 @@ Deliberate and permanent:
 | `counts tokens by calling its API` | `token-window` on a remote counter | Add `allow-remote-token-counting = true`, or use `message-window`. |
 | `no token count estimator` | `token-window` on GLM | Use `message-window`. No flag helps. |
 | `` `temperature` is deprecated for this model `` | A non-default `temperature` on a model that rejects one, such as `claude-sonnet-5` | Remove the key. The model then uses its own sampling settings. |
-| `UnknownConfigurationException` at runtime | The name was removed from the file while running | Catch it and re-read `names()`, or keep the block. |
+| `UnknownConfigurationException` at runtime | The name was removed from the configuration while running | Catch it and re-read `names()`, or keep the block. The exception's `configurationName()` gives the name that was asked for. |
+| `watch(true) watches configuration files, and this registry has none` | `watch(true)` with layers given through `sources(...)` | There is nothing to watch. Call `reload()` when the configuration changes, or pass a `ChangeNotifier`. |
+| `Configuration sources must have distinct ids` | Two layers with the same id — often one file listed twice | Remove the repeat. File ids are the absolute path, so two spellings of one file count as one. |
+| An `include` in a layer adds nothing, and nothing is logged | The layer is not a file, so the include is looked up on the classpath, and a HOCON include that finds nothing is not an error | Includes work in file layers. For a layer from a database, assemble the text before handing it over. |
 | Reloads fire constantly | Something else writes into a watched directory | Only the configured filenames are matched, but a symlinked path matches any event in its directory by design. |
 | Half-written files are rejected as failures | The debounce is shorter than your writer takes | Raise `debounce(...)`. |
 | `NoSuchMethodError` running an example | A stale `modelrack4j-core` in `~/.m2` | `mvn install` from the checkout root. |

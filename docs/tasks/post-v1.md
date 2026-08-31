@@ -303,6 +303,41 @@ nowhere outside this branch, and is part of the same unmerged change as the code
 — the same reasoning `CLAUDE.md` applies to renumbering an ADR before it is pushed. Once this
 merges, the freeze applies normally and a further correction goes in a new ADR.
 
+#### What the manual was still missing, found by enumerating the API rather than reading it
+
+The reference promises *"every configuration key, every public method"*. Asked whether the
+manual needed more, the answer came from `javap` over the built jar rather than from reading:
+**17 public types, 67 public members, and 2 undocumented.**
+
+Four gaps, three of them introduced by this item:
+
+- **`FileChangeNotifier` appeared nowhere.** A public class with three public methods, added by
+  this item, named in no document. It now has its own table under *Asking for a reload*, and
+  *The watcher* opens by saying that the watcher **is** that class — one implementation of
+  `ChangeNotifier`, not something intrinsic to the registry.
+- **The *Concepts* table defined a layer as "One configuration file".** The first definition a
+  reader meets, contradicting the rest of the page. A layer is now text given as a
+  `ConfigSource`, and *Notifier* joins the table beside it.
+- **Three new failure modes had no troubleshooting row**: `watch(true)` refused for layers that
+  are not files, two layers sharing an id, and an `include` in a non-file layer that adds
+  nothing and says nothing. The last is the one a reader would never diagnose alone, because
+  HOCON treats a missing include as success.
+- **`UnknownConfigurationException.configurationName()`**, open since
+  [P16](#p16--a-third-coherence-pass-and-the-surface-the-first-two-searched-past), is now named
+  in the row that already sends readers into that `catch`.
+
+**The two that remain undocumented are P16's, and stay open on purpose.**
+`LlmConfig.fromBlock` and `MemoryConfig.unknownType` are accidental API surface, and P16's
+reasoning holds: documenting them would make the accident permanent, and narrowing them is an
+API change wanting its own item. One new fact for whoever takes it: **`unknownType` cannot
+simply be made package-private**, because `MemoryConfig` is an `interface` and a `static`
+method in an interface is implicitly public. Narrowing it means moving it out of the
+interface. This also settles a claim made while reviewing P16 and reported as a miscount —
+that `unknownType` was already package-private and P16 had counted three where there were two.
+**P16 was right and that claim was wrong**: `javap` prints `public static`.
+
+This audit is true on **2026-08-31**, and stops being true the next time the API grows.
+
 #### Verified
 
 `AtomicSnapshot` end to end, including its failure mode. `ProviderSwap` end to end **except
