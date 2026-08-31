@@ -227,6 +227,124 @@ Without both keys it explains what it needs and exits rather than failing, and p
 `AtomicSnapshot` as the free alternative. A rejected key is caught and reported per call, so a
 bad credential does not hide the swap the example exists to show.
 
+#### An outside review, and the regression it caught
+
+`/code-review` over the whole branch, by a reader with no memory of writing it. Seven
+findings; the first is the most serious defect this item produced.
+
+**`parseString` silently disabled HOCON `include`.** `include "sibling.conf"` resolves
+relative to the file that contains the line, and only `ConfigFactory.parseFile` knows which
+file that is. Reading a file's bytes and parsing them as text moves the includer to the
+classpath — and because an include is **allow-missing by default, nothing throws**: the
+included block simply disappears. An existing user whose `llm.conf` includes `models.conf`
+would have upgraded into a registry quietly missing those names.
+
+Measured rather than argued, and the first attempt at measuring it was wrong: the experiment
+put the configuration directory on the classpath, where `parseString` found the include after
+all and the result came out backwards. Run again with the directory off the classpath,
+`parseFile` resolves the include and `parseString` does not.
+
+`ConfigLoader` now parses a file source with `parseFile` and everything else with
+`parseString`. The `instanceof` that chooses is deliberate and is now in ADR-0042, in
+`CLAUDE.md` and in the manual: an include is a directive about a *directory*, and a layer with
+no directory of its own has no answer to give. There is a regression test, checked to fail
+without the fix.
+
+**Four smaller ones, all real.** `close()` promised that no listener runs after it returns,
+which `FileChangeNotifier` only best-efforts — its join times out after five seconds — and
+which a third-party notifier never promised at all; the Javadoc now says what is actually
+guaranteed. A user-supplied notifier was dropped unclosed when a *layer* was invalid, because
+`chooseNotifier()` runs before the load; the same ownership rule now covers that path.
+`FileConfigSource.id()` was the raw path, so `a.conf` and `./a.conf` passed as two layers
+while the same file listed twice was rejected; the id is now absolute and normalised.
+`CLAUDE.md` still told the next session to use `ConfigFactory.parseFile(...)` *only* — the
+instruction ADR-0042 had just reversed — and said nothing about `ConfigSource` or the reload
+lock, so a future session would have undone both. Fixed in this commit, which is what
+`CLAUDE.md` asks for.
+
+**Two in this entry's own write-up.** The mutation-testing line said "147 mutants, 146 killed"
+and then described a timeout, which leaves 148 out of 147 — the P14 pattern, and self-refuting
+from its own numbers. It also read "Two further / further mutant timed out", a botched edit
+that **a grep for `further further` does not find, because the duplication spans a line
+break**. That is the "read the diff, do not grep it" rule turned on the person applying it.
+
+**One the review got half right.** It reported that `origin().filename()` is `null` because of
+`parseString`. `filename()` is indeed `null`, and the cause is `setOriginDescription`, which
+replaces it — measured on both routes. The finding stands, the explanation did not.
+
+**And one consequence the mutation run reported immediately.** With the loader parsing files
+through `parseFile`, `FileConfigSource.text()` stopped being called by the library at all and
+came back `NO_COVERAGE` on both its lines. It is still public behaviour through the interface,
+so it now has its own tests — the UTF-8 read, the re-read, and the message for a file that is
+not there.
+
+#### A fifth example, because the two new features had none
+
+Every v1 feature has a runnable example; P19's two did not, which is the gap
+[P18](#p18--the-distance-between-arriving-and-running-something) exists to close.
+`DatabaseSource` holds its configuration in memory instead of in a file, standing in for a
+row, and calls `reload()` itself. It shows all four answers `reload()` gives — a name added, a
+name updated, nothing changed, and a rejected reload after which the previous configuration is
+still live — and it needs no key and sends no request, like `AtomicSnapshot`. `run-database.sh`
+joins the four launchers, and `docs/manual/part-1-tutorial.md` gained the section the reference
+already had: the tutorial is where reload is *taught*, and it only knew about files.
+
+The first version of the example was wrong in a way only running it showed. Step 2 announced
+"the user edits SL" and edited both names, because it rewrote the text with a string replace
+that matched the identical `SH` block as well. It now builds each block from a name and a
+model name, and prints `updated=[SL]`.
+
+#### An accepted ADR was edited, deliberately
+
+ADR-0042 never mentioned includes, and the fix above is exactly the kind of consequence its
+*Consequences* section is for. The body of an accepted ADR is frozen, so this needs saying
+plainly: **it was edited anyway**, because it has never been on `main`, is referenced from
+nowhere outside this branch, and is part of the same unmerged change as the code it describes
+— the same reasoning `CLAUDE.md` applies to renumbering an ADR before it is pushed. Once this
+merges, the freeze applies normally and a further correction goes in a new ADR.
+
+#### What the manual was still missing, found by enumerating the API rather than reading it
+
+The reference promises *"every configuration key, every public method"*. Asked whether the
+manual needed more, the answer came from `javap` over the built jar rather than from reading:
+**17 public types, 67 public methods, and 2 undocumented.** Methods, not members: the count
+excludes the 9 public constructors, and counting those too gives 76. The rule matters more
+than the number, because without it the figure cannot be re-run — a later check read
+"members" literally, got 76, and started writing a correction to a figure that was right.
+To reproduce it: unpack the built core jar, run `javap` over every class in it, keep the
+members of the types `javap` prints as `public`, and drop `equals`, `hashCode`, `toString`
+and the enum's `values` and `valueOf`.
+
+Four gaps, three of them introduced by this item:
+
+- **`FileChangeNotifier` appeared nowhere.** A public class with three public methods, added by
+  this item, named in no document. It now has its own table under *Asking for a reload*, and
+  *The watcher* opens by saying that the watcher **is** that class — one implementation of
+  `ChangeNotifier`, not something intrinsic to the registry.
+- **The *Concepts* table defined a layer as "One configuration file".** The first definition a
+  reader meets, contradicting the rest of the page. A layer is now text given as a
+  `ConfigSource`, and *Notifier* joins the table beside it.
+- **Three new failure modes had no troubleshooting row**: `watch(true)` refused for layers that
+  are not files, two layers sharing an id, and an `include` in a non-file layer that adds
+  nothing and says nothing. The last is the one a reader would never diagnose alone, because
+  HOCON treats a missing include as success.
+- **`UnknownConfigurationException.configurationName()`**, open since
+  [P16](#p16--a-third-coherence-pass-and-the-surface-the-first-two-searched-past), is now named
+  in the row that already sends readers into that `catch`.
+
+**The two that remain undocumented are P16's, and stay open on purpose.**
+`LlmConfig.fromBlock` and `MemoryConfig.unknownType` are accidental API surface, and P16's
+reasoning holds: documenting them would make the accident permanent, and narrowing them is an
+API change wanting its own item. One new fact for whoever takes it: **`unknownType` cannot
+simply be made package-private**, because `MemoryConfig` is an `interface` and a `static`
+method in an interface is implicitly public. Narrowing it means moving it out of the
+interface. This also settles a claim made while reviewing P16 and reported as a miscount —
+that `unknownType` was already package-private and P16 had counted three where there were two.
+**P16 was right and that claim was wrong**: `javap` prints `public static`.
+
+This audit is true on **2026-08-31**, and stops being true the next time the API grows. It
+was re-run unchanged after the fourth review pass, which added no public member.
+
 #### Verified
 
 `AtomicSnapshot` end to end, including its failure mode. `ProviderSwap` end to end **except
@@ -1790,3 +1908,304 @@ under its Java 17 profile.
   across the two script layouts, printing its two generations and its torn-pair counts.
 - The paid examples were not run. Nothing in this task required it, and P12 is the entry that
   records them being exercised against live APIs.
+
+### P19 — Configuration sources, and a reload the application can ask for
+
+**Status:** Done 2026-08-31 · **Branch:** `task/p19-config-sources-and-manual-reload` ·
+**Produced:** [ADR-0042](../adr/0042-read-configuration-from-sources-not-files.md)
+
+The registry has taken `List<Path>` and nothing else since [M1](milestones.md#m1--core-without-watching).
+The consuming application now needs a layer that lives in a database — a row of HOCON text —
+layered over ordinary files. A database row has no path to parse and no directory to watch,
+so two things have to change: what a layer *is*, and who is allowed to trigger a reload.
+
+This item is **reading only**. Writing configuration back is what the request started from,
+and it is deliberately left to a later item: written first, it would have been written against
+`Path` and deepened the coupling this one removes.
+
+#### What was measured before anything was decided
+
+Four spikes against the real `com.typesafe:config` `1.4.9` jar in `~/.m2`, because the whole
+design turns on what the library actually does rather than on what it is expected to do.
+
+| Question | Answer |
+|---|---|
+| Can a resolved snapshot be rendered back to a file? | **No.** With `api-key = ${MY_SECRET}` in the source, `render()` emitted `"api-key" : "sk-REAL-SECRET-123"` — the secret in plaintext. It also reordered keys alphabetically and moved a trailing comment above the key it followed |
+| Does `setShowEnvVariableValues(false)` fix that? | **No.** It emits the literal `"<env variable>"`: the secret is protected and the substitution is destroyed, so the file no longer loads |
+| Does an *unresolved* layer round-trip? | **Yes.** Parsed without `resolve()`, `${OPENAI_API_KEY}` survives verbatim; written, re-read and resolved, the value came back from the environment. The secret never reaches the file |
+| Is per-key provenance available? | **Yes**, `origin().filename()` and `lineNumber()` gave `base.conf:3` against `local.conf:1`. But `Config.getValue()` **throws** `ConfigException$NotResolved` on a substitution — the unresolved tree is reachable only by traversing `root()` |
+
+That last row was measured on a plain parse, and **the loader as shipped does not behave that
+way**: it passes `setOriginDescription(source.id())`, which replaces `filename()` with the id.
+Measured on both routes afterwards, `filename()` is `null` and `description()` reads
+`"etichetta: 2"` — so error messages keep their provenance, which is what the option is for,
+while a future task wanting per-key provenance reads `description()` and `lineNumber()`, or
+parses a second time without the option. The row is left as it was measured, with this note
+under it, rather than rewritten to describe a spike that was not run.
+
+`ConfigFactory.parseString` and `ConfigParseOptions.setOriginDescription` were confirmed present
+with `javap`, so replacing `parseFile` costs no new dependency and keeps error provenance.
+
+#### The shape, and the two proposals that lost
+
+`ConfigSource` is `id()` plus `text()`, and names no file, path or URI. Notification is a
+separate `ChangeNotifier`, which is today's `ConfigWatcher` behind an interface it already
+fits — it is `AutoCloseable` and already takes a `Runnable onChange`.
+
+Two earlier proposals were refuted in discussion, and both are recorded in ADR-0042 because
+the reasoning generalises. `Optional<Path>` on the source put the filesystem back into the
+new interface one level below where it had just been removed from four classes.
+`Optional<URI>` was worse: an address makes the registry dispatch on scheme, which is the
+boundary [ADR-0002](../adr/0002-scope-to-langchain4j-llm-configuration.md) draws. The test
+that settled it was asking who needs to *act* on an address rather than print one — and in
+this design, nobody does.
+
+#### What it costs
+
+`ReloadFailure` changes from `List<Path>` to `List<ConfigSource>`. That is a breaking change
+to a public record, free today at `0.1.0-SNAPSHOT` with no tag and no published artefact, and
+not free after [M6](milestones.md), whose preparation is running in parallel. The timing is
+the reason this is being done now.
+
+Reloads serialise behind a lock. A public trigger means the compare-then-swap in `reload()`
+has a second writer, so the invariant that made it lock-free is gone — **on the read side
+alone, before any write API exists.** Readers are unaffected: `get()` and `snapshot()` keep
+their volatile read, so [ADR-0038](../adr/0038-snapshot-gives-callers-the-atomicity-the-swap-already-has.md)
+is untouched.
+
+#### What the work found
+
+**A parse error was escaping as a third-party exception, and had been since M1.**
+`LlmRegistry.build()` documents `@throws ConfigValidationException` for an invalid layer, and
+`ConfigLoader` wrapped the failures from `resolve()` — but the parse call itself sat outside
+that `try`, so a malformed layer threw `com.typesafe.config.ConfigException$Parse` at the
+caller instead. Confirmed pre-existing rather than introduced here, by reading the same loop
+on `main`. It is now wrapped, with the source's id and the line kept in the message. The
+failure path was never broken by it: `reload()` catches `RuntimeException`, so a broken file
+was always logged and reported — only the type a caller catches was wrong.
+
+Nothing in [ADR-0033](../adr/0033-provider-exceptions-pass-through-untranslated.md) is
+touched: that decision is about exceptions a *provider* throws, and translating a HOCON
+failure is what this loader already did one line further down.
+
+**The concurrency test was checked against the defect it names.** A test that asserts a lock
+is doing something has to fail without the lock, or it is one of the tests
+[P17](#p17--mutation-testing-on-core) found. With `synchronized` neutralised, the source's
+high-water mark of simultaneous readers was **4 of 4 threads**, against the 1 the test
+requires. Restored, it is 1.
+
+**Three copies of a claim the lock made false, and one deliberately left.** "The watcher
+thread is the only writer, so there is no lock anywhere in the reload path" was true until
+this item and is now not. It was in `docs/manual/part-2-reference.md` under *Threading and
+lifecycle*, and again in `LlmRegistry`'s own field Javadoc — the surface
+[P16](#p16--a-third-coherence-pass-and-the-surface-the-first-two-searched-past) found the
+fourth copy of an ADR-0038 over-claim on, which is why the code was searched and not only the
+documentation. Both are fixed. The third, in [M3](milestones.md#m3--hot-reload)'s write-up, is
+**left as written**: it records what was true when M3 shipped, and editing a past entry to
+match a later change would make it describe something that did not happen — the same call
+[P18](#p18--the-distance-between-arriving-and-running-something) made about `council.conf`.
+
+#### A review of the code this item wrote, and what it found
+
+The new classes were reviewed against the project's Java skill after they were green, not
+instead of being green. Four findings, all in code written by this item.
+
+**A silent swallow.** `reloadQuietly()` catches `RuntimeException` on the grounds that
+`reload()` has already logged it and told the failure listeners — true for the load, which is
+inside the `try`, and **false for the diff**, which was outside it. A failure in
+`ReloadChange.between` would have been swallowed with no log and no listener called, which is
+the worst of the two shapes: before this item the same failure escaped to the watcher thread,
+loudly. The `try` now covers the diff as well, and stops before the swap, so the message it
+prints — the previous configuration stays live — stays true.
+
+**A notifier nobody could close.** `build()` assigned the notifier to the registry and then
+started it. If `start()` threw, `build()` did not return, so the caller never received the
+registry that owned it, and anything the notifier had allocated leaked with no reference left
+to close it. It now closes the notifier and attaches a failing close to the original failure
+rather than letting it mask it. `FileChangeNotifier` itself never leaked —
+`ConfigWatcher`'s constructor already closes its watch service on failure, checked rather than
+assumed — but the interface is public and a third-party notifier has no such guarantee.
+
+**A guard that did not guard.** `FileChangeNotifier.start()` tested a volatile field for null
+and then assigned it, so two callers could both pass the test and start two watcher threads,
+one of them unreachable and never closed — against a Javadoc line promising
+`IllegalStateException` on a second start. It also allowed a *closed* notifier to be started
+again, because `close()` nulled the same field. Both are now one three-state transition under
+a private lock, with the close itself performed outside that lock, because closing joins the
+watcher thread.
+
+**An unreachable check.** `ConfigSources.validated` null-checked each element after
+`List.copyOf`, which rejects null elements itself — confirmed by running it rather than by
+reading the Javadoc.
+
+**A fifth, found only because the question was asked again.** The review reported four
+findings and stopped. Asked whether everything was fixed, the same check-then-act pattern
+turned out to be still sitting in `LlmRegistry.close()` — read the field, clear it, close it —
+which is the pattern the review had just removed from `FileChangeNotifier` two files away.
+Two threads closing at once could both call the notifier's `close()`, and the JDK is explicit
+that `AutoCloseable.close()`, unlike `Closeable.close()`, **is not required to be idempotent**
+(read out of `src.zip`, not recalled). With `ChangeNotifier` now a public extension point,
+that is calling an implementer outside their contract. It is one `getAndSet(null)`.
+
+The lesson is not about the defect, which is small. It is that a review that fixes what it
+reports can still leave the same defect in a file it did not name, and that "have you fixed
+everything?" is a different question from "what did you find?".
+
+**What that fifth fix could and could not be tested for.** The window is two instructions
+wide, so a test for it is probabilistic in a way the reload lock's is not. Measured against a
+deliberately broken `close()`: one round caught it in **3 runs out of 5**, and 40 rounds in
+**10 out of 11**. The first figure written into the test's Javadoc claimed 40 rounds caught it
+*every time* — written before it was measured, and wrong at the second attempt. The test keeps
+the measured numbers and says plainly that what makes the double close impossible is
+`getAndSet`, not the test.
+
+**Mutation testing then found that two of these fixes had no test.** The notifier-ownership
+path came back `NO_COVERAGE` on both of its lines: a safety path added and never exercised,
+which is precisely the case [ADR-0041](../adr/0041-mutation-testing-on-core-only.md) buys the
+tool for. Two tests now cover it, including the one where the close *also* fails and must be
+suppressed rather than lost.
+
+#### Verified
+
+- `mvn clean install` green offline. **8 modules** — parent, core, four providers, BOM,
+  examples — and **125 tests**: core 92 (69 before this item, plus 23 new), and 7, 8, 8, 10
+  across the four provider modules.
+- **Exactly one existing test needed changing**, `ReloadTest`'s assertion on
+  `ReloadFailure.configFiles()`, which now reads the sources' ids. Nothing else in the suite
+  noticed, because `configFiles(List<Path>)` still means what it meant.
+- `build/check-docs.py` clean across 42 ADRs and 56 tracked files.
+- `./run-database.sh` run end to end, and its `--help` read: it prints the four `reload()`
+  outcomes and ends with the previous configuration still live after the rejected one.
+- **Mutation testing on core: 153 mutants — 151 killed, 1 timed out, 1 survived.** PIT's own
+  headline says "Killed 152" because it counts a timeout as detected; the breakdown above is
+  from `mutations.xml`, and the two ways of counting are why an earlier draft of this line
+  claimed a total that did not add up.
+  **The survivor is equivalent.** `EmptyObjectReturnValsMutator` replaces whatever an object
+  method returns with an empty or default instance of that type — for `Optional`, with
+  `Optional.empty()`. It landed on `LlmRegistry.reload()`'s own `return Optional.empty()`, so
+  it rewrote that line to itself: the mutant and the original are the same bytecode, and no
+  test can distinguish them. The line is covered — `unchangedReloadIsEmpty` asserts exactly
+  that path — so this is a known PIT artefact rather than a gap in the suite.
+  **The timeout is the one ADR-0041 predicts.** `NullReturnValsMutator` makes
+  `chooseNotifier` return null, the registry then watches nothing, and a waiting test hangs:
+  "a hung minion, not a finding".
+  The report has to be read on a tree that has stopped changing. The first run's line numbers
+  were produced while the source was still being edited and were unusable, which is why every
+  figure here comes from a re-run.
+
+#### A fourth review pass, and the claim that was measured false
+
+Run with the `java-best-practices-modern` skill on the settled branch. Five findings, and the
+first one is the interesting one because **the manual asserted the opposite of what the code
+does, and the write-up said so in wording the Javadoc never used**.
+
+**`close()` called from a reload listener does not work, and the manual said it did.** A
+listener runs inside `reload()`, which holds `reloadLock`. `close()` then stops the notifier,
+and a notifier's `close()` waits for its own thread — which may be waiting for that same lock.
+Both halves were measured, with throwaway probes in core's test tree:
+
+| Path | Measured |
+|---|---|
+| A `ChangeNotifier` whose `close()` calls `Thread.join()` with no timeout | **Deadlock.** `reload()` had not returned after 15 s; only `shutdownNow()`'s interrupt released it |
+| The built-in `FileChangeNotifier`, via `watch(true)` | **`close()` took 5001 ms**, then returned — `ConfigWatcher.CLOSE_TIMEOUT_MILLIS` exactly |
+
+The manual said, in the threading list: *"`close()` waits for a reload already in flight, so
+no listener runs after it returns. It is safe to call from a listener — that case is detected
+rather than deadlocking."* Both sentences are false, and `LlmRegistry.close()`'s own Javadoc
+already said the opposite of the first one. The likely origin is a real guard read too
+broadly: `ConfigWatcher.close()` does detect being called *on the watcher thread* and returns
+instead of joining itself, and that same-thread guard was generalised into a claim about
+listeners in general. That is the shape ADR-0038's over-claim had — a true narrow statement
+restated as a wider one — so `ConfigWatcher`'s comment now says what the guard does not cover,
+next to what it does.
+
+The fix is contract, not structure. Running listeners outside the lock would remove the
+hazard and lose the ordering between two reloads' listeners, which is the guarantee the lock
+was added for. So the rule is now stated in the four places a reader can meet it:
+`LlmRegistry.onReload`, `LlmRegistry.close()`, `ChangeNotifier`'s `@implSpec` — which is what
+an implementer actually reads, and which never said `close()` may be called mid-reload — and
+the manual's threading list.
+
+**`ConfigSource` never told an implementer that `include` does not work.** The most silent
+failure in ADR-0042: in a layer that is not a file, an `include` is looked up on the classpath,
+finds nothing, and adds nothing, with no error and no log. It was documented in the manual and
+in `ConfigLoader.parse`'s `@implNote` — which is package-private and never reaches published
+Javadoc — but not on `ConfigSource.text()`, where someone writing their own source reads. The
+`instanceof FileConfigSource` branch can only ever match `ConfigSource.ofFile`, because
+`FileConfigSource` is package-private, so a hand-written file-backed source loses its includes
+too.
+
+**Three smaller ones.** `FileChangeNotifier.of` threw `ConfigValidationException` for a
+non-positive `Duration` while `Builder.debounce` threw `IllegalArgumentException` for the same
+value — two public doors, one invalid argument, two types; `of` now throws
+`IllegalArgumentException`, with a test asserting both doors agree, and the empty-file-list
+case stays `ConfigValidationException` because that is a statement about the configuration.
+`LlmRegistry.close()`'s Javadoc contained *"the notifier is closed exactly once whoever
+calls"*, which is not a sentence, inside a six-sentence paragraph — against
+[ADR-0039](../adr/0039-user-facing-prose-is-written-for-a-non-native-reader.md), which governs public Javadoc.
+`DatabaseSource.models(String...)` took name and model as alternating positional strings, so
+an odd argument list read past the end of the array; it takes a `Model` record now. That last
+one is example code, which is the shape a reader copies.
+
+**Nothing in this pass was a defect in the shipped behaviour.** Four of the five were contract
+and prose, and the fifth changed an exception type nobody could have depended on at
+`0.1.0-SNAPSHOT`. The deadlock is reachable only through a documented-as-forbidden call, and
+it is now documented as forbidden.
+
+#### The commands that launch the examples
+
+Checked after the fifth example was added, because
+[P18](#p18--the-distance-between-arriving-and-running-something) built the launcher for four
+and P19 made it five. The five scripts, their main classes, the Windows `mvn` commands they
+print and their refusal paths were right. Three things were not.
+
+**The reference said `ConsoleChat` needs "one provider key". It needs two.** The shipped
+`examples.conf` puts `SL` and `SH` on anthropic and `CR` on openai, all three with mandatory
+substitution, so the registry fails to build before any request is sent. Run with only
+`ANTHROPIC_API_KEY` set, the message is `Could not resolve substitution to a value:
+${OPENAI_API_KEY}` at `examples.conf` line 40. The script had always demanded both; it was the
+manual that disagreed with it, and the script was right.
+
+**A configuration path was passed to Maven exactly as typed**, while `exec:java` runs from the
+repository root. A path relative to the directory the caller was standing in therefore passed
+the script's existence check and was then not found — the check looked in two places and the
+run looked in one. Paths are resolved to absolute before the exec now, repository-relative
+first so the paths `--help` prints keep working from anywhere. A path containing a space is
+refused with a message, because `-Dexec.args` splits on whitespace and the example would
+receive two paths.
+
+**`run-council.sh --help` promised layering that `ThreeModelCouncil` does not do.** It reads
+`args[0]` and rejects anything else, so a second file made it print its own usage line after
+Maven had started. Only `ConsoleChat` layers; the help now says so per example, and the extra
+file is refused by the script before Maven runs.
+
+Two smaller ones: the scripts pointed anyone missing a key at `./run-atomic.sh` as *the* free
+example, which stopped being true when `DatabaseSource` arrived, and the `--help` now says
+that a `.env` file in the repository root is loaded if present — worth stating plainly,
+because a key left there is used without being asked for.
+
+#### What this item changed in `CLAUDE.md`
+
+Two commits on this branch touch no P19 code and belong to it anyway: they add three rules to
+*Working practices*, each one paid for by a defect above, so the branch carries them rather
+than leaving the lesson in a commit message nobody re-reads.
+
+- **Reading the diff is not reading the file**, the next rung on the ladder that already went
+  grep → diff. `056360d` added a case at line 28 of `build/run-example.sh`; the lines it made
+  stale were at 76 and 139, and that diff's last hunk ended at 55.
+- **Prose that was true when written is what later code falsifies.** Both false statements
+  found in the manual were correct when committed — P3's and P4's — and were falsified by P19
+  and P18. Grep cannot find these, because the stale sentence and the new mechanism share no
+  vocabulary.
+- **And some of it was never true**, which needs a different check again: a wrapper makes
+  claims about code it does not contain, and `run-council.sh`'s promise of layering was
+  contradicted by an `args.length != 1` that had been there since M2.
+
+#### Carried over to the write item
+
+Two findings that belong to writing rather than to this item. Writing a whole block to the
+top layer would silently pin values inherited from below, freezing them against later edits
+to the lower layer — `origin()` is what tells us which keys to write instead. And suppressing
+the reload event for a self-inflicted change needs no flag: applying before writing leaves the
+watcher's later diff empty, and `reload()` already returns early on an empty diff
+(`LlmRegistry.java`, the `change.isEmpty()` guard).

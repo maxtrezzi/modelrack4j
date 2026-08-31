@@ -9,7 +9,7 @@ wrong. [Part 1](part-1-tutorial.md) is the way in; this is the page you come bac
 |---|---|
 | [Concepts](#concepts) | five words used precisely |
 | [Dependencies](#dependencies) | what to put in your POM |
-| [Examples](#examples) | four runnable programs, one claim each |
+| [Examples](#examples) | five runnable programs, one claim each |
 | [Configuration](#configuration) | file format, layering, every key |
 | [Memory](#memory) | the two variants and the cost rule |
 | [Java API](#java-api) | builder, registry, records, exceptions |
@@ -31,7 +31,8 @@ wrong. [Part 1](part-1-tutorial.md) is the way in; this is the page you come bac
 | **Name** | A key under `llm` in the configuration — `SL`, `CR`, `summariser-eu`. You invent it, your code asks for it, and it is the registry's only key. Two names may use the same provider and the same model, differing only in parameters. |
 | **Bundle** | Everything built from one name: a `ChatModel`, and optionally a `StreamingChatModel`, a `ModerationModel` and a `ChatMemoryProvider`. Immutable. |
 | **Snapshot** | The complete map of name to bundle at one instant. There is exactly one live snapshot, and a reload replaces it wholesale. |
-| **Layer** | One configuration file. Layers merge into one snapshot; they do not each produce their own. |
+| **Layer** | One piece of configuration text, given as a `ConfigSource`. Usually a file, but it can be a row in a database or anything else that produces text. Layers merge into one snapshot; they do not each produce their own. |
+| **Notifier** | What tells the registry that a layer changed, as a `ChangeNotifier`. Files get one built in; a layer nothing can watch has none, and the application calls `reload()` instead. |
 | **Provider** | A LangChain4j integration, wrapped in a `ProviderFactory` and discovered on the classpath. Never a registry key. |
 
 ---
@@ -112,8 +113,9 @@ claim rather than the library in general.
 | Example | Demonstrates | Needs |
 |---|---|---|
 | `AtomicSnapshot` | [Snapshot-wide atomicity](#reload-semantics): a single save changes two models at once, while four threads keep reading both — once via two separate `get()` calls, once via one `snapshot()` shared for both lookups. A `get()` pair can occasionally catch one model already updated and the other not (a torn read); a `snapshot()` pair never can, because both lookups read the same frozen snapshot. The counter is real, not decorative: sabotaging the swap to publish one model 5 ms early makes the `get()` count jump to tens of thousands. | **nothing** — reads configuration only, sends no request |
+| `DatabaseSource` | [Configuration that is not a file](#configuration-that-is-not-a-file): a layer held in memory, standing in for a database row, with the application calling `reload()` itself. It shows all four answers `reload()` can give — a name added, a name updated, nothing changed, and a rejected reload that leaves the previous configuration live. | **nothing** — sends no request |
 | `ProviderSwap` | The provider as configuration: the same method, called twice around a file edit, answered by `AnthropicChatModel` and then `OpenAiChatModel`. The method names no provider and has no branch. | `ANTHROPIC_API_KEY` + `OPENAI_API_KEY`, two requests |
-| `ConsoleChat` | Everything interactively: a menu of configured models, streaming where configured, moderation on input where configured, memory across turns, and reload while you watch. | one provider key |
+| `ConsoleChat` | Everything interactively: a menu of configured models, streaming where configured, moderation on input where configured, memory across turns, and reload while you watch. | `ANTHROPIC_API_KEY` + `OPENAI_API_KEY` with the shipped `examples.conf`, which configures both providers; a configuration of your own can need one |
 | `ThreeModelCouncil` | The multi-model scenario: three names, one question, capabilities read from the bundle. | two provider keys |
 
 Run them with `exec:java` after `mvn install` — the plugin resolves `modelrack4j-core` from
@@ -127,10 +129,10 @@ mvn -q -pl modelrack4j-examples exec:java \
 ```
 
 `./run-atomic.sh` from the repository root does the same thing, and installs first if it has
-to. There is one script per example — `run-atomic.sh`, `run-swap.sh`, `run-chat.sh`,
-`run-council.sh` — and each `--help` gives what that example shows, what it costs, which keys
-it needs and the plain `mvn` command to use on Windows, since there are no `.bat`
-counterparts.
+to. There is one script per example — `run-atomic.sh`, `run-database.sh`, `run-swap.sh`,
+`run-chat.sh`, `run-council.sh` — and each `--help` gives what that example shows, what it
+costs, which keys it needs and the plain `mvn` command to use on Windows, since there are no
+`.bat` counterparts.
 
 ---
 
@@ -268,10 +270,12 @@ LlmRegistry registry = LlmRegistry.builder()
 
 | Method | Contract |
 |---|---|
-| `configFiles(List<Path>)` | The layers, lowest precedence first. At least one. |
-| `watch(boolean)` | Off by default. On, the registry starts one daemon thread. |
+| `configFiles(List<Path>)` | The layers, as files, lowest precedence first. At least one. |
+| `sources(List<ConfigSource>)` | The layers, from anywhere: see *[Configuration that is not a file](#configuration-that-is-not-a-file)*. Replaces `configFiles`; the last of the two calls wins. |
+| `watch(boolean)` | Off by default. On, the registry starts one daemon thread and watches the files given to `configFiles`. |
+| `notifier(ChangeNotifier)` | Something of your own that tells the registry when the configuration changed. Cannot be combined with `watch(true)`. |
 | `debounce(Duration)` | How long the files must be quiet before a reload runs. Must be positive. |
-| `build()` | Parses, validates and builds everything, then starts watching. Throws `ConfigValidationException` if any layer or block is invalid, or `UncheckedIOException` if a directory cannot be watched. |
+| `build()` | Parses, validates and builds everything, then starts the notifier if there is one. Throws `ConfigValidationException` if no layer was given, two layers share an id, any layer or block is invalid, or `watch(true)` was set without files to watch. Throws `UncheckedIOException` if a directory cannot be watched. |
 
 `build()` is all-or-nothing: one bad block means no registry, not a registry missing one name.
 
@@ -284,18 +288,130 @@ LlmRegistry registry = LlmRegistry.builder()
 | `names()` | The configured names, sorted. |
 | `onReload(Consumer<ReloadChange>)` | Registers a listener for successful reloads. |
 | `onReloadFailure(Consumer<ReloadFailure>)` | Registers a listener for rejected ones. |
-| `close()` | Stops watching. Idempotent. A closed registry keeps serving its last snapshot. |
+| `reload()` | Re-reads every layer now. Returns `Optional<ReloadChange>` — empty when nothing changed. Throws if the new configuration is rejected; the old one stays live. |
+| `close()` | Stops the notifier. Idempotent. A closed registry keeps serving its last snapshot. |
 
 `get()` is a volatile read, one small wrapper object, and a map lookup. It is meant to be
 called per request — that is the primary API, and listeners are secondary.
+
+### Configuration that is not a file
+
+A layer does not have to be a file. It can be a row in a database, a value from a
+configuration service, or text your program builds. A layer is a `ConfigSource`, which has
+two methods:
+
+```java
+public interface ConfigSource {
+    String id();      // a label for error messages
+    String text();    // the HOCON text of this layer
+}
+```
+
+```java
+ConfigSource row = new ConfigSource() {
+    public String id()   { return "llm_config#42"; }
+    public String text() { return jdbc.readConfigText(42); }   // your query
+};
+
+LlmRegistry registry = LlmRegistry.builder()
+        .sources(List.of(ConfigSource.ofFile(basePath), row))   // base file, then the row
+        .build();
+```
+
+Files and other sources mix freely, in the same order rule: lowest precedence first.
+
+**`include` works in a file layer and not in the others.** HOCON's
+`include "other.conf"` looks for the file next to the one that contains the line, so it keeps
+working for `configFiles(...)` and for `ConfigSource.ofFile(...)`. A layer that is not a file
+has no directory of its own, so an include in it is looked up on the classpath instead —
+and a HOCON include that finds nothing is **not an error**, it simply adds nothing. If you
+store configuration in a database, assemble the text yourself rather than relying on
+`include`.
+
+Three things to know about writing one.
+
+**`text()` is called again on every reload.** A source that runs its query each time works
+correctly. A source that reads its text once and keeps it will never report a change.
+
+**`id()` is a label, not an address.** The library only prints it, in parse errors and in
+`ReloadFailure`. Give it something a person reading a log can recognise. Do not put a secret
+in it, because it is written to the log. Two sources of one registry must have different ids,
+and `build()` refuses them if they do not.
+
+**Nothing watches these layers.** The library can watch files, because the operating system
+tells it when a file changes. It cannot know when a database row changes. You have two ways
+to tell it.
+
+### Asking for a reload
+
+Call `reload()` when your program knows the configuration changed:
+
+```java
+jdbc.updateConfigText(42, newText);
+Optional<ReloadChange> change = registry.reload();
+```
+
+It returns what changed, or an empty `Optional` when the new configuration turns out to be
+the same as the one already in effect. If the new configuration is invalid it throws, and
+the previous configuration stays live in full — exactly as it does for a file that was saved
+with a mistake in it.
+
+You can call it from any thread and at any time. Reloads run one at a time, so a call may
+wait for a reload that is already running. Do **not** call it from inside a reload listener:
+listeners run inside the reload itself.
+
+The other way is to give the registry something that knows when the configuration changed:
+
+```java
+public interface ChangeNotifier extends AutoCloseable {
+    void start(Runnable onChange);
+    void close();
+}
+```
+
+The registry calls `start` once, and your code calls `onChange` whenever the configuration
+may have changed. A call that turns out to change nothing costs one re-read and publishes
+nothing, so call rather than stay silent when you are not sure. `close()` is called by
+`LlmRegistry.close()`.
+
+**`close()` must not wait forever.** It can be called while a reload is running, and a thread
+your notifier waits for may itself be waiting for that reload to end. So if `close()` waits
+for a thread, give the wait a timeout, the way `FileChangeNotifier` does. A plain `join()`
+with no timeout makes the two threads wait for each other, and neither one ever returns.
+
+Use it for a mechanism the library does not provide — a database `LISTEN`/`NOTIFY`, a
+Kubernetes informer, a message from a queue. For files, `watch(true)` already builds the
+right notifier, and the two cannot both be set.
+
+The one the library ships is `FileChangeNotifier`, described under
+[The watcher](#the-watcher). `watch(true)` builds it for you, and that is the usual way to get
+one. Build it yourself when the layers came through `sources(...)` and the file half of them
+should still be watched:
+
+```java
+LlmRegistry.builder()
+        .sources(List.of(ConfigSource.ofFile(basePath), row))
+        .notifier(FileChangeNotifier.of(List.of(basePath), Duration.ofMillis(300)))
+        .build();
+```
+
+| Method | Contract |
+|---|---|
+| `FileChangeNotifier.of(List<Path>, Duration)` | A notifier for those files, not yet started. An empty list throws `ConfigValidationException`; a duration that is zero or negative throws `IllegalArgumentException`, as `debounce(...)` does for the same value. |
+| `start(Runnable)` | Called once by `build()`. Starting twice, or starting one that was closed, throws `IllegalStateException` — a closed notifier is spent. |
+| `close()` | Called by `LlmRegistry.close()`. Stops the daemon thread, waiting up to five seconds for a reload it had already started. |
+
+The registry owns whatever notifier it was given, from a successful `build()` until
+`close()`.
 
 ### One lookup, or several that must agree
 
 `get()` reads the live configuration on every call. That is what makes a reload visible, and
 it means **a reload can land between two consecutive calls**, so the two calls return bundles
-built from different file contents. It is rare — measured at roughly two per million pairs of
-reads while a reload ran every few milliseconds — but it is reproducible, and where several
-models have to agree it is a correctness problem rather than a cosmetic one.
+built from two different generations of the configuration. It is rare — measured at roughly
+two per million pairs of reads while a reload ran every few milliseconds — but it is
+reproducible, and where several models have to agree it is a correctness problem rather than
+a cosmetic one.
 
 `snapshot()` reads the published generation once and hands it back:
 
@@ -342,7 +458,7 @@ record ReloadChange(Set<String> updated, Set<String> added, Set<String> removed)
     boolean isEmpty();
 }
 
-record ReloadFailure(List<Path> configFiles, Exception cause) { }
+record ReloadFailure(List<ConfigSource> sources, Exception cause) { }
 ```
 
 `LlmConfig` validates in its compact constructor, so an instance that exists is valid.
@@ -431,6 +547,10 @@ eligible for garbage collection when nothing references them.
 ---
 
 ## The watcher
+
+The watcher is `FileChangeNotifier`, the `ChangeNotifier` the library ships for layers held in
+files. `watch(true)` builds one over the files given to `configFiles(...)`; everything below
+describes what that one does, and none of it applies to a layer that is not a file.
 
 `WatchService` registers on **directories**, not files, so the watcher registers the
 deduplicated set of parent directories and filters events by filename.
@@ -559,19 +679,32 @@ tests assert on them.
 ## Threading and lifecycle
 
 - **One daemon thread**, named `modelrack4j-config-watcher`, and only when `watch(true)`. With
-  watching off, the library starts nothing.
-- **That thread is the only writer.** The live snapshot is a single volatile field and
-  publishing is one assignment, so there is no lock anywhere in the reload path.
-- **`get()` and `names()` are safe from any thread**, during a reload included. A reader either
-  sees the whole old snapshot or the whole new one.
-- **Listeners run on the watcher thread.** Long work in a listener delays the next reload;
-  hand it off to your own executor if it is not quick.
+  watching off, the library starts nothing of its own.
+- **Publishing is one assignment.** The live snapshot is a single volatile field, so a reader
+  needs no lock and never waits.
+- **Reloads run one at a time.** A reload can now be started by the watcher thread or by your
+  call to `reload()`, so the registry holds a lock while it reloads. Two reloads at once would
+  both read the same old snapshot, both build, and the later one would quietly throw the
+  earlier one away after its listeners had already announced it.
+- **`get()`, `snapshot()` and `names()` are safe from any thread**, during a reload included,
+  and never take that lock. A reader either sees the whole old snapshot or the whole new one.
+- **Listeners run on the thread that caused the reload** — the watcher thread, or the caller
+  of `reload()`. Long work in a listener delays the next reload; hand it off to your own
+  executor if it is not quick. A listener must not call `reload()`, because it is already
+  running inside one.
 - **Listeners may be registered at any time, from any thread.** The registration lists are
   copy-on-write, so adding one during a reload is safe and does not block it.
 - **Registering a listener does not replay anything.** It is called on the next reload, never
   for one that already happened; the current state is `get()`, not a callback.
-- **`close()` waits** for a reload already in flight, so no listener runs after it returns. It
-  is safe to call from a listener — that case is detected rather than deadlocking.
+- **`close()` does not wait for a reload another thread is running.** That reload finishes
+  on its own and its listeners run, so a listener can still be called after `close()` has
+  returned. If your application must not be called back after closing, check for that in the
+  listener itself.
+- **Do not call `close()` from a reload listener.** The listener runs inside the reload, which
+  holds the reload lock, and closing waits for the notifier's own thread — which may be
+  waiting for that same lock. With `FileChangeNotifier` the call returns after its five-second
+  timeout instead of at once; a notifier of your own that waits without a timeout never
+  returns at all. Close the registry from the code that owns it.
 - **Bundles are never closed by the library**, including superseded ones.
 
 ---
@@ -601,7 +734,10 @@ Deliberate and permanent:
 | `counts tokens by calling its API` | `token-window` on a remote counter | Add `allow-remote-token-counting = true`, or use `message-window`. |
 | `no token count estimator` | `token-window` on GLM | Use `message-window`. No flag helps. |
 | `` `temperature` is deprecated for this model `` | A non-default `temperature` on a model that rejects one, such as `claude-sonnet-5` | Remove the key. The model then uses its own sampling settings. |
-| `UnknownConfigurationException` at runtime | The name was removed from the file while running | Catch it and re-read `names()`, or keep the block. |
+| `UnknownConfigurationException` at runtime | The name was removed from the configuration while running | Catch it and re-read `names()`, or keep the block. The exception's `configurationName()` gives the name that was asked for. |
+| `watch(true) watches configuration files, and this registry has none` | `watch(true)` with layers given through `sources(...)` | There is nothing to watch. Call `reload()` when the configuration changes, or pass a `ChangeNotifier`. |
+| `Configuration sources must have distinct ids` | Two layers with the same id — often one file listed twice | Remove the repeat. File ids are the absolute path, so two spellings of one file count as one. |
+| An `include` in a layer adds nothing, and nothing is logged | The layer is not a file, so the include is looked up on the classpath, and a HOCON include that finds nothing is not an error | Includes work in file layers. For a layer from a database, assemble the text before handing it over. |
 | Reloads fire constantly | Something else writes into a watched directory | Only the configured filenames are matched, but a symlinked path matches any event in its directory by design. |
 | Half-written files are rejected as failures | The debounce is shorter than your writer takes | Raise `debounce(...)`. |
 | `NoSuchMethodError` running an example | A stale `modelrack4j-core` in `~/.m2` | `mvn install` from the checkout root. |

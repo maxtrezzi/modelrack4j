@@ -15,7 +15,6 @@
  */
 package io.github.maxtrezzi.modelrack4j;
 
-import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
 
@@ -27,15 +26,15 @@ import java.util.Objects;
  * ignores this callback keeps running on the last configuration that was known good — which
  * is the point of rejecting the snapshot rather than applying part of it.
  *
- * @param configFiles the layers the registry was reading, lowest precedence first
+ * @param sources the layers the registry was reading, lowest precedence first
  * @param cause why the snapshot was rejected — usually a {@link ConfigValidationException}
  *     naming the offending block, but a provider builder may throw anything
  */
-public record ReloadFailure(List<Path> configFiles, Exception cause) {
+public record ReloadFailure(List<ConfigSource> sources, Exception cause) {
 
     /** @throws NullPointerException if any component is null */
     public ReloadFailure {
-        configFiles = List.copyOf(Objects.requireNonNull(configFiles, "configFiles"));
+        sources = List.copyOf(Objects.requireNonNull(sources, "sources"));
         Objects.requireNonNull(cause, "cause");
     }
 }

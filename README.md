@@ -248,12 +248,13 @@ try (LlmRegistry registry = LlmRegistry.builder()
 
 ### Runnable examples
 
-Four, in [`modelrack4j-examples`](modelrack4j-examples/src/main/java/io/github/maxtrezzi/modelrack4j/examples).
+Five, in [`modelrack4j-examples`](modelrack4j-examples/src/main/java/io/github/maxtrezzi/modelrack4j/examples).
 Each one demonstrates a single claim from [Why](#why) rather than the library in general:
 
 | Example | Shows | Cost |
 |---|---|---|
 | [`AtomicSnapshot`](modelrack4j-examples/src/main/java/io/github/maxtrezzi/modelrack4j/examples/AtomicSnapshot.java) | A single save changes two models at once, while four threads keep reading both; reading through `snapshot()` never catches a mix of old and new, reading through two `get()` calls can, though a single run often catches none | **free, no API key** |
+| [`DatabaseSource`](modelrack4j-examples/src/main/java/io/github/maxtrezzi/modelrack4j/examples/DatabaseSource.java) | Configuration held in memory instead of a file, standing in for a database row, with the application calling `reload()` itself; shows all four answers `reload()` can give, including a rejected one | **free, no API key** |
 | [`ProviderSwap`](modelrack4j-examples/src/main/java/io/github/maxtrezzi/modelrack4j/examples/ProviderSwap.java) | The same call site answered by Anthropic, then by OpenAI, after a file edit | two requests |
 | [`ConsoleChat`](modelrack4j-examples/src/main/java/io/github/maxtrezzi/modelrack4j/examples/ConsoleChat.java) | An interactive menu of every configured model; edit the file while it runs and the menu changes | a conversation |
 | [`ThreeModelCouncil`](modelrack4j-examples/src/main/java/io/github/maxtrezzi/modelrack4j/examples/ThreeModelCouncil.java) | The scenario above: three models, one question, no provider branch in the code | three requests |
@@ -264,10 +265,11 @@ Start with `AtomicSnapshot` if you want to see the least obvious guarantee at no
 ./run-atomic.sh
 ```
 
-One script per example — `run-atomic.sh`, `run-swap.sh`, `run-chat.sh`, `run-council.sh` —
-each with a `--help` that says what it shows and what it costs. They install the project first
-if they have to, because `exec:java` resolves `modelrack4j-core` from `~/.m2` rather than from
-the reactor. There are no `.bat` counterparts: on Windows, run the command `--help` prints.
+One script per example — `run-atomic.sh`, `run-database.sh`, `run-swap.sh`, `run-chat.sh`,
+`run-council.sh` — each with a `--help` that says what it shows and what it costs. They
+install the project first if they have to, because `exec:java` resolves `modelrack4j-core`
+from `~/.m2` rather than from the reactor. There are no `.bat` counterparts: on Windows,
+run the command `--help` prints.
 
 ```bash
 mvn install
@@ -393,6 +395,29 @@ layer defines.
 
 ---
 
+### Layers that are not files
+
+A layer can also be a row in a database or a value from a configuration service. Give the
+registry `sources(...)` instead of `configFiles(...)`, and tell it when to re-read:
+
+```java
+ConfigSource row = new ConfigSource() {
+    public String id()   { return "llm_config#42"; }   // a label for error messages
+    public String text() { return jdbc.readConfigText(42); }
+};
+
+LlmRegistry registry = LlmRegistry.builder()
+        .sources(List.of(ConfigSource.ofFile(basePath), row))
+        .build();
+
+jdbc.updateConfigText(42, newText);
+registry.reload();   // nothing watches a database row, so you say when
+```
+
+Files and other sources mix in one list, in the same order. `reload()` returns what changed,
+or nothing when the configuration turns out to be the same. See the
+[reference](docs/manual/part-2-reference.md#configuration-that-is-not-a-file).
+
 ## Hot reload
 
 ```java
@@ -414,10 +439,10 @@ registry.onReloadFailure(failure ->
 
 - **Ask for consistency when you need it.** `registry.get(name)` reads the live
   configuration on every call — that is what makes reload work, and it means **a reload can
-  land between two consecutive calls**, so they return models built from different file
-  contents. Rare (measured at roughly two per million read pairs under a reload every few
-  milliseconds) but reproducible, and a correctness hazard wherever several models must
-  agree. Where they must, take a snapshot:
+  land between two consecutive calls**, so they return models built from two different
+  generations of the configuration. Rare (measured at roughly two per million read pairs
+  under a reload every few milliseconds) but reproducible, and a correctness hazard wherever
+  several models must agree. Where they must, take a snapshot:
 
   ```java
   LlmSnapshot models = registry.snapshot();   // one read of the current generation

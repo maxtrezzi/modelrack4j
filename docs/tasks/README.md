@@ -94,6 +94,7 @@ Phase 0 gates everything else; nothing below M0 should start before its blockers
 | [P16](post-v1.md#p16--a-third-coherence-pass-and-the-surface-the-first-two-searched-past) | A third coherence pass, over the code's own Javadoc too | **Done** — 2 defects; a 4th copy of the ADR-0038 over-claim |
 | [P17](post-v1.md#p17--mutation-testing-on-core) | Mutation testing on core | **Done** — 4 defects in the suite, none in the code; ADR-0041 |
 | [P18](post-v1.md#p18--the-distance-between-arriving-and-running-something) | README ordering, a launcher for the examples, and where the Java idiom rule lives | **Done** — config example moved from line 165 to line 11; one `run-*.sh` per example; `examples.conf` |
+| [P19](post-v1.md#p19--configuration-sources-and-a-reload-the-application-can-ask-for) | Configuration sources, and a reload the application can ask for | **Done** — a layer can be a database row; ADR-0042 |
 | [D1](open-decisions.md#d1--glm-route-if-no-maintained-module-exists) | GLM route if no maintained module | **Closed** — never became live |
 | [D2](open-decisions.md#d2--repository-visibility) | Repository visibility | **Settled** — public, not released; ADR-0034 |
 | [D3](open-decisions.md#d3--token-window-memory-on-a-remote-estimator) | Token-window memory on a remote estimator | **Settled** — opt-in flag |
@@ -148,3 +149,10 @@ drifting), and the rest were documentation the code had already outgrown.
 **No decision is open.** One thing is, and it is not code: the macOS half of
 [Task 0.8](phase-0-verification.md#task-08--watch-strategy-spike) needs hardware. The README
 states the gap rather than papering over it.
+
+**Configuration no longer has to be a file**
+([P19](post-v1.md#p19--configuration-sources-and-a-reload-the-application-can-ask-for),
+[ADR-0042](../adr/0042-read-configuration-from-sources-not-files.md)). A layer is text and a
+label, so it can be a database row; files keep their watcher, and anything else asks for a
+reload. The write half — an application saving a configuration its user edited — is what
+raised this, and is deliberately not done yet.

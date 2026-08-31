@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 #
-# Shared implementation behind the four run-*.sh scripts in the repository root. Not meant to
-# be called directly: run ./run-atomic.sh, ./run-swap.sh, ./run-chat.sh or ./run-council.sh.
+# Shared implementation behind the five run-*.sh scripts in the repository root. Not meant to
+# be called directly: run ./run-atomic.sh, ./run-database.sh, ./run-swap.sh, ./run-chat.sh
+# or ./run-council.sh.
 #
 # The exec:java command these examples need is long, and three parts of it are easy to get
 # wrong: the fully qualified main class, the path to the configuration file, and the fact
@@ -20,29 +21,40 @@ default_config="modelrack4j-examples/src/main/resources/examples.conf"
 case "${1-}" in
     atomic)
         script="run-atomic.sh";  main="AtomicSnapshot";    needs_keys=false; takes_config=false
+        layered=false
         cost="free, and sends no request"
         shows="One save changes two models at once while four threads read both. Reading through
 snapshot() never catches a mixed pair; reading through two get() calls sometimes does."
         ;;
+    database)
+        script="run-database.sh"; main="DatabaseSource";   needs_keys=false; takes_config=false
+        layered=false
+        cost="free, and sends no request"
+        shows="Configuration held in memory instead of a file, standing in for a database row,
+with the application calling reload() itself. Shows all four answers reload() can give."
+        ;;
     swap)
         script="run-swap.sh";    main="ProviderSwap";      needs_keys=true;  takes_config=false
+        layered=false
         cost="two requests"
         shows="The same call site answered by Anthropic, then by OpenAI, after a file edit."
         ;;
     chat)
         script="run-chat.sh";    main="ConsoleChat";       needs_keys=true;  takes_config=true
+        layered=true
         cost="a conversation"
         shows="An interactive menu of every configured model. Edit the configuration while it
 runs and the menu changes underneath you."
         ;;
     council)
         script="run-council.sh"; main="ThreeModelCouncil"; needs_keys=true;  takes_config=true
+        layered=false
         cost="three requests"
         shows="Three models, one question, no provider branch anywhere in the code."
         ;;
     *)
         echo "run-example.sh is the shared implementation behind ./run-atomic.sh," >&2
-        echo "./run-swap.sh, ./run-chat.sh and ./run-council.sh. Run one of those." >&2
+        echo "./run-database.sh, ./run-swap.sh, ./run-chat.sh and ./run-council.sh. Run one of those." >&2
         exit 2
         ;;
 esac
@@ -53,11 +65,17 @@ usage() {
     echo
     echo "$shows"
     echo
-    if [ "$takes_config" = true ]; then
+    if [ "$takes_config" = true ] && [ "$layered" = true ]; then
         echo "Usage: ./$script [--build] [config-file ...]"
         echo
         echo "Defaults to $default_config."
         echo "Pass several files to see layering: applied lowest precedence first, last one wins."
+    elif [ "$takes_config" = true ]; then
+        echo "Usage: ./$script [--build] [config-file]"
+        echo
+        echo "Defaults to $default_config."
+        echo "$main reads one file. ./run-chat.sh is the example that takes several"
+        echo "and layers them."
     else
         echo "Usage: ./$script [--build]"
         echo
@@ -66,7 +84,8 @@ usage() {
     echo
     if [ "$needs_keys" = true ]; then
         echo "Needs ANTHROPIC_API_KEY and OPENAI_API_KEY. A .env file in the repository root is"
-        echo "loaded if present. ./run-atomic.sh needs no key and costs nothing."
+        echo "loaded if present, so a key you left there is used without being asked for."
+        echo "./run-atomic.sh and ./run-database.sh need no key and cost nothing."
         echo
     fi
     echo "  --build   run \`mvn install\` first even if the project is already installed. Do this"
@@ -98,13 +117,38 @@ if [ "$takes_config" = true ]; then
     if [ "$#" -eq 0 ]; then
         set -- "$default_config"
     fi
+    if [ "$layered" != true ] && [ "$#" -gt 1 ]; then
+        echo "$main reads one configuration file, and $# were given." >&2
+        echo "Run './run-chat.sh' for the example that layers several." >&2
+        exit 2
+    fi
+    resolved=""
     for config in "$@"; do
-        if [ ! -f "$root/$config" ] && [ ! -f "$config" ]; then
+        # Resolved to an absolute path here, because the exec below runs from the repository
+        # root: a path relative to the directory the caller was standing in would pass this
+        # check and then not be found. Repository-relative is tried first, so the paths the
+        # --help prints keep working from anywhere.
+        if [ -f "$root/$config" ]; then
+            absolute="$root/$config"
+        elif [ -f "$config" ]; then
+            absolute="$(cd -- "$(dirname -- "$config")" && pwd)/$(basename -- "$config")"
+        else
             echo "No such configuration file: $config" >&2
             exit 1
         fi
+        # exec:java splits -Dexec.args on whitespace, so a path containing a space would
+        # arrive at the example as two paths. Refuse it rather than fail confusingly.
+        case "$absolute" in
+            *[[:space:]]*)
+                echo "Configuration path contains a space, which exec:java splits on:" >&2
+                echo "  $absolute" >&2
+                echo "Move the file to a path without spaces." >&2
+                exit 1
+                ;;
+        esac
+        resolved="${resolved:+$resolved }$absolute"
     done
-    args="$*"
+    args="$resolved"
 elif [ "$#" -gt 0 ]; then
     echo "$main takes no configuration file: it writes its own at run time." >&2
     echo "Run './$script --help' for what it does accept." >&2
@@ -128,8 +172,8 @@ if [ "$needs_keys" = true ]; then
     done
     if [ -n "$missing" ]; then
         echo "$main sends real requests and needs:$missing" >&2
-        echo "Set them in the environment or in a .env file, or run './run-atomic.sh'," >&2
-        echo "which costs nothing and needs no key." >&2
+        echo "Set them in the environment or in a .env file, or run './run-atomic.sh'" >&2
+        echo "or './run-database.sh', which cost nothing and need no key." >&2
         exit 1
     fi
     echo "$main sends real requests to a paid API ($cost)."

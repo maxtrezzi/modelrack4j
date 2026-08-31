@@ -68,9 +68,10 @@ import org.slf4j.LoggerFactory;
  *       four, varying run to run. A quiet period collapses the burst into a single reload.
  * </ul>
  *
- * @implNote The callback runs on this watcher's own daemon thread, one reload at a time, so
- *     reloads never overlap. It must not throw; failures belong to the registry's failure
- *     listeners.
+ * @implNote The callback runs on this watcher's own daemon thread, one call at a time. That
+ *     is no longer what keeps reloads from overlapping — the registry can be reloaded by its
+ *     application too, so it serialises reloads itself (ADR-0042). The callback must not
+ *     throw; failures belong to the registry's failure listeners.
  */
 final class ConfigWatcher implements AutoCloseable {
 
@@ -296,6 +297,11 @@ final class ConfigWatcher implements AutoCloseable {
         if (Thread.currentThread() == thread) {
             // A reload listener closed the registry it was called from. Joining here would
             // be this thread waiting for itself; the loop exits on `running` instead.
+            //
+            // This guard covers THIS thread only, and is not a general licence to close
+            // from a listener. A listener running on another thread holds the registry's
+            // reload lock, which this thread may be waiting for, so the join below then
+            // runs to its timeout. The public rule is in LlmRegistry.onReload.
             return;
         }
         try {

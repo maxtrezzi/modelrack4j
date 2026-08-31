@@ -189,11 +189,28 @@ delegates to it. Do not re-describe `get()` as "a volatile read and a map lookup
 allocates that wrapper (P14). A held snapshot never updates, so one per unit of work, never
 one at startup — that is the caching trap again.
 
-**Resolve after merging, never per file (ADR-0007).** Typesafe Config separates parsing
-from resolution. Parse each layer with `ConfigFactory.parseFile(...)` only, merge with
-`withFallback` (lowest → highest precedence), then call `.resolve()` exactly ONCE on the
-merged result. Resolving per file breaks mandatory `${VAR}` substitution in layered
-setups. This has a dedicated regression test; keep it.
+**Resolve after merging, never per layer (ADR-0007).** Typesafe Config separates parsing
+from resolution. Parse each layer **without resolving**, merge with `withFallback`
+(lowest → highest precedence), then call `.resolve()` exactly ONCE on the merged result.
+Resolving per layer breaks mandatory `${VAR}` substitution in layered setups. This has a
+dedicated regression test; keep it.
+
+**A layer is a `ConfigSource`, not a file (ADR-0042).** `ConfigSource` is `id()` plus
+`text()` and names no file, path or URL, so a layer can be a database row; `ChangeNotifier`
+carries "how do I learn this changed" separately, and `FileChangeNotifier` wraps the existing
+watcher unchanged. Two consequences that look like tidying and are not:
+
+- **A file layer is parsed with `parseFile`, everything else with `parseString`, and the
+  `instanceof` in `ConfigLoader.parse` is load-bearing.** `include "sibling.conf"` resolves
+  relative to the file containing it, and only `parseFile` knows which file that is. Give the
+  same bytes to `parseString` and the includer falls back to the classpath — and because an
+  include is allow-missing by default, the included block then **disappears with no error**.
+  P19 shipped that regression and a review caught it; there is now a regression test.
+- **`LlmRegistry.reload()` is public, and the `synchronized (reloadLock)` around the
+  compare-then-swap is not removable.** The watcher thread is no longer the only writer: an
+  application can reload too, and two reloads at once would both read the same snapshot and
+  the later would discard the earlier in silence, after its listeners had announced it.
+  Readers do not take that lock, so ADR-0038 is unaffected.
 
 **Core dependency isolation (ADR-0005, amended by ADR-0020 and then ADR-0028).**
 `modelrack4j-core` declares exactly four compile dependencies: `langchain4j-core`,
@@ -286,7 +303,13 @@ in-flight requests may still hold them.
   account of its own fix.** P14 wrote that it had put a dated marker on all three of its
   miscounts and had put one on two of them, and named a missing date as the fix for a stale
   completeness audit without adding that date. Neither is a miscount, and both are visible
-  only by reading P14's diff against P14's sentences.
+  only by reading P14's diff against P14's sentences. **P19 adds the next rung: reading the
+  diff is not reading the file.** Its `056360d` added a `database)` case at line 28 of
+  `build/run-example.sh`, and the two lines that change made stale — the launcher telling
+  anyone without a key that `./run-atomic.sh` is *the* free example — sat at lines 76 and
+  139, while that diff's last hunk ended at line 55. Three passes read the diff and none saw
+  them, because a diff never shows them. When your change touches a file, read that file end
+  to end: the lines describing the thing you just changed are exactly the ones a diff hides.
 - **An over-claim an ADR corrects can survive in wording the ADR never uses.** ADR-0038's was
   made in four places in four different forms, and took three passes to clear. P14 found two —
   one repeating the sentence ADR-0038 quotes, one a near-paraphrase of it in the example
@@ -300,6 +323,35 @@ in-flight requests may still hold them.
   own grep over `*.md`, `*.java` and `*.conf` missed the fourth copy, because four wordings of
   one claim share no phrase to grep for. It surfaced only from reading `LlmRegistry` end to
   end for an unrelated check.
+- **Prose that was true when it was written is what later code falsifies, and nothing
+  re-reads it.** Every false statement P19 found in the manual had been correct on the day it
+  was committed. `docs/manual/part-2-reference.md` said `close()` "is safe to call from a
+  listener — that case is detected rather than deadlocking", written in P3 (`65b8a4b`) and
+  true then: the watcher thread was the only reloader and no reload lock existed. P19 made
+  `reload()` public, and that sentence became a deadlock: a probe's `reload()` had still not
+  returned when the probe gave up on it after fifteen seconds, and only an interrupt released
+  it. The reference said `ConsoleChat` needs "one provider key", written in P4 (`d487fed`)
+  and falsified by P18 (`1be72e4`), which created `examples.conf` with two providers and made
+  it the default — it stayed false through a whole item before anyone looked. So when you
+  change what the code *does*, go and find the sentences that describe the old behaviour. Do
+  not grep
+  for the words your new code uses: the stale sentence and the new mechanism share no
+  vocabulary, which is why every one of these was found by reading rather than by searching.
+  A completeness audit cannot help here either — enumerating the API finds a member no
+  document mentions, and is structurally blind to a member some document describes wrongly.
+- **And some of it was never true: a wrapper makes claims about code it does not contain.**
+  P18 built `build/run-example.sh` over five Java mains and gave `run-chat.sh` and
+  `run-council.sh` one shared `takes_config` flag, so a single branch printed ConsoleChat's
+  wording for both: "Pass several files to see layering". `ThreeModelCouncil` has rejected
+  anything but one argument since M2 (`d382c16`), and that `args.length != 1` was sitting in
+  the file at `1be72e4`, the commit that promised the opposite. The sentence was false the day
+  it was written, contradicted by code nobody opened. The other P18 defect in the same file
+  needed a different check again: a configuration path was verified against two directories
+  and then handed verbatim to a Maven run that looks in one, which no amount of reading
+  reveals and the first run from another directory does. So when you write something that
+  describes code elsewhere — a script's help, a README command, a manual's account of an
+  example — open that code, and run the thing in the configuration your text claims to
+  support.
 - **User-facing prose has a register, and it is not this file's (ADR-0039).** The README,
   `docs/manual/`, public Javadoc, the commented `.conf` examples, `CONTRIBUTING.md` and the
   CHANGELOG are written for a technical reader at roughly B2 English who does not read it as
