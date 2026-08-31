@@ -297,6 +297,11 @@ final class ConfigWatcher implements AutoCloseable {
         if (Thread.currentThread() == thread) {
             // A reload listener closed the registry it was called from. Joining here would
             // be this thread waiting for itself; the loop exits on `running` instead.
+            //
+            // This guard covers THIS thread only, and is not a general licence to close
+            // from a listener. A listener running on another thread holds the registry's
+            // reload lock, which this thread may be waiting for, so the join below then
+            // runs to its timeout. The public rule is in LlmRegistry.onReload.
             return;
         }
         try {

@@ -59,6 +59,13 @@ public interface ConfigSource {
      * never report a change. This is the caching trap that {@link LlmRegistry#get(String)}
      * warns about, in the other direction.
      *
+     * <p><strong>A HOCON {@code include} does not work in this text.</strong> An include is
+     * resolved relative to the file that contains it, and this text has no file, so it is
+     * looked up on the classpath instead. An include that finds nothing is not an error in
+     * HOCON: the block simply disappears, with nothing logged. Assemble the whole text
+     * before returning it, or use {@link #ofFile(Path)} — a file layer is parsed through the
+     * file itself, and is the only layer whose includes resolve the way a reader expects.
+     *
      * @return the text, never {@code null}; an empty string is a valid empty layer
      * @throws ConfigValidationException if the text cannot be produced — a missing file, a
      *     database that cannot be reached. The reload is then rejected as a whole and the

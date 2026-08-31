@@ -2061,7 +2061,7 @@ suppressed rather than lost.
 #### Verified
 
 - `mvn clean install` green offline. **8 modules** — parent, core, four providers, BOM,
-  examples — and **124 tests**: core 91 (69 before this item, plus 22 new), and 7, 8, 8, 10
+  examples — and **125 tests**: core 92 (69 before this item, plus 23 new), and 7, 8, 8, 10
   across the four provider modules.
 - **Exactly one existing test needed changing**, `ReloadTest`'s assertion on
   `ReloadFailure.configFiles()`, which now reads the sources' ids. Nothing else in the suite
@@ -2085,6 +2085,65 @@ suppressed rather than lost.
   The report has to be read on a tree that has stopped changing. The first run's line numbers
   were produced while the source was still being edited and were unusable, which is why every
   figure here comes from a re-run.
+
+#### A fourth review pass, and the claim that was measured false
+
+Run with the `java-best-practices-modern` skill on the settled branch. Five findings, and the
+first one is the interesting one because **the manual asserted the opposite of what the code
+does, and the write-up said so in wording the Javadoc never used**.
+
+**`close()` called from a reload listener does not work, and the manual said it did.** A
+listener runs inside `reload()`, which holds `reloadLock`. `close()` then stops the notifier,
+and a notifier's `close()` waits for its own thread — which may be waiting for that same lock.
+Both halves were measured, with throwaway probes in core's test tree:
+
+| Path | Measured |
+|---|---|
+| A `ChangeNotifier` whose `close()` calls `Thread.join()` with no timeout | **Deadlock.** `reload()` had not returned after 15 s; only `shutdownNow()`'s interrupt released it |
+| The built-in `FileChangeNotifier`, via `watch(true)` | **`close()` took 5001 ms**, then returned — `ConfigWatcher.CLOSE_TIMEOUT_MILLIS` exactly |
+
+The manual said, in the threading list: *"`close()` waits for a reload already in flight, so
+no listener runs after it returns. It is safe to call from a listener — that case is detected
+rather than deadlocking."* Both sentences are false, and `LlmRegistry.close()`'s own Javadoc
+already said the opposite of the first one. The likely origin is a real guard read too
+broadly: `ConfigWatcher.close()` does detect being called *on the watcher thread* and returns
+instead of joining itself, and that same-thread guard was generalised into a claim about
+listeners in general. That is the shape ADR-0038's over-claim had — a true narrow statement
+restated as a wider one — so `ConfigWatcher`'s comment now says what the guard does not cover,
+next to what it does.
+
+The fix is contract, not structure. Running listeners outside the lock would remove the
+hazard and lose the ordering between two reloads' listeners, which is the guarantee the lock
+was added for. So the rule is now stated in the four places a reader can meet it:
+`LlmRegistry.onReload`, `LlmRegistry.close()`, `ChangeNotifier`'s `@implSpec` — which is what
+an implementer actually reads, and which never said `close()` may be called mid-reload — and
+the manual's threading list.
+
+**`ConfigSource` never told an implementer that `include` does not work.** The most silent
+failure in ADR-0042: in a layer that is not a file, an `include` is looked up on the classpath,
+finds nothing, and adds nothing, with no error and no log. It was documented in the manual and
+in `ConfigLoader.parse`'s `@implNote` — which is package-private and never reaches published
+Javadoc — but not on `ConfigSource.text()`, where someone writing their own source reads. The
+`instanceof FileConfigSource` branch can only ever match `ConfigSource.ofFile`, because
+`FileConfigSource` is package-private, so a hand-written file-backed source loses its includes
+too.
+
+**Three smaller ones.** `FileChangeNotifier.of` threw `ConfigValidationException` for a
+non-positive `Duration` while `Builder.debounce` threw `IllegalArgumentException` for the same
+value — two public doors, one invalid argument, two types; `of` now throws
+`IllegalArgumentException`, with a test asserting both doors agree, and the empty-file-list
+case stays `ConfigValidationException` because that is a statement about the configuration.
+`LlmRegistry.close()`'s Javadoc contained *"the notifier is closed exactly once whoever
+calls"*, which is not a sentence, inside a six-sentence paragraph — against
+[ADR-0039](../adr/0039-user-facing-prose-is-written-for-a-non-native-reader.md), which governs public Javadoc.
+`DatabaseSource.models(String...)` took name and model as alternating positional strings, so
+an odd argument list read past the end of the array; it takes a `Model` record now. That last
+one is example code, which is the shape a reader copies.
+
+**Nothing in this pass was a defect in the shipped behaviour.** Four of the five were contract
+and prose, and the fifth changed an exception type nobody could have depended on at
+`0.1.0-SNAPSHOT`. The deadlock is reachable only through a documented-as-forbidden call, and
+it is now documented as forbidden.
 
 #### Carried over to the write item
 

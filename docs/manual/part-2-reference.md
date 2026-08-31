@@ -374,6 +374,11 @@ may have changed. A call that turns out to change nothing costs one re-read and 
 nothing, so call rather than stay silent when you are not sure. `close()` is called by
 `LlmRegistry.close()`.
 
+**`close()` must not wait forever.** It can be called while a reload is running, and a thread
+your notifier waits for may itself be waiting for that reload to end. So if `close()` waits
+for a thread, give the wait a timeout, the way `FileChangeNotifier` does. A plain `join()`
+with no timeout makes the two threads wait for each other, and neither one ever returns.
+
 Use it for a mechanism the library does not provide — a database `LISTEN`/`NOTIFY`, a
 Kubernetes informer, a message from a queue. For files, `watch(true)` already builds the
 right notifier, and the two cannot both be set.
@@ -392,9 +397,9 @@ LlmRegistry.builder()
 
 | Method | Contract |
 |---|---|
-| `FileChangeNotifier.of(List<Path>, Duration)` | A notifier for those files, not yet started. At least one file; the duration must be positive. |
+| `FileChangeNotifier.of(List<Path>, Duration)` | A notifier for those files, not yet started. An empty list throws `ConfigValidationException`; a duration that is zero or negative throws `IllegalArgumentException`, as `debounce(...)` does for the same value. |
 | `start(Runnable)` | Called once by `build()`. Starting twice, or starting one that was closed, throws `IllegalStateException` — a closed notifier is spent. |
-| `close()` | Called by `LlmRegistry.close()`. Stops the daemon thread. |
+| `close()` | Called by `LlmRegistry.close()`. Stops the daemon thread, waiting up to five seconds for a reload it had already started. |
 
 The registry owns whatever notifier it was given, from a successful `build()` until
 `close()`.
@@ -690,8 +695,15 @@ tests assert on them.
   copy-on-write, so adding one during a reload is safe and does not block it.
 - **Registering a listener does not replay anything.** It is called on the next reload, never
   for one that already happened; the current state is `get()`, not a callback.
-- **`close()` waits** for a reload already in flight, so no listener runs after it returns. It
-  is safe to call from a listener — that case is detected rather than deadlocking.
+- **`close()` does not wait for a reload another thread is running.** That reload finishes
+  on its own and its listeners run, so a listener can still be called after `close()` has
+  returned. If your application must not be called back after closing, check for that in the
+  listener itself.
+- **Do not call `close()` from a reload listener.** The listener runs inside the reload, which
+  holds the reload lock, and closing waits for the notifier's own thread — which may be
+  waiting for that same lock. With `FileChangeNotifier` the call returns after its five-second
+  timeout instead of at once; a notifier of your own that waits without a timeout never
+  returns at all. Close the registry from the code that owns it.
 - **Bundles are never closed by the library**, including superseded ones.
 
 ---

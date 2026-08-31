@@ -197,8 +197,15 @@ public final class LlmRegistry implements AutoCloseable {
      *
      * <p>Listeners run after the swap, so {@link #get(String)} inside one already sees the
      * new snapshot. They run on the thread that caused the reload, inside it, so a listener
-     * must not call {@link #reload()}. An exception thrown by a listener is logged and does
-     * not affect the reload, the other listeners, or later reloads.
+     * must not call {@link #reload()}, and must not call {@link #close()} either. Closing
+     * stops the notifier, and the reload the listener is running inside still holds the lock
+     * that the notifier may be waiting for: with the notifier this library ships, closing
+     * from a listener takes five seconds instead of returning at once, and a notifier of
+     * your own that waits without a timeout never returns at all. Close the registry from
+     * the code that owns it.
+     *
+     * <p>An exception thrown by a listener is logged and does not affect the reload, the
+     * other listeners, or later reloads.
      *
      * @param listener called with what the reload changed
      * @throws NullPointerException if the listener is null
@@ -238,10 +245,15 @@ public final class LlmRegistry implements AutoCloseable {
      * this returns</strong>, and an application that must not be called back after closing
      * has to arrange that in the listener. It also does not wait for a {@link #reload()}
      * another thread is running; that call finishes on its own, and its listeners run.
-     * Calling this more than once is
-     * harmless — the notifier is closed exactly once whoever calls — and a registry that is
-     * closed keeps serving the snapshot it last published. {@link #reload()} still works on
-     * one: closing stops what was watching, not the registry.
+     *
+     * <p>Calling this more than once is harmless: the notifier is closed exactly once, no
+     * matter how many threads call. A closed registry keeps serving the snapshot it last
+     * published, and {@link #reload()} still works on it — closing stops what was watching,
+     * not the registry.
+     *
+     * <p><strong>Do not call this from a reload listener.</strong> A listener runs inside
+     * the reload, which holds the lock a notifier's own thread may be waiting for. See
+     * {@link #onReload(java.util.function.Consumer)}.
      *
      * @implNote Bundles are deliberately not closed, including bundles a reload superseded.
      *     An in-flight request may still hold one, and LangChain4j model instances are

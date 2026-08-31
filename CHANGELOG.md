@@ -51,7 +51,7 @@ than listed as one long **Added** block.
 - `registry.reload()` re-reads every layer on demand and returns what changed, or an empty
   `Optional` when nothing did. It is what a layer nothing can watch — a database row — uses
   instead of the watcher, and it throws when the new configuration is rejected, leaving the
-  previous one live. Reloads run one at a time whoever asks for them; readers never wait.
+  previous one live. Reloads run one at a time, no matter who asks for one; readers never wait.
 - `ChangeNotifier` is the extension point for telling the registry that configuration
   changed by a mechanism the library does not provide, such as a database `LISTEN`/`NOTIFY`.
   `Builder.watch(true)` builds the file one for you.

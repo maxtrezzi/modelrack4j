@@ -73,7 +73,9 @@ public final class FileChangeNotifier implements ChangeNotifier {
      * @param files the files to watch, at least one
      * @param debounce the quiet period that collapses one save's burst of events
      * @return a notifier, not yet started
-     * @throws ConfigValidationException if the list is empty or the debounce is not positive
+     * @throws ConfigValidationException if the list is empty
+     * @throws IllegalArgumentException if the debounce is zero or negative, matching
+     *     {@link LlmRegistry.Builder#debounce(Duration)}, which rejects the same value
      */
     public static FileChangeNotifier of(List<Path> files, Duration debounce) {
         List<Path> copy = List.copyOf(Objects.requireNonNull(files, "files"));
@@ -82,7 +84,8 @@ public final class FileChangeNotifier implements ChangeNotifier {
             throw new ConfigValidationException("At least one file is required to watch");
         }
         if (debounce.isZero() || debounce.isNegative()) {
-            throw new ConfigValidationException("debounce must be positive, was " + debounce);
+            throw new IllegalArgumentException(
+                    "debounce must be positive, but was " + debounce);
         }
         return new FileChangeNotifier(copy, debounce);
     }

@@ -413,6 +413,27 @@ class ConfigSourceTest {
     }
 
     @Test
+    @DisplayName("a file notifier rejects a debounce the builder would also reject, the same way")
+    void aFileNotifierRejectsANonPositiveDebounce() {
+        List<Path> file = List.of(dir.resolve("app.conf"));
+
+        // The same invalid value reaches this class through two public doors. Both are a
+        // programming error rather than a bad configuration, so both throw the same type.
+        assertThatThrownBy(() -> FileChangeNotifier.of(file, Duration.ZERO))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("debounce must be positive");
+        assertThatThrownBy(() -> FileChangeNotifier.of(file, Duration.ofMillis(-1)))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> LlmRegistry.builder().debounce(Duration.ZERO))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        // An empty list stays a ConfigValidationException: nothing to watch is a statement
+        // about the configuration, not about a malformed argument.
+        assertThatThrownBy(() -> FileChangeNotifier.of(List.of(), Duration.ofMillis(50)))
+                .isInstanceOf(ConfigValidationException.class);
+    }
+
+    @Test
     @DisplayName("a notifier that fails to start is closed, because nobody else could")
     void aNotifierThatFailsToStartIsClosed() {
         FailingNotifier notifier = new FailingNotifier(null);

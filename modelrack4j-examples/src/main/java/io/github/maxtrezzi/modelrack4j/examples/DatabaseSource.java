@@ -91,7 +91,7 @@ public final class DatabaseSource {
      * @param args ignored
      */
     public static void main(String[] args) {
-        Row row = new Row(models("SL", "gpt-5.1"));
+        Row row = new Row(models(new Model("SL", "gpt-5.1")));
 
         try (LlmRegistry registry = LlmRegistry.builder().sources(List.of(row)).build()) {
             System.out.println("Configuration comes from " + row.id()
@@ -101,13 +101,13 @@ public final class DatabaseSource {
 
             System.out.println();
             System.out.println("1. The user adds a model. The row is updated, then reloaded.");
-            row.store(models("SL", "gpt-5.1", "SH", "gpt-5.1"));
+            row.store(models(new Model("SL", "gpt-5.1"), new Model("SH", "gpt-5.1")));
             report(registry.reload());
             print("now", registry);
 
             System.out.println();
             System.out.println("2. The user edits SL to a different model name.");
-            row.store(models("SL", "gpt-5.1-mini", "SH", "gpt-5.1"));
+            row.store(models(new Model("SL", "gpt-5.1-mini"), new Model("SH", "gpt-5.1")));
             report(registry.reload());
             print("now", registry);
 
@@ -152,22 +152,29 @@ public final class DatabaseSource {
         System.out.println(line);
     }
 
+    /** One named block: the name the application asks for, and the model behind it. */
+    private record Model(String name, String modelName) {
+    }
+
     /**
-     * Builds the row's text from alternating name and model-name arguments.
+     * Builds the row's text from the blocks it should contain.
      *
+     * @implNote A record rather than alternating string arguments: a pair carried as two
+     *     positional strings is one miscount away from building the wrong block, or from an
+     *     out-of-bounds read on an odd argument list.
      * @implNote Literal api-key: nothing here calls a provider, so no credential is needed
      *     and the example costs nothing to run.
      */
-    private static String models(String... nameThenModel) {
+    private static String models(Model... models) {
         StringBuilder hocon = new StringBuilder("llm {\n");
-        for (int i = 0; i < nameThenModel.length; i += 2) {
+        for (Model model : models) {
             hocon.append("""
                       %s {
                         provider    = openai
                         api-key     = "unused-no-request-is-sent"
                         model-name  = "%s"
                       }
-                    """.formatted(nameThenModel[i], nameThenModel[i + 1]));
+                    """.formatted(model.name(), model.modelName()));
         }
         return hocon.append("}\n").toString();
     }

@@ -30,6 +30,11 @@ package io.github.maxtrezzi.modelrack4j;
  * @implSpec {@link #start(Runnable)} is called once, from the thread that builds the
  *     registry. The callback may run on any thread the implementation likes, including many
  *     of them: the registry serialises reloads internally. The callback never throws.
+ *     <p><strong>{@link #close()} must not block for an unbounded time.</strong> It can be
+ *     called from a thread that is running a reload, and a thread this notifier waits for
+ *     may itself be waiting for that reload to finish. So wait with a timeout, as
+ *     {@link FileChangeNotifier} does, rather than with a plain {@code Thread.join()} that
+ *     has none — otherwise the two threads wait for each other and neither ever returns.
  */
 public interface ChangeNotifier extends AutoCloseable {
 
