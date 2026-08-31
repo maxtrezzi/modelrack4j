@@ -21,7 +21,9 @@ import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.PosixFilePermission;
 import java.util.Objects;
+import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -77,8 +79,8 @@ record WritableFileConfigSource(Path file) implements WritableConfigSource, File
      * @throws ConfigValidationException if the staged file cannot be written
      */
     Path stage(String text) {
-        Path absolute = file.toAbsolutePath().normalize();
-        Path directory = absolute.getParent();
+        Path destination = destination();
+        Path directory = destination.getParent();
         if (directory == null) {
             throw new ConfigValidationException(
                     "Configuration file has no parent directory to write beside: " + file);
@@ -86,10 +88,51 @@ record WritableFileConfigSource(Path file) implements WritableConfigSource, File
         try {
             Path staged = Files.createTempFile(directory, STAGE_PREFIX, ".conf");
             Files.writeString(staged, text, StandardCharsets.UTF_8);
+            copyPermissions(destination, staged);
             return staged;
         } catch (IOException e) {
             throw new ConfigValidationException(
                     "Cannot write the configuration beside " + file + ": " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * The path the staged file is written beside and then moved onto: the target with any
+     * symbolic link followed.
+     *
+     * @implNote Writing to the link itself would <em>replace</em> it with an ordinary file.
+     *     That silently destroys the arrangement ADR-0024 exists for — a Kubernetes ConfigMap
+     *     mounts the configuration as a link and swaps it — and leaves the data the link
+     *     pointed at behind, still holding the old content. Following the link keeps the link
+     *     a link. Where the link's target is read-only, as a ConfigMap's is, the write fails
+     *     and the edit rolls back, which is the honest outcome.
+     */
+    private Path destination() {
+        try {
+            return Files.exists(file) ? file.toRealPath() : file.toAbsolutePath().normalize();
+        } catch (IOException cannotResolve) {
+            return file.toAbsolutePath().normalize();
+        }
+    }
+
+    /**
+     * Gives the staged file the permissions the file it will replace already has.
+     *
+     * @implNote {@code createTempFile} makes a file only its owner can read, and a move
+     *     carries that onto the target. Without this, one edit silently turns a
+     *     world-readable configuration into an owner-only one — measured as
+     *     {@code rw-r--r--} becoming {@code rw-------}.
+     */
+    private static void copyPermissions(Path from, Path to) {
+        try {
+            Set<PosixFilePermission> permissions = Files.getPosixFilePermissions(from);
+            Files.setPosixFilePermissions(to, permissions);
+        } catch (UnsupportedOperationException notPosix) {
+            // Windows: there is nothing to carry over, and the move keeps the ACL anyway.
+        } catch (IOException e) {
+            // The file may simply not exist yet. The staged file then keeps the restrictive
+            // permissions createTempFile gave it, which errs the safe way for configuration.
+            log.debug("modelrack4j could not copy permissions from {}: {}", from, e.toString());
         }
     }
 
@@ -100,14 +143,15 @@ record WritableFileConfigSource(Path file) implements WritableConfigSource, File
      * @throws ConfigValidationException if the move fails
      */
     void commitStaged(Path staged) {
+        Path destination = destination();
         try {
             try {
-                Files.move(staged, file, StandardCopyOption.ATOMIC_MOVE,
+                Files.move(staged, destination, StandardCopyOption.ATOMIC_MOVE,
                         StandardCopyOption.REPLACE_EXISTING);
             } catch (AtomicMoveNotSupportedException notAtomic) {
                 // Some filesystems cannot promise it. A replacing move is still one call and
                 // still better than truncating the target and writing into it.
-                Files.move(staged, file, StandardCopyOption.REPLACE_EXISTING);
+                Files.move(staged, destination, StandardCopyOption.REPLACE_EXISTING);
             }
         } catch (IOException e) {
             throw new ConfigValidationException(

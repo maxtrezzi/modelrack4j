@@ -228,6 +228,10 @@ public final class LlmRegistry implements AutoCloseable {
      * well. An exception thrown by a listener is logged and affects neither the other
      * listeners nor later reloads.
      *
+     * <p><strong>A rejected {@link ConfigEdit#commit()} does not come here.</strong> An edit
+     * has a caller, and that caller gets the exception; nothing was published and nothing was
+     * stored, so there is no state for a listener to react to.
+     *
      * @param listener called with the rejected reload's cause
      * @throws NullPointerException if the listener is null
      */
@@ -368,9 +372,12 @@ public final class LlmRegistry implements AutoCloseable {
      *     told by an exception; no listener ran, because listeners do not run for an edit at
      *     all.
      */
-    Optional<ReloadChange> commitEdit(WritableConfigSource target, String text) {
+    Optional<ReloadChange> commitEdit(ConfigEdit edit) {
+        WritableConfigSource target = edit.target();
         synchronized (reloadLock) {
-            StagedWrite staged = StagedWrite.prepare(target, text);
+            // Rendered here, not before: reading the layer outside this lock and writing
+            // inside it is a lost update whenever two edits overlap.
+            StagedWrite staged = StagedWrite.prepare(target, edit.render());
             try {
                 Map<String, LlmBundle> previous = bundles;
                 Map<String, LlmBundle> next = loader.load(previous, staging(target, staged));

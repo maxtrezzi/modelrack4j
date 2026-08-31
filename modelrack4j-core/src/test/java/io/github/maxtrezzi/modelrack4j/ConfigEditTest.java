@@ -22,13 +22,21 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermissions;
+import java.nio.file.attribute.PosixFileAttributeView;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -336,6 +344,97 @@ class ConfigEditTest {
                     .isInstanceOf(ConfigValidationException.class)
                     .hasMessageContaining("changes nothing");
             assertThat(row.writes).hasValue(0);
+        }
+    }
+
+    @Test
+    @DisplayName("two edits at once keep both changes")
+    void concurrentEditsDoNotLoseOneAnother() throws Exception {
+        // Rendering the new text outside the reload lock loses an update whenever two edits
+        // overlap: both read the same layer and the second write erases the first. Measured
+        // at 199 of 200 rounds before the render moved inside the lock, 0 of 200 after.
+        int rounds = 50;
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            for (int round = 0; round < rounds; round++) {
+                MemoryRow row = new MemoryRow(LAYER);
+                try (LlmRegistry registry = registryOver(row)) {
+                    CountDownLatch go = new CountDownLatch(1);
+                    Future<?> first = pool.submit(() -> {
+                        go.await();
+                        return registry.edit(row).set("SL.temperature", 0.1).commit();
+                    });
+                    Future<?> second = pool.submit(() -> {
+                        go.await();
+                        return registry.edit(row).set("SL.log-requests", true).commit();
+                    });
+                    go.countDown();
+                    first.get(10, TimeUnit.SECONDS);
+                    second.get(10, TimeUnit.SECONDS);
+
+                    assertThat(row.text())
+                            .as("round %d kept neither change", round)
+                            .contains("temperature")
+                            .contains("log-requests");
+                }
+            }
+        } finally {
+            pool.shutdown();
+            assertThat(pool.awaitTermination(30, TimeUnit.SECONDS)).isTrue();
+        }
+    }
+
+    @Test
+    @DisplayName("an edit leaves the file's permissions as it found them")
+    void anEditKeepsTheFilesPermissions() throws IOException {
+        Path file = writeLayer("app.conf", LAYER);
+        Assumptions.assumeTrue(
+                Files.getFileAttributeView(file, PosixFileAttributeView.class) != null,
+                "POSIX permissions are not a concept on this filesystem");
+        // A staged file is created owner-only, and a move carries that onto the target: an
+        // edit must not silently turn a readable configuration into an unreadable one.
+        Files.setPosixFilePermissions(file, PosixFilePermissions.fromString("rw-r--r--"));
+        WritableConfigSource target = ConfigSource.ofWritableFile(file);
+
+        try (LlmRegistry registry = registryOver(target)) {
+            registry.edit(target).set("SL.model-name", "second").commit();
+        }
+
+        assertThat(PosixFilePermissions.toString(Files.getPosixFilePermissions(file)))
+                .isEqualTo("rw-r--r--");
+    }
+
+    @Test
+    @DisplayName("a symlinked layer stays a symlink, and its target receives the write")
+    void anEditWritesThroughASymlink() throws IOException {
+        Path data = writeLayer("data.conf", LAYER);
+        Path link = dir.resolve("link.conf");
+        Files.createSymbolicLink(link, data);
+        WritableConfigSource target = ConfigSource.ofWritableFile(link);
+
+        try (LlmRegistry registry = registryOver(target)) {
+            registry.edit(target).set("SL.model-name", "second").commit();
+        }
+
+        // Replacing the link with an ordinary file would destroy the arrangement ADR-0024
+        // exists for, and leave the data it pointed at holding the old content.
+        assertThat(Files.isSymbolicLink(link)).as("the link must stay a link").isTrue();
+        assertThat(Files.readString(data, StandardCharsets.UTF_8))
+                .contains("model-name=second");
+    }
+
+    @Test
+    @DisplayName("a committed edit is spent rather than replayable")
+    void aCommittedEditIsSpent() {
+        MemoryRow row = new MemoryRow(LAYER);
+        try (LlmRegistry registry = registryOver(row)) {
+            ConfigEdit edit = registry.edit(row).set("SL.model-name", "second");
+            edit.commit();
+
+            assertThatThrownBy(edit::commit)
+                    .isInstanceOf(ConfigValidationException.class)
+                    .hasMessageContaining("already committed");
+            assertThat(row.writes).hasValue(1);
         }
     }
 }
