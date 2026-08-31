@@ -98,6 +98,7 @@ Phase 0 gates everything else; nothing below M0 should start before its blockers
 | [D1](open-decisions.md#d1--glm-route-if-no-maintained-module-exists) | GLM route if no maintained module | **Closed** — never became live |
 | [D2](open-decisions.md#d2--repository-visibility) | Repository visibility | **Settled** — public, not released; ADR-0034 |
 | [D3](open-decisions.md#d3--token-window-memory-on-a-remote-estimator) | Token-window memory on a remote estimator | **Settled** — opt-in flag |
+| [D4](open-decisions.md#d4--mutation-testing-in-ci) | Mutation testing in CI | **Settled** — never, in any form; ADR-0043 |
 
 **Phase 0 is complete except for one measurement, and M0 is done — the build is green.** Tasks 0.1–0.7 are
 done; Task 0.8 is done on Linux and open only on the macOS latency figure, which qualifies

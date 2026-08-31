@@ -3,7 +3,7 @@
 Items waiting on the owner rather than on work. Do not resolve these unilaterally — each
 one closes by writing an ADR (see [ADR-0001](../adr/0001-record-decisions-as-adrs.md)).
 
-**D1, D2 and D3 are all settled**, so this file is a record rather than a queue right now. A
+**D1 to D4 are all settled**, so this file is a record rather than a queue right now. A
 new entry here is a question for the owner, not work to pick up. Entries stay in number order
 and keep the framing they were decided under, with the outcome at the top.
 
@@ -118,3 +118,35 @@ the plan's to change and not an ADR's:
 
 **On settling:** write an ADR; if the answer adds a config key, the schema in the plan
 changes with it.
+
+---
+
+### D4 — Mutation testing in CI
+
+**Status:** Settled 2026-08-31 — **never** ·
+**Raised by:** [ADR-0041](../adr/0041-mutation-testing-on-core-only.md) ·
+**Settled by:** [ADR-0043](../adr/0043-keep-mutation-testing-out-of-ci.md)
+
+ADR-0041 configured PIT on core and refused to decide this one, for a stated reason: the run
+took an unknown time, and
+[ADR-0040](../adr/0040-protect-main-with-required-checks-not-required-review.md) makes every
+required check a gate that every pull request waits on. The owner chose **never**,
+in any form — not a required check, not an optional job, not a nightly.
+
+The measurement that was missing is now taken: a full run on core is **122 s** on the
+development machine, against **about 42 s** for the whole current gate, whose five checks run
+in parallel and whose slowest leg was 42 s in run `33320243644`. So PIT would roughly triple
+what a pull request waits for.
+
+But duration turned out not to be the deciding argument. Two of the 153 mutants cannot be
+gated on at all: one is *equivalent* and unkillable by construction, so a 100 % threshold is
+permanently red, and one is a deliberate timeout whose outcome depends on how loaded the
+machine is. `mutationThreshold` is `0`, so a job would be permanently green and certify
+nothing. And the deliverable ADR-0041 fixed is a survivor list to read, which CI has nobody to
+read.
+
+**The rejected alternative was a nightly**, not a required check: no gate cost, no pass-or-fail
+problem, the report published as an artifact. It loses because nobody is obliged to read it,
+and because it still puts `mutationCoverage` in a file — and the only thing keeping PIT away
+from the provider modules and their paid `*IT.java` suites is that a person types
+`-pl modelrack4j-core`.
