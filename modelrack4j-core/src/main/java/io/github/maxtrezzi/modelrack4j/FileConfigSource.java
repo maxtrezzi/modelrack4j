@@ -28,7 +28,7 @@ import java.util.Objects;
  *     the locale — JEP 400 made UTF-8 the default only in 18 — so a configuration file with
  *     an accented comment would decode differently on a developer machine and on a server.
  */
-record FileConfigSource(Path file) implements ConfigSource {
+record FileConfigSource(Path file) implements FileBacked {
 
     FileConfigSource {
         Objects.requireNonNull(file, "file");
@@ -49,6 +49,17 @@ record FileConfigSource(Path file) implements ConfigSource {
 
     @Override
     public String text() {
+        return read(file);
+    }
+
+    /**
+     * Reads a configuration file as UTF-8, shared with {@link WritableFileConfigSource}.
+     *
+     * @param file the file to read
+     * @return its text
+     * @throws ConfigValidationException if it is missing or cannot be read
+     */
+    static String read(Path file) {
         // Checked rather than left to readString so the message names the file and the
         // reason, instead of surfacing a bare NoSuchFileException from inside the loader.
         if (!Files.isReadable(file)) {

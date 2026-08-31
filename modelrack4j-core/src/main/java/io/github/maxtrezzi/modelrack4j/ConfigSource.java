@@ -101,4 +101,19 @@ public interface ConfigSource {
     static ConfigSource ofFile(Path file) {
         return new FileConfigSource(file);
     }
+
+    /**
+     * Returns a source that reads a file and can also write it back.
+     *
+     * <p>The same layer as {@link #ofFile(Path)}, plus the ability to be named as the target
+     * of {@link LlmRegistry#edit(WritableConfigSource)}. Use it for the layer that holds
+     * choices your application's users make; leave the layers you ship read-only.
+     *
+     * @param file the file to read and write, as UTF-8
+     * @return a writable source over that file
+     * @throws NullPointerException if the file is null
+     */
+    static WritableConfigSource ofWritableFile(Path file) {
+        return new WritableFileConfigSource(file);
+    }
 }

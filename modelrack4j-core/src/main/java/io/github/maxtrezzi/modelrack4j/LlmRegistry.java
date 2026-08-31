@@ -330,6 +330,78 @@ public final class LlmRegistry implements AutoCloseable {
     }
 
     /**
+     * Starts a change to one configuration layer, to be applied and stored together.
+     *
+     * <p>The layer must be one this registry was built from, and must be writable — a base
+     * layer you ship stays read-only because you never made it a
+     * {@link WritableConfigSource}.
+     *
+     * <pre>{@code
+     * registry.edit(userLayer).set("SL.model-name", "claude-opus-5").commit();
+     * }</pre>
+     *
+     * @param target the layer to write
+     * @return an empty edit to add changes to
+     * @throws ConfigValidationException if the layer is not one of this registry's own
+     * @throws NullPointerException if the target is null
+     * @see ConfigEdit
+     */
+    public ConfigEdit edit(WritableConfigSource target) {
+        Objects.requireNonNull(target, "target");
+        if (!sources.contains(target)) {
+            throw new ConfigValidationException("The layer '" + target.id() + "' is not one of"
+                    + " this registry's configuration sources, so it cannot be edited through"
+                    + " it. Its layers are: " + sources.stream().map(ConfigSource::id).toList());
+        }
+        return new ConfigEdit(this, target);
+    }
+
+    /**
+     * Validates, publishes and stores an edit, or leaves everything exactly as it was.
+     *
+     * @implNote The order is the whole contract. Validation happens against the staged text,
+     *     so a broken edit is refused before anything is published or stored. The swap
+     *     happens <em>before</em> the write, so that a watcher waking up afterwards re-reads,
+     *     finds the configuration already live, and publishes nothing — which is how an
+     *     application's own edit raises no reload event without needing a flag to suppress
+     *     one. If the write then fails, the previous snapshot goes back and the caller is
+     *     told by an exception; no listener ran, because listeners do not run for an edit at
+     *     all.
+     */
+    Optional<ReloadChange> commitEdit(WritableConfigSource target, String text) {
+        synchronized (reloadLock) {
+            StagedWrite staged = StagedWrite.prepare(target, text);
+            try {
+                Map<String, LlmBundle> previous = bundles;
+                Map<String, LlmBundle> next = loader.load(previous, staging(target, staged));
+                ReloadChange change = ReloadChange.between(previous, next);
+
+                bundles = next;   // published, but nobody is told: this is the caller's change
+                try {
+                    staged.commit();
+                } catch (RuntimeException notStored) {
+                    // Back to exactly the state before the edit. Nothing was announced, so
+                    // nothing has to be un-announced.
+                    bundles = previous;
+                    throw notStored;
+                }
+                return change.isEmpty() ? Optional.empty() : Optional.of(change);
+            } finally {
+                staged.discard();
+            }
+        }
+    }
+
+    /** This registry's layers, with the edited one replaced by its staged text. */
+    private List<ConfigSource> staging(WritableConfigSource target, StagedWrite staged) {
+        List<ConfigSource> layers = new ArrayList<>(sources.size());
+        for (ConfigSource source : sources) {
+            layers.add(source.equals(target) ? staged.source() : source);
+        }
+        return List.copyOf(layers);
+    }
+
+    /**
      * Reloads on behalf of a {@link ChangeNotifier}, which has no caller to throw to.
      *
      * @implNote The rejection is not lost by being swallowed here: {@link #reload()} has
