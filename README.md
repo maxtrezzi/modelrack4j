@@ -393,6 +393,29 @@ layer defines.
 
 ---
 
+### Layers that are not files
+
+A layer can also be a row in a database or a value from a configuration service. Give the
+registry `sources(...)` instead of `configFiles(...)`, and tell it when to re-read:
+
+```java
+ConfigSource row = new ConfigSource() {
+    public String id()   { return "llm_config#42"; }   // a label for error messages
+    public String text() { return jdbc.readConfigText(42); }
+};
+
+LlmRegistry registry = LlmRegistry.builder()
+        .sources(List.of(ConfigSource.ofFile(basePath), row))
+        .build();
+
+jdbc.updateConfigText(42, newText);
+registry.reload();   // nothing watches a database row, so you say when
+```
+
+Files and other sources mix in one list, in the same order. `reload()` returns what changed,
+or nothing when the configuration turns out to be the same. See the
+[reference](docs/manual/part-2-reference.md#configuration-that-is-not-a-file).
+
 ## Hot reload
 
 ```java
@@ -414,8 +437,8 @@ registry.onReloadFailure(failure ->
 
 - **Ask for consistency when you need it.** `registry.get(name)` reads the live
   configuration on every call — that is what makes reload work, and it means **a reload can
-  land between two consecutive calls**, so they return models built from different file
-  contents. Rare (measured at roughly two per million read pairs under a reload every few
+  land between two consecutive calls**, so they return models built from two different
+  generations of the configuration. Rare (measured at roughly two per million read pairs under a reload every few
   milliseconds) but reproducible, and a correctness hazard wherever several models must
   agree. Where they must, take a snapshot:
 

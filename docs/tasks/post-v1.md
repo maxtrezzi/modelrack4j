@@ -1790,3 +1790,120 @@ under its Java 17 profile.
   across the two script layouts, printing its two generations and its torn-pair counts.
 - The paid examples were not run. Nothing in this task required it, and P12 is the entry that
   records them being exercised against live APIs.
+
+### P19 — Configuration sources, and a reload the application can ask for
+
+**Status:** Done 2026-08-31 · **Branch:** `task/p19-config-sources-and-manual-reload` ·
+**Produced:** [ADR-0042](../adr/0042-read-configuration-from-sources-not-files.md)
+
+The registry has taken `List<Path>` and nothing else since [M1](milestones.md#m1--core-without-watching).
+The consuming application now needs a layer that lives in a database — a row of HOCON text —
+layered over ordinary files. A database row has no path to parse and no directory to watch,
+so two things have to change: what a layer *is*, and who is allowed to trigger a reload.
+
+This item is **reading only**. Writing configuration back is what the request started from,
+and it is deliberately left to a later item: written first, it would have been written against
+`Path` and deepened the coupling this one removes.
+
+#### What was measured before anything was decided
+
+Four spikes against the real `com.typesafe:config` `1.4.9` jar in `~/.m2`, because the whole
+design turns on what the library actually does rather than on what it is expected to do.
+
+| Question | Answer |
+|---|---|
+| Can a resolved snapshot be rendered back to a file? | **No.** With `api-key = ${MY_SECRET}` in the source, `render()` emitted `"api-key" : "sk-REAL-SECRET-123"` — the secret in plaintext. It also reordered keys alphabetically and moved a trailing comment above the key it followed |
+| Does `setShowEnvVariableValues(false)` fix that? | **No.** It emits the literal `"<env variable>"`: the secret is protected and the substitution is destroyed, so the file no longer loads |
+| Does an *unresolved* layer round-trip? | **Yes.** Parsed without `resolve()`, `${OPENAI_API_KEY}` survives verbatim; written, re-read and resolved, the value came back from the environment. The secret never reaches the file |
+| Is per-key provenance available? | **Yes**, `origin().filename()` and `lineNumber()` gave `base.conf:3` against `local.conf:1`. But `Config.getValue()` **throws** `ConfigException$NotResolved` on a substitution — the unresolved tree is reachable only by traversing `root()` |
+
+`ConfigFactory.parseString` and `ConfigParseOptions.setOriginDescription` were confirmed present
+with `javap`, so replacing `parseFile` costs no new dependency and keeps error provenance.
+
+#### The shape, and the two proposals that lost
+
+`ConfigSource` is `id()` plus `text()`, and names no file, path or URI. Notification is a
+separate `ChangeNotifier`, which is today's `ConfigWatcher` behind an interface it already
+fits — it is `AutoCloseable` and already takes a `Runnable onChange`.
+
+Two earlier proposals were refuted in discussion, and both are recorded in ADR-0042 because
+the reasoning generalises. `Optional<Path>` on the source put the filesystem back into the
+new interface one level below where it had just been removed from four classes.
+`Optional<URI>` was worse: an address makes the registry dispatch on scheme, which is the
+boundary [ADR-0002](../adr/0002-scope-to-langchain4j-llm-configuration.md) draws. The test
+that settled it was asking who needs to *act* on an address rather than print one — and in
+this design, nobody does.
+
+#### What it costs
+
+`ReloadFailure` changes from `List<Path>` to `List<ConfigSource>`. That is a breaking change
+to a public record, free today at `0.1.0-SNAPSHOT` with no tag and no published artefact, and
+not free after [M6](milestones.md), whose preparation is running in parallel. The timing is
+the reason this is being done now.
+
+Reloads serialise behind a lock. A public trigger means the compare-then-swap in `reload()`
+has a second writer, so the invariant that made it lock-free is gone — **on the read side
+alone, before any write API exists.** Readers are unaffected: `get()` and `snapshot()` keep
+their volatile read, so [ADR-0038](../adr/0038-snapshot-gives-callers-the-atomicity-the-swap-already-has.md)
+is untouched.
+
+#### What the work found
+
+**A parse error was escaping as a third-party exception, and had been since M1.**
+`LlmRegistry.build()` documents `@throws ConfigValidationException` for an invalid layer, and
+`ConfigLoader` wrapped the failures from `resolve()` — but the parse call itself sat outside
+that `try`, so a malformed layer threw `com.typesafe.config.ConfigException$Parse` at the
+caller instead. Confirmed pre-existing rather than introduced here, by reading the same loop
+on `main`. It is now wrapped, with the source's id and the line kept in the message. The
+failure path was never broken by it: `reload()` catches `RuntimeException`, so a broken file
+was always logged and reported — only the type a caller catches was wrong.
+
+Nothing in [ADR-0033](../adr/0033-provider-exceptions-pass-through-untranslated.md) is
+touched: that decision is about exceptions a *provider* throws, and translating a HOCON
+failure is what this loader already did one line further down.
+
+**The concurrency test was checked against the defect it names.** A test that asserts a lock
+is doing something has to fail without the lock, or it is one of the tests
+[P17](#p17--mutation-testing-on-core) found. With `synchronized` neutralised, the source's
+high-water mark of simultaneous readers was **4 of 4 threads**, against the 1 the test
+requires. Restored, it is 1.
+
+**Three copies of a claim the lock made false, and one deliberately left.** "The watcher
+thread is the only writer, so there is no lock anywhere in the reload path" was true until
+this item and is now not. It was in `docs/manual/part-2-reference.md` under *Threading and
+lifecycle*, and again in `LlmRegistry`'s own field Javadoc — the surface
+[P16](#p16--a-third-coherence-pass-and-the-surface-the-first-two-searched-past) found the
+fourth copy of an ADR-0038 over-claim on, which is why the code was searched and not only the
+documentation. Both are fixed. The third, in [M3](milestones.md#m3--hot-reload)'s write-up, is
+**left as written**: it records what was true when M3 shipped, and editing a past entry to
+match a later change would make it describe something that did not happen — the same call
+[P18](#p18--the-distance-between-arriving-and-running-something) made about `council.conf`.
+
+#### Verified
+
+- `mvn clean install` green offline. **8 modules** — parent, core, four providers, BOM,
+  examples — and **115 tests**: core 82 (69 before this item, plus 13 new), and 7, 8, 8, 10
+  across the four provider modules.
+- **Exactly one existing test needed changing**, `ReloadTest`'s assertion on
+  `ReloadFailure.configFiles()`, which now reads the sources' ids. Nothing else in the suite
+  noticed, because `configFiles(List<Path>)` still means what it meant.
+- `build/check-docs.py` clean across 42 ADRs and 56 tracked files.
+- **Mutation testing on core: 143 mutants, 142 killed.** The one survivor is
+  `EmptyObjectReturnValsMutator` on `LlmRegistry.reload()`'s `return Optional.empty()` — the
+  mutation substitutes `Optional.empty()`, so the mutant and the original are the same
+  program and no test can tell them apart. An equivalent mutant, not a gap. Two further
+  mutants timed out rather than being killed, both `NullReturnValsMutator` making a
+  `FileChangeNotifier` construction return null: a registry that then watches nothing leaves
+  a waiting test hanging, which is the "hung minion instead of a finding" that
+  [ADR-0041](../adr/0041-mutation-testing-on-core-only.md) predicts for watcher code.
+  The report was re-run on a tree that had stopped changing: the first run's line numbers
+  were written while the source was still being edited, and were therefore not usable.
+
+#### Carried over to the write item
+
+Two findings that belong to writing rather than to this item. Writing a whole block to the
+top layer would silently pin values inherited from below, freezing them against later edits
+to the lower layer — `origin()` is what tells us which keys to write instead. And suppressing
+the reload event for a self-inflicted change needs no flag: applying before writing leaves the
+watcher's later diff empty, and `reload()` already returns early on an empty diff
+(`LlmRegistry.java`, the `change.isEmpty()` guard).

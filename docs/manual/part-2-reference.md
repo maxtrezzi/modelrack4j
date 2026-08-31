@@ -268,10 +268,12 @@ LlmRegistry registry = LlmRegistry.builder()
 
 | Method | Contract |
 |---|---|
-| `configFiles(List<Path>)` | The layers, lowest precedence first. At least one. |
-| `watch(boolean)` | Off by default. On, the registry starts one daemon thread. |
+| `configFiles(List<Path>)` | The layers, as files, lowest precedence first. At least one. |
+| `sources(List<ConfigSource>)` | The layers, from anywhere: see *[Configuration that is not a file](#configuration-that-is-not-a-file)*. Replaces `configFiles`; the last of the two calls wins. |
+| `watch(boolean)` | Off by default. On, the registry starts one daemon thread and watches the files given to `configFiles`. |
+| `notifier(ChangeNotifier)` | Something of your own that tells the registry when the configuration changed. Cannot be combined with `watch(true)`. |
 | `debounce(Duration)` | How long the files must be quiet before a reload runs. Must be positive. |
-| `build()` | Parses, validates and builds everything, then starts watching. Throws `ConfigValidationException` if any layer or block is invalid, or `UncheckedIOException` if a directory cannot be watched. |
+| `build()` | Parses, validates and builds everything, then starts the notifier if there is one. Throws `ConfigValidationException` if no layer was given, two layers share an id, any layer or block is invalid, or `watch(true)` was set without files to watch. Throws `UncheckedIOException` if a directory cannot be watched. |
 
 `build()` is all-or-nothing: one bad block means no registry, not a registry missing one name.
 
@@ -284,16 +286,93 @@ LlmRegistry registry = LlmRegistry.builder()
 | `names()` | The configured names, sorted. |
 | `onReload(Consumer<ReloadChange>)` | Registers a listener for successful reloads. |
 | `onReloadFailure(Consumer<ReloadFailure>)` | Registers a listener for rejected ones. |
-| `close()` | Stops watching. Idempotent. A closed registry keeps serving its last snapshot. |
+| `reload()` | Re-reads every layer now. Returns `Optional<ReloadChange>` — empty when nothing changed. Throws if the new configuration is rejected; the old one stays live. |
+| `close()` | Stops the notifier. Idempotent. A closed registry keeps serving its last snapshot. |
 
 `get()` is a volatile read, one small wrapper object, and a map lookup. It is meant to be
 called per request — that is the primary API, and listeners are secondary.
+
+### Configuration that is not a file
+
+A layer does not have to be a file. It can be a row in a database, a value from a
+configuration service, or text your program builds. A layer is a `ConfigSource`, which has
+two methods:
+
+```java
+public interface ConfigSource {
+    String id();      // a label for error messages
+    String text();    // the HOCON text of this layer
+}
+```
+
+```java
+ConfigSource row = new ConfigSource() {
+    public String id()   { return "llm_config#42"; }
+    public String text() { return jdbc.readConfigText(42); }   // your query
+};
+
+LlmRegistry registry = LlmRegistry.builder()
+        .sources(List.of(ConfigSource.ofFile(basePath), row))   // base file, then the row
+        .build();
+```
+
+Files and other sources mix freely, in the same order rule: lowest precedence first.
+
+Three things to know about writing one.
+
+**`text()` is called again on every reload.** A source that runs its query each time works
+correctly. A source that reads its text once and keeps it will never report a change.
+
+**`id()` is a label, not an address.** The library only prints it, in parse errors and in
+`ReloadFailure`. Give it something a person reading a log can recognise. Do not put a secret
+in it, because it is written to the log. Two sources of one registry must have different ids,
+and `build()` refuses them if they do not.
+
+**Nothing watches these layers.** The library can watch files, because the operating system
+tells it when a file changes. It cannot know when a database row changes. You have two ways
+to tell it.
+
+### Asking for a reload
+
+Call `reload()` when your program knows the configuration changed:
+
+```java
+jdbc.updateConfigText(42, newText);
+Optional<ReloadChange> change = registry.reload();
+```
+
+It returns what changed, or an empty `Optional` when the new configuration turns out to be
+the same as the one already in effect. If the new configuration is invalid it throws, and
+the previous configuration stays live in full — exactly as it does for a file that was saved
+with a mistake in it.
+
+You can call it from any thread and at any time. Reloads run one at a time, so a call may
+wait for a reload that is already running. Do **not** call it from inside a reload listener:
+listeners run inside the reload itself.
+
+The other way is to give the registry something that knows when the configuration changed:
+
+```java
+public interface ChangeNotifier extends AutoCloseable {
+    void start(Runnable onChange);
+    void close();
+}
+```
+
+The registry calls `start` once, and your code calls `onChange` whenever the configuration
+may have changed. A call that turns out to change nothing costs one re-read and publishes
+nothing, so call rather than stay silent when you are not sure. `close()` is called by
+`LlmRegistry.close()`.
+
+Use it for a mechanism the library does not provide — a database `LISTEN`/`NOTIFY`, a
+Kubernetes informer, a message from a queue. For files, `watch(true)` already builds the
+right notifier, and the two cannot both be set.
 
 ### One lookup, or several that must agree
 
 `get()` reads the live configuration on every call. That is what makes a reload visible, and
 it means **a reload can land between two consecutive calls**, so the two calls return bundles
-built from different file contents. It is rare — measured at roughly two per million pairs of
+built from two different generations of the configuration. It is rare — measured at roughly two per million pairs of
 reads while a reload ran every few milliseconds — but it is reproducible, and where several
 models have to agree it is a correctness problem rather than a cosmetic one.
 
@@ -342,7 +421,7 @@ record ReloadChange(Set<String> updated, Set<String> added, Set<String> removed)
     boolean isEmpty();
 }
 
-record ReloadFailure(List<Path> configFiles, Exception cause) { }
+record ReloadFailure(List<ConfigSource> sources, Exception cause) { }
 ```
 
 `LlmConfig` validates in its compact constructor, so an instance that exists is valid.
@@ -559,13 +638,19 @@ tests assert on them.
 ## Threading and lifecycle
 
 - **One daemon thread**, named `modelrack4j-config-watcher`, and only when `watch(true)`. With
-  watching off, the library starts nothing.
-- **That thread is the only writer.** The live snapshot is a single volatile field and
-  publishing is one assignment, so there is no lock anywhere in the reload path.
-- **`get()` and `names()` are safe from any thread**, during a reload included. A reader either
-  sees the whole old snapshot or the whole new one.
-- **Listeners run on the watcher thread.** Long work in a listener delays the next reload;
-  hand it off to your own executor if it is not quick.
+  watching off, the library starts nothing of its own.
+- **Publishing is one assignment.** The live snapshot is a single volatile field, so a reader
+  needs no lock and never waits.
+- **Reloads run one at a time.** A reload can now be started by the watcher thread or by your
+  call to `reload()`, so the registry holds a lock while it reloads. Two reloads at once would
+  both read the same old snapshot, both build, and the later one would quietly throw the
+  earlier one away after its listeners had already announced it.
+- **`get()`, `snapshot()` and `names()` are safe from any thread**, during a reload included,
+  and never take that lock. A reader either sees the whole old snapshot or the whole new one.
+- **Listeners run on the thread that caused the reload** — the watcher thread, or the caller
+  of `reload()`. Long work in a listener delays the next reload; hand it off to your own
+  executor if it is not quick. A listener must not call `reload()`, because it is already
+  running inside one.
 - **Listeners may be registered at any time, from any thread.** The registration lists are
   copy-on-write, so adding one during a reload is safe and does not block it.
 - **Registering a listener does not replay anything.** It is called on the next reload, never

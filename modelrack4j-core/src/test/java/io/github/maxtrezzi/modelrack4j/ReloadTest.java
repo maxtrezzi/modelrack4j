@@ -193,7 +193,9 @@ class ReloadTest {
         assertThat(failures.get(0).cause())
                 .isInstanceOf(ConfigValidationException.class)
                 .hasMessageContaining("SH");
-        assertThat(failures.get(0).configFiles()).containsExactly(file);
+        assertThat(failures.get(0).sources())
+                .extracting(ConfigSource::id)
+                .containsExactly(file.toString());
         assertThat(reloads).hasValue(0);
         assertThat(registry.get("SL")).isSameAs(liveBundle);
         assertThat(registry.get("SL").config().modelName()).isEqualTo("good");

@@ -25,7 +25,6 @@ import dev.langchain4j.model.TokenCountEstimator;
 import dev.langchain4j.model.chat.ChatModel;
 import io.github.maxtrezzi.modelrack4j.spi.ProviderFactory;
 import io.github.maxtrezzi.modelrack4j.spi.TokenEstimation;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -56,11 +55,11 @@ final class SnapshotLoader {
     /** Root path holding the named blocks. */
     static final String ROOT_PATH = "llm";
 
-    private final List<Path> configFiles;
+    private final List<ConfigSource> sources;
     private final Map<String, ProviderFactory> factories;
 
-    SnapshotLoader(List<Path> configFiles) {
-        this.configFiles = List.copyOf(Objects.requireNonNull(configFiles, "configFiles"));
+    SnapshotLoader(List<ConfigSource> sources) {
+        this.sources = ConfigSources.validated(sources);
         this.factories = discoverFactories();
     }
 
@@ -74,7 +73,7 @@ final class SnapshotLoader {
      *     any provider rejects or fails to build its configuration
      */
     Map<String, LlmBundle> load(Map<String, LlmBundle> previous) {
-        Config resolved = ConfigLoader.load(configFiles);
+        Config resolved = ConfigLoader.load(sources);
         if (!resolved.hasPath(ROOT_PATH)) {
             throw new ConfigValidationException(
                     "No '" + ROOT_PATH + "' block found in any configuration layer");

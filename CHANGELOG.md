@@ -16,9 +16,14 @@ than listed as one long **Added** block.
 
 ### The registry
 
-- `LlmRegistry`, built from a list of HOCON files given **lowest precedence first**, merged
+- `LlmRegistry`, built from a list of HOCON layers given **lowest precedence first**, merged
   into one snapshot and resolved exactly once after merging — so a `${VAR}` in a lower layer
   that a higher layer overrides never has to resolve.
+- A layer does not have to be a file. `Builder.configFiles(List<Path>)` is the shorthand for
+  the common case; `Builder.sources(List<ConfigSource>)` takes layers from anywhere, so a
+  configuration can live in a database row or come from a configuration service, and files
+  and other sources mix in one list. A `ConfigSource` is an id and its text, and the id is a
+  label for error messages rather than an address the library resolves.
 - `registry.get(name)` returns the current `LlmBundle`; `names()` lists what is configured.
 - `registry.snapshot()` returns an `LlmSnapshot`: one generation held still, so several
   lookups are guaranteed to agree with each other. `get()` reads the live configuration on
@@ -41,7 +46,15 @@ than listed as one long **Added** block.
 
 ### Hot reload
 
-- `Builder.watch(boolean)` (off by default) and `Builder.debounce(Duration)` (300 ms).
+- `Builder.watch(boolean)` (off by default) and `Builder.debounce(Duration)` (300 ms), for
+  layers given as files.
+- `registry.reload()` re-reads every layer on demand and returns what changed, or an empty
+  `Optional` when nothing did. It is what a layer nothing can watch — a database row — uses
+  instead of the watcher, and it throws when the new configuration is rejected, leaving the
+  previous one live. Reloads run one at a time whoever asks for them; readers never wait.
+- `ChangeNotifier` is the extension point for telling the registry that configuration
+  changed by a mechanism the library does not provide, such as a database `LISTEN`/`NOTIFY`.
+  `Builder.watch(true)` builds the file one for you.
 - Reload is **atomic across the whole snapshot**: parse, validate and build every changed
   bundle in a staging area, then swap one reference. Any failure anywhere swaps nothing and
   fires `onReloadFailure` once, leaving the previous snapshot live.
@@ -55,7 +68,8 @@ than listed as one long **Added** block.
   watched directory being deleted and recreated.
 - A name removed from configuration is removed from the registry. Superseded bundles are not
   closed — in-flight requests may still hold them.
-- `LlmRegistry` is `AutoCloseable`; closing stops the daemon watcher thread.
+- `LlmRegistry` is `AutoCloseable`; closing stops the notifier, and with it the daemon
+  watcher thread when watching was enabled.
 
 ### Providers
 

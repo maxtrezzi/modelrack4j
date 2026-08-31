@@ -19,9 +19,11 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
@@ -53,8 +55,12 @@ import org.slf4j.LoggerFactory;
  *
  * <h2>Reload</h2>
  *
- * <p>With {@link Builder#watch(boolean) watching} enabled, edits to any configured layer are
- * picked up without a restart. A reload is atomic across the <em>whole</em> snapshot: every
+ * <p>Configuration is picked up again without a restart, in one of two ways: with
+ * {@link Builder#watch(boolean) watching} enabled the registry notices an edit to a
+ * configured file by itself, and {@link #reload()} asks for the same work on demand, which is
+ * what a layer nothing can watch — a row in a database — needs.
+ *
+ * <p>A reload is atomic across the <em>whole</em> snapshot: every
  * changed block is rebuilt in a staging area, and only once all of them succeed is a single
  * reference swapped. If any block fails to parse, validate or build, nothing is swapped —
  * the previous snapshot stays live in full and {@link #onReloadFailure} fires once. A
@@ -62,8 +68,8 @@ import org.slf4j.LoggerFactory;
  *
  * <p><strong>How much of that reaches a caller is a separate question.</strong>
  * {@link #get(String)} reads the live configuration on every call, so a reload can land
- * between two consecutive calls, and the two calls then return bundles built from different
- * file contents. Where several models have to agree with each other, take a
+ * between two consecutive calls, and the two calls then return bundles built from two different
+ * generations of the configuration. Where several models have to agree with each other, take a
  * {@link #snapshot()} and look all of them up in it.
  *
  * <p>Unchanged blocks are not rebuilt: the diff is record equality on the parsed
@@ -71,8 +77,10 @@ import org.slf4j.LoggerFactory;
  * had.
  *
  * @implNote {@link #get(String)} and {@link #names()} are safe to call from any thread at
- *     any time, including during a reload. Listeners run on the watcher thread, one reload
- *     at a time; a listener that blocks delays the next reload.
+ *     any time, including during a reload, and never wait for one. Reloads themselves are
+ *     serialised, so listeners still run one reload at a time; they run on whichever thread
+ *     caused that reload — a notifier's, or the caller's of {@link #reload()} — and a
+ *     listener that blocks delays the next reload.
  */
 public final class LlmRegistry implements AutoCloseable {
 
@@ -81,24 +89,34 @@ public final class LlmRegistry implements AutoCloseable {
     /** The default quiet period, ~100x the event burst measured for one write (Task 0.8). */
     private static final Duration DEFAULT_DEBOUNCE = Duration.ofMillis(300);
 
-    private final List<Path> configFiles;
+    private final List<ConfigSource> sources;
     private final SnapshotLoader loader;
+
+    /**
+     * Serialises reloads. Private, so no caller can take it and interfere: a public lock —
+     * or {@code synchronized} on this registry — would let unrelated code block a reload.
+     */
+    private final Object reloadLock = new Object();
     private final List<Consumer<ReloadChange>> reloadListeners = new CopyOnWriteArrayList<>();
     private final List<Consumer<ReloadFailure>> failureListeners =
             new CopyOnWriteArrayList<>();
 
-    /** The published snapshot. Reads are lock-free; the only writer is the reload thread. */
+    /**
+     * The published snapshot. Reads are lock-free and never wait; writes happen under
+     * {@link #reloadLock}, which is what keeps two reloads from racing to publish.
+     */
     private volatile Map<String, LlmBundle> bundles;
 
     /**
-     * Null when watching is off, and again once closed. Volatile because {@link #close()}
-     * may be called from a different thread than the one that built the registry.
+     * Null when nothing notifies this registry, and again once closed. Volatile because
+     * {@link #close()} may be called from a different thread than the one that built the
+     * registry.
      */
-    private volatile ConfigWatcher watcher;
+    private volatile ChangeNotifier notifier;
 
-    private LlmRegistry(List<Path> configFiles, SnapshotLoader loader,
+    private LlmRegistry(List<ConfigSource> sources, SnapshotLoader loader,
             Map<String, LlmBundle> bundles) {
-        this.configFiles = configFiles;
+        this.sources = sources;
         this.loader = loader;
         this.bundles = bundles;
     }
@@ -171,9 +189,10 @@ public final class LlmRegistry implements AutoCloseable {
      * so nothing has to be re-fetched or swapped in response. Use this to log the change, to
      * warm a cache, or to react to a name appearing or disappearing.
      *
-     * <p>Listeners run on the watcher thread after the swap, so {@link #get(String)} inside
-     * one already sees the new snapshot. An exception thrown by a listener is logged and
-     * does not affect the reload, the other listeners, or later reloads.
+     * <p>Listeners run after the swap, so {@link #get(String)} inside one already sees the
+     * new snapshot. They run on the thread that caused the reload, inside it, so a listener
+     * must not call {@link #reload()}. An exception thrown by a listener is logged and does
+     * not affect the reload, the other listeners, or later reloads.
      *
      * @param listener called with what the reload changed
      * @throws NullPointerException if the listener is null
@@ -187,12 +206,14 @@ public final class LlmRegistry implements AutoCloseable {
      *
      * <p>A rejected reload changes nothing: the previous snapshot stays live in full. Every
      * rejection is also logged at WARN by this class's logger, whether or not a listener is
-     * registered, so a broken file on disk is never silent; register a listener to do
-     * something about it beyond logging — raise an alert, expose a health signal, notify
-     * whoever is on call.
+     * registered and whether or not the reload had a caller to throw to, so a broken layer
+     * is never silent; register a listener to do something about it beyond logging — raise
+     * an alert, expose a health signal, notify whoever is on call.
      *
-     * <p>Listeners run on the watcher thread. An exception thrown by one is logged and
-     * affects neither the other listeners nor later reloads.
+     * <p>Listeners run on the thread that caused the reload. When that is a call to
+     * {@link #reload()}, the listeners are told and the exception is thrown to the caller as
+     * well. An exception thrown by a listener is logged and affects neither the other
+     * listeners nor later reloads.
      *
      * @param listener called with the rejected reload's cause
      * @throws NullPointerException if the listener is null
@@ -202,11 +223,12 @@ public final class LlmRegistry implements AutoCloseable {
     }
 
     /**
-     * Stops watching, if watching was enabled.
+     * Stops the notifier, if there is one.
      *
-     * <p>Waits for a reload already in flight to finish, so no listener runs after this
-     * returns. Calling it more than once is harmless, and a registry that is closed keeps
-     * serving the snapshot it last published.
+     * <p>Waits for a reload the notifier had already started, so none of its listeners runs
+     * after this returns. It does not wait for a {@link #reload()} another thread is running;
+     * that call finishes on its own, and its listeners run. Calling this more than once is
+     * harmless, and a registry that is closed keeps serving the snapshot it last published.
      *
      * @implNote Bundles are deliberately not closed, including bundles a reload superseded.
      *     An in-flight request may still hold one, and LangChain4j model instances are
@@ -215,45 +237,84 @@ public final class LlmRegistry implements AutoCloseable {
      */
     @Override
     public void close() {
-        ConfigWatcher running = watcher;
-        watcher = null;
+        ChangeNotifier running = notifier;
+        notifier = null;
         if (running != null) {
             running.close();
         }
     }
 
     /**
-     * Re-reads every layer and publishes the result if it differs.
+     * Re-reads every layer now, and publishes the result if it differs.
      *
-     * @implNote Called only from the watcher thread, so reloads never overlap and the
-     *     compare-then-swap below needs no lock. It never throws: a rejected reload is
-     *     logged, reported to the failure listeners, and leaves the live snapshot alone.
+     * <p>Call this when something outside the registry knows the configuration changed and
+     * nothing is watching for it — a row updated in a database, a value refreshed from a
+     * configuration service. A registry watching files does not need it: the notifier calls
+     * the same code.
+     *
+     * <p>Reloading is safe to ask for at any time and from any thread. Reloads run one at a
+     * time, so this may wait for one already in flight; if that one publishes exactly what
+     * this one would have, this returns empty.
+     *
+     * <p><strong>Do not call this from a reload listener.</strong> Listeners run inside the
+     * reload, so a listener that reloads recurses.
+     *
+     * @return what changed, or empty when the reloaded configuration equals the one already
+     *     in effect. The comparison is record equality on the parsed configuration, not on
+     *     the text, so reformatting a layer changes nothing and publishes nothing.
+     * @throws ConfigValidationException if a layer cannot be read, parsed or validated
+     * @throws RuntimeException whatever a provider's builder threw. Nothing was swapped: the
+     *     previous snapshot stays live in full, and the failure listeners have already been
+     *     told.
      */
-    void reload() {
-        Map<String, LlmBundle> previous = bundles;
-        Map<String, LlmBundle> staged;
+    public Optional<ReloadChange> reload() {
+        // The lock covers read-work-write. Without it, two reloads read the same previous
+        // snapshot, both build, and the later write discards the earlier one in silence,
+        // after its listeners have already announced it. Readers never take this lock.
+        synchronized (reloadLock) {
+            Map<String, LlmBundle> previous = bundles;
+            Map<String, LlmBundle> staged;
+            try {
+                staged = loader.load(previous);
+            } catch (RuntimeException e) {
+                // ADR-0031: logged whether or not anyone listens, and whether or not this
+                // reload has a caller to throw to. Without it, a typo in a config file makes
+                // every later edit stop taking effect with no trace anywhere.
+                log.warn(
+                        "modelrack4j reload rejected; the previous configuration stays live: {}",
+                        e.getMessage(), e);
+                notify(failureListeners, new ReloadFailure(sources, e), "failure");
+                throw e;
+            }
+
+            ReloadChange change = ReloadChange.between(previous, staged);
+            if (change.isEmpty()) {
+                // A wakeup that turned out to change nothing: an unrelated file in a watched
+                // directory, a save that rewrote the same bytes, or an application asking
+                // for a reload after writing what was already there. Publishing here would
+                // hand out new instances of identical bundles for no reason.
+                return Optional.empty();
+            }
+
+            bundles = staged;   // THE swap: one write, whole snapshot, nothing torn
+            notify(reloadListeners, change, "reload");
+            return Optional.of(change);
+        }
+    }
+
+    /**
+     * Reloads on behalf of a {@link ChangeNotifier}, which has no caller to throw to.
+     *
+     * @implNote The rejection is not lost by being swallowed here: {@link #reload()} has
+     *     already logged it at WARN and delivered it to the failure listeners. Rethrowing
+     *     would only reach the notifier's own thread (ADR-0028).
+     */
+    void reloadQuietly() {
         try {
-            staged = loader.load(previous);
-        } catch (RuntimeException e) {
-            // ADR-0031: logged whether or not anyone listens. Without this, a typo in a
-            // config file makes every later edit stop taking effect with no trace anywhere,
-            // and this runs on the watcher thread, where there is no caller to throw to.
-            log.warn("modelrack4j reload rejected; the previous configuration stays live: {}",
-                    e.getMessage(), e);
-            notify(failureListeners, new ReloadFailure(configFiles, e), "failure");
-            return;
+            reload();
+        } catch (RuntimeException alreadyLoggedAndReported) {
+            // Deliberately swallowed; see the note above.
         }
-
-        ReloadChange change = ReloadChange.between(previous, staged);
-        if (change.isEmpty()) {
-            // A wakeup that turned out to change nothing: an unrelated file in a watched
-            // directory, or a save that rewrote the same bytes. Publishing here would hand
-            // out new instances of identical bundles for no reason.
-            return;
-        }
-
-        bundles = staged;   // THE swap: one write, whole snapshot, nothing torn
-        notify(reloadListeners, change, "reload");
     }
 
     private static <T> void notify(List<Consumer<T>> listeners, T event, String what) {
@@ -270,22 +331,77 @@ public final class LlmRegistry implements AutoCloseable {
     /** Collects the inputs for a registry and builds it. */
     public static final class Builder {
 
-        private List<Path> configFiles = List.of();
+        private List<ConfigSource> sources = List.of();
+        private List<Path> watchableFiles = List.of();
         private boolean watch;
         private Duration debounce = DEFAULT_DEBOUNCE;
+        private ChangeNotifier notifier;
 
         private Builder() {
         }
 
         /**
-         * Sets the configuration layers.
+         * Sets the configuration layers, as files. The shorthand for the common case.
+         *
+         * <p>Equivalent to {@link #sources(List)} over {@link ConfigSource#ofFile(Path)},
+         * except that these files stay available to {@link #watch(boolean)}, which needs
+         * real paths and cannot get them from a source.
+         *
+         * <p>This and {@link #sources(List)} set the same thing; the last call wins.
          *
          * @param files the layers, <strong>lowest precedence first</strong>, so the last
          *     entry wins on conflict
          * @return this builder
          */
         public Builder configFiles(List<Path> files) {
-            this.configFiles = List.copyOf(Objects.requireNonNull(files, "files"));
+            List<Path> copy = List.copyOf(Objects.requireNonNull(files, "files"));
+            List<ConfigSource> asSources = new ArrayList<>(copy.size());
+            for (Path file : copy) {
+                asSources.add(ConfigSource.ofFile(file));
+            }
+            this.sources = List.copyOf(asSources);
+            this.watchableFiles = copy;
+            return this;
+        }
+
+        /**
+         * Sets the configuration layers, from anywhere.
+         *
+         * <p>Use this when a layer is not a file — a row in a database, a value from a
+         * configuration service, text built in memory. Layers of different kinds mix freely:
+         * a base file under a database override is an ordinary list.
+         *
+         * <p>Nothing watches these, because the library cannot know how. Call
+         * {@link LlmRegistry#reload()} when the configuration changes, or supply a
+         * {@link #notifier(ChangeNotifier)} that knows when it does.
+         *
+         * <p>This and {@link #configFiles(List)} set the same thing; the last call wins.
+         *
+         * @param sources the layers, <strong>lowest precedence first</strong>
+         * @return this builder
+         */
+        public Builder sources(List<ConfigSource> sources) {
+            this.sources = List.copyOf(Objects.requireNonNull(sources, "sources"));
+            this.watchableFiles = List.of();
+            return this;
+        }
+
+        /**
+         * Supplies something that tells the registry when the configuration changed.
+         *
+         * <p>For a mechanism the library does not provide: a database
+         * {@code LISTEN}/{@code NOTIFY}, a Kubernetes informer, a message queue. For files,
+         * {@link #watch(boolean)} builds the right notifier already, and the two cannot both
+         * be set.
+         *
+         * <p>The registry owns it from {@link #build()} on, and closes it in
+         * {@link LlmRegistry#close()}.
+         *
+         * @param notifier the notifier, or {@code null} for none
+         * @return this builder
+         */
+        public Builder notifier(ChangeNotifier notifier) {
+            this.notifier = notifier;
             return this;
         }
 
@@ -295,7 +411,12 @@ public final class LlmRegistry implements AutoCloseable {
          * <p>Off by default. When on, the registry starts one daemon thread that watches the
          * directories holding the configured files; {@link LlmRegistry#close()} stops it.
          *
-         * @param watch whether to watch for changes
+         * <p>Only for layers given as {@link #configFiles(List) files}. With layers that are
+         * not files there is nothing to watch, and {@link #build()} says so rather than
+         * watching nothing in silence — supply a {@link #notifier(ChangeNotifier)} or call
+         * {@link LlmRegistry#reload()} instead.
+         *
+         * @param watch whether to watch the configured files for changes
          * @return this builder
          */
         public Builder watch(boolean watch) {
@@ -328,29 +449,48 @@ public final class LlmRegistry implements AutoCloseable {
         }
 
         /**
-         * Parses, validates and builds every configured bundle, then starts watching if
-         * watching was enabled.
+         * Parses, validates and builds every configured bundle, then starts the notifier if
+         * there is one.
          *
          * @return the registry
-         * @throws ConfigValidationException if any layer is unreadable, any block is
-         *     invalid, or any provider rejects its configuration
+         * @throws ConfigValidationException if no layer was given, two layers share an id,
+         *     any layer is unreadable, any block is invalid, any provider rejects its
+         *     configuration, or watching was asked for without files to watch
          * @throws UncheckedIOException if watching is enabled and a configured directory
          *     cannot be watched
          */
         public LlmRegistry build() {
-            SnapshotLoader loader = new SnapshotLoader(configFiles);
-            LlmRegistry registry =
-                    new LlmRegistry(configFiles, loader, loader.load(Map.of()));
-            if (watch) {
-                try {
-                    registry.watcher =
-                            ConfigWatcher.start(configFiles, debounce, registry::reload);
-                } catch (IOException e) {
-                    throw new UncheckedIOException(
-                            "Cannot watch the configuration files: " + e.getMessage(), e);
-                }
+            List<ConfigSource> layers = ConfigSources.validated(sources);
+            ChangeNotifier chosen = chooseNotifier();
+            SnapshotLoader loader = new SnapshotLoader(layers);
+            LlmRegistry registry = new LlmRegistry(layers, loader, loader.load(Map.of()));
+            if (chosen != null) {
+                registry.notifier = chosen;
+                chosen.start(registry::reloadQuietly);
             }
             return registry;
+        }
+
+        private ChangeNotifier chooseNotifier() {
+            if (notifier != null) {
+                if (watch) {
+                    throw new ConfigValidationException(
+                            "Set one of watch(true) and notifier(...), not both: watch(true)"
+                                    + " builds a file notifier of its own");
+                }
+                return notifier;
+            }
+            if (!watch) {
+                return null;
+            }
+            if (watchableFiles.isEmpty()) {
+                throw new ConfigValidationException(
+                        "watch(true) watches configuration files, and this registry has none"
+                                + " — its layers were given through sources(...). Supply a"
+                                + " ChangeNotifier, or call reload() when the configuration"
+                                + " changes.");
+            }
+            return FileChangeNotifier.of(watchableFiles, debounce);
         }
     }
 }
