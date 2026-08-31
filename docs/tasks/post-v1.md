@@ -2184,6 +2184,23 @@ example, which stopped being true when `DatabaseSource` arrived, and the `--help
 that a `.env` file in the repository root is loaded if present — worth stating plainly,
 because a key left there is used without being asked for.
 
+#### What this item changed in `CLAUDE.md`
+
+Two commits on this branch touch no P19 code and belong to it anyway: they add three rules to
+*Working practices*, each one paid for by a defect above, so the branch carries them rather
+than leaving the lesson in a commit message nobody re-reads.
+
+- **Reading the diff is not reading the file**, the next rung on the ladder that already went
+  grep → diff. `056360d` added a case at line 28 of `build/run-example.sh`; the lines it made
+  stale were at 76 and 139, and that diff's last hunk ended at 55.
+- **Prose that was true when written is what later code falsifies.** Both false statements
+  found in the manual were correct when committed — P3's and P4's — and were falsified by P19
+  and P18. Grep cannot find these, because the stale sentence and the new mechanism share no
+  vocabulary.
+- **And some of it was never true**, which needs a different check again: a wrapper makes
+  claims about code it does not contain, and `run-council.sh`'s promise of layering was
+  contradicted by an `args.length != 1` that had been there since M2.
+
 #### Carried over to the write item
 
 Two findings that belong to writing rather than to this item. Writing a whole block to the
