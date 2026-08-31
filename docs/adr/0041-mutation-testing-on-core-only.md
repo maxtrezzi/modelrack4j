@@ -1,6 +1,6 @@
 # ADR-0041: Run mutation testing on core only, never on a provider module
 
-- **Status:** Accepted
+- **Status:** Accepted — the deferred CI question amended by [ADR-0043](0043-keep-mutation-testing-out-of-ci.md)
 - **Date:** 2026-08-28
 - **Supersedes:** —
 - **Amends:** —
