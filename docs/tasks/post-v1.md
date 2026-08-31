@@ -1912,6 +1912,27 @@ watcher thread.
 `List.copyOf`, which rejects null elements itself — confirmed by running it rather than by
 reading the Javadoc.
 
+**A fifth, found only because the question was asked again.** The review reported four
+findings and stopped. Asked whether everything was fixed, the same check-then-act pattern
+turned out to be still sitting in `LlmRegistry.close()` — read the field, clear it, close it —
+which is the pattern the review had just removed from `FileChangeNotifier` two files away.
+Two threads closing at once could both call the notifier's `close()`, and the JDK is explicit
+that `AutoCloseable.close()`, unlike `Closeable.close()`, **is not required to be idempotent**
+(read out of `src.zip`, not recalled). With `ChangeNotifier` now a public extension point,
+that is calling an implementer outside their contract. It is one `getAndSet(null)`.
+
+The lesson is not about the defect, which is small. It is that a review that fixes what it
+reports can still leave the same defect in a file it did not name, and that "have you fixed
+everything?" is a different question from "what did you find?".
+
+**What that fifth fix could and could not be tested for.** The window is two instructions
+wide, so a test for it is probabilistic in a way the reload lock's is not. Measured against a
+deliberately broken `close()`: one round caught it in **3 runs out of 5**, and 40 rounds in
+**10 out of 11**. The first figure written into the test's Javadoc claimed 40 rounds caught it
+*every time* — written before it was measured, and wrong at the second attempt. The test keeps
+the measured numbers and says plainly that what makes the double close impossible is
+`getAndSet`, not the test.
+
 **Mutation testing then found that two of these fixes had no test.** The notifier-ownership
 path came back `NO_COVERAGE` on both of its lines: a safety path added and never exercised,
 which is precisely the case [ADR-0041](../adr/0041-mutation-testing-on-core-only.md) buys the
@@ -1921,13 +1942,13 @@ suppressed rather than lost.
 #### Verified
 
 - `mvn clean install` green offline. **8 modules** — parent, core, four providers, BOM,
-  examples — and **118 tests**: core 85 (69 before this item, plus 16 new), and 7, 8, 8, 10
+  examples — and **119 tests**: core 86 (69 before this item, plus 17 new), and 7, 8, 8, 10
   across the four provider modules.
 - **Exactly one existing test needed changing**, `ReloadTest`'s assertion on
   `ReloadFailure.configFiles()`, which now reads the sources' ids. Nothing else in the suite
   noticed, because `configFiles(List<Path>)` still means what it meant.
 - `build/check-docs.py` clean across 42 ADRs and 56 tracked files.
-- **Mutation testing on core: 146 mutants, 145 killed.** The one survivor is
+- **Mutation testing on core: 147 mutants, 146 killed.** The one survivor is
   `EmptyObjectReturnValsMutator` on `LlmRegistry.reload()`'s `return Optional.empty()` — the
   mutation substitutes `Optional.empty()`, so the mutant and the original are the same
   program and no test can tell them apart. An equivalent mutant, not a gap. Two further

@@ -77,6 +77,8 @@ public interface ConfigSource {
      * @param id the label, not blank
      * @param text the HOCON text
      * @return a source over that text
+     * @throws ConfigValidationException if the id is null or blank
+     * @throws NullPointerException if the text is null
      */
     static ConfigSource of(String id, String text) {
         return new FixedConfigSource(id, text);
@@ -87,6 +89,7 @@ public interface ConfigSource {
      *
      * @param file the file to read, decoded as UTF-8
      * @return a source over that file, identified by its path
+     * @throws NullPointerException if the file is null
      */
     static ConfigSource ofFile(Path file) {
         return new FileConfigSource(file);

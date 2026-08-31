@@ -26,6 +26,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -108,11 +109,16 @@ public final class LlmRegistry implements AutoCloseable {
     private volatile Map<String, LlmBundle> bundles;
 
     /**
-     * Null when nothing notifies this registry, and again once closed. Volatile because
-     * {@link #close()} may be called from a different thread than the one that built the
-     * registry.
+     * Empty when nothing notifies this registry, and again once closed.
+     *
+     * @implNote An {@link AtomicReference} rather than a volatile field because
+     *     {@link #close()} must call the notifier's own {@code close()} exactly once.
+     *     {@code AutoCloseable} does not promise that a second call is harmless — only
+     *     {@code Closeable} does — and this is a public extension point, so two threads
+     *     closing at once must not both get through. {@code getAndSet(null)} makes exactly
+     *     one of them win.
      */
-    private volatile ChangeNotifier notifier;
+    private final AtomicReference<ChangeNotifier> notifier = new AtomicReference<>();
 
     private LlmRegistry(List<ConfigSource> sources, SnapshotLoader loader,
             Map<String, LlmBundle> bundles) {
@@ -228,7 +234,9 @@ public final class LlmRegistry implements AutoCloseable {
      * <p>Waits for a reload the notifier had already started, so none of its listeners runs
      * after this returns. It does not wait for a {@link #reload()} another thread is running;
      * that call finishes on its own, and its listeners run. Calling this more than once is
-     * harmless, and a registry that is closed keeps serving the snapshot it last published.
+     * harmless — the notifier is closed exactly once whoever calls — and a registry that is
+     * closed keeps serving the snapshot it last published. {@link #reload()} still works on
+     * one: closing stops what was watching, not the registry.
      *
      * @implNote Bundles are deliberately not closed, including bundles a reload superseded.
      *     An in-flight request may still hold one, and LangChain4j model instances are
@@ -237,8 +245,7 @@ public final class LlmRegistry implements AutoCloseable {
      */
     @Override
     public void close() {
-        ChangeNotifier running = notifier;
-        notifier = null;
+        ChangeNotifier running = notifier.getAndSet(null);
         if (running != null) {
             running.close();
         }
@@ -468,7 +475,7 @@ public final class LlmRegistry implements AutoCloseable {
             SnapshotLoader loader = new SnapshotLoader(layers);
             LlmRegistry registry = new LlmRegistry(layers, loader, loader.load(Map.of()));
             if (chosen != null) {
-                registry.notifier = chosen;
+                registry.notifier.set(chosen);
                 startOrClose(chosen, registry);
             }
             return registry;

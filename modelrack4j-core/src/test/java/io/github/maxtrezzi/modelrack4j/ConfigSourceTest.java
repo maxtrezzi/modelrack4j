@@ -395,6 +395,75 @@ class ConfigSourceTest {
         }
     }
 
+    /**
+     * Closing from several threads must call the notifier's {@code close()} once.
+     *
+     * <p>Unlike the reload lock, this one is probabilistic, because the window between
+     * reading the field and clearing it is two instructions wide. The rounds are what make it
+     * usable. Measured against a deliberately broken {@code close()}: a single round caught
+     * the defect in 3 runs out of 5, and 40 rounds in 10 out of 11. Good enough to defend the
+     * fix, not a proof — what actually makes the double close impossible is
+     * {@code getAndSet}, and this test is here so that removing it is noticed.
+     */
+    @Test
+    @DisplayName("the notifier is closed exactly once, however many threads close the registry")
+    void theNotifierIsClosedExactlyOnce() throws InterruptedException {
+        int threads = 4;
+        int rounds = 40;
+        ExecutorService pool = Executors.newFixedThreadPool(threads);
+        try {
+            for (int round = 0; round < rounds; round++) {
+                AtomicInteger closes = new AtomicInteger();
+                LlmRegistry registry = LlmRegistry.builder()
+                        .sources(List.of(ConfigSource.of("row#1", block("SL", "m"))))
+                        .notifier(new CountingNotifier(closes))
+                        .build();
+
+                CountDownLatch go = new CountDownLatch(1);
+                List<Future<?>> closing = new ArrayList<>(threads);
+                for (int i = 0; i < threads; i++) {
+                    closing.add(pool.submit(() -> {
+                        go.await();
+                        registry.close();
+                        return null;
+                    }));
+                }
+                go.countDown();
+                for (Future<?> f : closing) {
+                    assertThatCode(f::get).doesNotThrowAnyException();
+                }
+
+                // AutoCloseable.close() is explicitly not required to be idempotent, and
+                // this is a public extension point, so a second call would be outside the
+                // implementer's contract rather than merely wasteful.
+                assertThat(closes).hasValue(1);
+            }
+        } finally {
+            pool.shutdownNow();
+            assertThat(pool.awaitTermination(30, TimeUnit.SECONDS)).isTrue();
+        }
+    }
+
+    /** Counts how often the registry closed it. */
+    private static final class CountingNotifier implements ChangeNotifier {
+
+        private final AtomicInteger closes;
+
+        CountingNotifier(AtomicInteger closes) {
+            this.closes = closes;
+        }
+
+        @Override
+        public void start(Runnable onChange) {
+            // Nothing to start: this test is about closing.
+        }
+
+        @Override
+        public void close() {
+            closes.incrementAndGet();
+        }
+    }
+
     /** A notifier that does nothing until a test fires it by hand. */
     private static final class NoopNotifier implements ChangeNotifier {
 
