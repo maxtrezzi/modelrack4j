@@ -153,7 +153,11 @@ and the current LTS (ADR-0026).
 module, to `modelrack4j-examples`, or to the parent POM — the parent inherits it into every
 module, and because the goal is bound to no lifecycle phase this stays invisible until someone
 runs `mutationCoverage` from the reactor root, at which point the bill is the error message.
-`mvn clean install` is unaffected. `mutationThreshold` is `0` on purpose: the deliverable is
+`mvn clean install` is unaffected. **It is also never in CI, in any form (ADR-0043)** — not a
+required check, not an optional job, not a nightly: a full run is 122 s against a whole gate of
+about 42 s, and more to the point a job at `mutationThreshold = 0` is permanently green while
+one equivalent mutant makes any threshold either permanently red or arbitrary. Run it by hand,
+on a tree that has stopped moving. `mutationThreshold` is `0` on purpose: the deliverable is
 the survivor list in `target/pit-reports/`, not the score, and a survivor is a question about
 the tests rather than a defect. P17 is the worked example — four defects in the suite, none in
 the code, and the most useful one was a test whose *name* described a contract its assertion
@@ -362,7 +366,7 @@ in-flight requests may still hold them.
   readers already hold the context, and an accepted ADR's body cannot be edited anyway. Do
   not "fix" their register, and do not let a user-facing paragraph drift back toward it.
 - **`docs/tasks/open-decisions.md` needs the owner.** Ask; do not decide unilaterally.
-  D1–D3 are all settled, so the file is currently a record rather than a queue — a new
+  D1–D4 are all settled, so the file is currently a record rather than a queue — a new
   entry there is a question for the owner, not work to pick up.
 - The §2 decision table in `brainstorm/PLAN.md` is closed: do not reopen those choices
   without asking. The ADRs carry the same decisions with their reasoning.
