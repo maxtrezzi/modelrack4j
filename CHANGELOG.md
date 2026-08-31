@@ -54,7 +54,10 @@ than listed as one long **Added** block.
   previous one live. Reloads run one at a time, no matter who asks for one; readers never wait.
 - `ChangeNotifier` is the extension point for telling the registry that configuration
   changed by a mechanism the library does not provide, such as a database `LISTEN`/`NOTIFY`.
-  `Builder.watch(true)` builds the file one for you.
+  `Builder.watch(true)` builds the file one for you. That one is `FileChangeNotifier`, and it
+  is public: build it yourself with `FileChangeNotifier.of(files, debounce)` and pass it to
+  `Builder.notifier(...)` when only some of your layers are files, so the file half is still
+  watched. A `close()` must not wait forever — it can be called while a reload is running.
 - Reload is **atomic across the whole snapshot**: parse, validate and build every changed
   bundle in a staging area, then swap one reference. Any failure anywhere swaps nothing and
   fires `onReloadFailure` once, leaving the previous snapshot live.
