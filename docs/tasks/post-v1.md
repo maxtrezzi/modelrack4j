@@ -2152,6 +2152,38 @@ and prose, and the fifth changed an exception type nobody could have depended on
 `0.1.0-SNAPSHOT`. The deadlock is reachable only through a documented-as-forbidden call, and
 it is now documented as forbidden.
 
+#### The commands that launch the examples
+
+Checked after the fifth example was added, because
+[P18](#p18--the-distance-between-arriving-and-running-something) built the launcher for four
+and P19 made it five. The five scripts, their main classes, the Windows `mvn` commands they
+print and their refusal paths were right. Three things were not.
+
+**The reference said `ConsoleChat` needs "one provider key". It needs two.** The shipped
+`examples.conf` puts `SL` and `SH` on anthropic and `CR` on openai, all three with mandatory
+substitution, so the registry fails to build before any request is sent. Run with only
+`ANTHROPIC_API_KEY` set, the message is `Could not resolve substitution to a value:
+${OPENAI_API_KEY}` at `examples.conf` line 40. The script had always demanded both; it was the
+manual that disagreed with it, and the script was right.
+
+**A configuration path was passed to Maven exactly as typed**, while `exec:java` runs from the
+repository root. A path relative to the directory the caller was standing in therefore passed
+the script's existence check and was then not found — the check looked in two places and the
+run looked in one. Paths are resolved to absolute before the exec now, repository-relative
+first so the paths `--help` prints keep working from anywhere. A path containing a space is
+refused with a message, because `-Dexec.args` splits on whitespace and the example would
+receive two paths.
+
+**`run-council.sh --help` promised layering that `ThreeModelCouncil` does not do.** It reads
+`args[0]` and rejects anything else, so a second file made it print its own usage line after
+Maven had started. Only `ConsoleChat` layers; the help now says so per example, and the extra
+file is refused by the script before Maven runs.
+
+Two smaller ones: the scripts pointed anyone missing a key at `./run-atomic.sh` as *the* free
+example, which stopped being true when `DatabaseSource` arrived, and the `--help` now says
+that a `.env` file in the repository root is loaded if present — worth stating plainly,
+because a key left there is used without being asked for.
+
 #### Carried over to the write item
 
 Two findings that belong to writing rather than to this item. Writing a whole block to the
