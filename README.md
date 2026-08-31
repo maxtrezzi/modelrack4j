@@ -266,9 +266,10 @@ Start with `AtomicSnapshot` if you want to see the least obvious guarantee at no
 ```
 
 One script per example — `run-atomic.sh`, `run-database.sh`, `run-swap.sh`, `run-chat.sh`,
-`run-council.sh` — each with a `--help` that says what it shows and what it costs. They install the project first
-if they have to, because `exec:java` resolves `modelrack4j-core` from `~/.m2` rather than from
-the reactor. There are no `.bat` counterparts: on Windows, run the command `--help` prints.
+`run-council.sh` — each with a `--help` that says what it shows and what it costs. They
+install the project first if they have to, because `exec:java` resolves `modelrack4j-core`
+from `~/.m2` rather than from the reactor. There are no `.bat` counterparts: on Windows,
+run the command `--help` prints.
 
 ```bash
 mvn install
@@ -439,9 +440,9 @@ registry.onReloadFailure(failure ->
 - **Ask for consistency when you need it.** `registry.get(name)` reads the live
   configuration on every call — that is what makes reload work, and it means **a reload can
   land between two consecutive calls**, so they return models built from two different
-  generations of the configuration. Rare (measured at roughly two per million read pairs under a reload every few
-  milliseconds) but reproducible, and a correctness hazard wherever several models must
-  agree. Where they must, take a snapshot:
+  generations of the configuration. Rare (measured at roughly two per million read pairs
+  under a reload every few milliseconds) but reproducible, and a correctness hazard wherever
+  several models must agree. Where they must, take a snapshot:
 
   ```java
   LlmSnapshot models = registry.snapshot();   // one read of the current generation

@@ -103,8 +103,9 @@ than listed as one long **Added** block.
   every answer `reload()` gives: a name added, a name updated, nothing changed, and a
   rejected reload after which the previous configuration is still live. It needs no key.
 - One script per example at the repository root — `run-atomic.sh`, `run-database.sh`,
-  `run-swap.sh`, `run-chat.sh`, `run-council.sh`. Each installs the project first if it has to, because
-  `exec:java` resolves `modelrack4j-core` from `~/.m2` rather than from the reactor, and each
+  `run-swap.sh`, `run-chat.sh`, `run-council.sh`. Each installs the project first if it has
+  to, because `exec:java` resolves `modelrack4j-core` from `~/.m2` rather than from the
+  reactor, and each
   `--help` says what that example shows, what it costs, which keys it needs and the plain
   `mvn` command for Windows, where there are no `.bat` counterparts.
 - The configuration the file-driven examples read is `examples.conf`. It was called

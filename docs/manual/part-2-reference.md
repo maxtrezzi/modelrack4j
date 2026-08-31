@@ -130,9 +130,9 @@ mvn -q -pl modelrack4j-examples exec:java \
 
 `./run-atomic.sh` from the repository root does the same thing, and installs first if it has
 to. There is one script per example — `run-atomic.sh`, `run-database.sh`, `run-swap.sh`,
-`run-chat.sh`, `run-council.sh` — and each `--help` gives what that example shows, what it costs, which keys
-it needs and the plain `mvn` command to use on Windows, since there are no `.bat`
-counterparts.
+`run-chat.sh`, `run-council.sh` — and each `--help` gives what that example shows, what it
+costs, which keys it needs and the plain `mvn` command to use on Windows, since there are no
+`.bat` counterparts.
 
 ---
 
@@ -408,9 +408,10 @@ The registry owns whatever notifier it was given, from a successful `build()` un
 
 `get()` reads the live configuration on every call. That is what makes a reload visible, and
 it means **a reload can land between two consecutive calls**, so the two calls return bundles
-built from two different generations of the configuration. It is rare — measured at roughly two per million pairs of
-reads while a reload ran every few milliseconds — but it is reproducible, and where several
-models have to agree it is a correctness problem rather than a cosmetic one.
+built from two different generations of the configuration. It is rare — measured at roughly
+two per million pairs of reads while a reload ran every few milliseconds — but it is
+reproducible, and where several models have to agree it is a correctness problem rather than
+a cosmetic one.
 
 `snapshot()` reads the published generation once and hands it back:
 

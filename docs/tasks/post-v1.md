@@ -307,7 +307,13 @@ merges, the freeze applies normally and a further correction goes in a new ADR.
 
 The reference promises *"every configuration key, every public method"*. Asked whether the
 manual needed more, the answer came from `javap` over the built jar rather than from reading:
-**17 public types, 67 public members, and 2 undocumented.**
+**17 public types, 67 public methods, and 2 undocumented.** Methods, not members: the count
+excludes the 9 public constructors, and counting those too gives 76. The rule matters more
+than the number, because without it the figure cannot be re-run — a later check read
+"members" literally, got 76, and started writing a correction to a figure that was right.
+To reproduce it: unpack the built core jar, run `javap` over every class in it, keep the
+members of the types `javap` prints as `public`, and drop `equals`, `hashCode`, `toString`
+and the enum's `values` and `valueOf`.
 
 Four gaps, three of them introduced by this item:
 
@@ -336,7 +342,8 @@ interface. This also settles a claim made while reviewing P16 and reported as a 
 that `unknownType` was already package-private and P16 had counted three where there were two.
 **P16 was right and that claim was wrong**: `javap` prints `public static`.
 
-This audit is true on **2026-08-31**, and stops being true the next time the API grows.
+This audit is true on **2026-08-31**, and stops being true the next time the API grows. It
+was re-run unchanged after the fourth review pass, which added no public member.
 
 #### Verified
 
