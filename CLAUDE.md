@@ -339,6 +339,19 @@ in-flight requests may still hold them.
   vocabulary, which is why every one of these was found by reading rather than by searching.
   A completeness audit cannot help here either — enumerating the API finds a member no
   document mentions, and is structurally blind to a member some document describes wrongly.
+- **And some of it was never true: a wrapper makes claims about code it does not contain.**
+  P18 built `build/run-example.sh` over five Java mains and gave `run-chat.sh` and
+  `run-council.sh` one shared `takes_config` flag, so a single branch printed ConsoleChat's
+  wording for both: "Pass several files to see layering". `ThreeModelCouncil` has rejected
+  anything but one argument since M2 (`d382c16`), and that `args.length != 1` was sitting in
+  the file at `1be72e4`, the commit that promised the opposite. The sentence was false the day
+  it was written, contradicted by code nobody opened. The other P18 defect in the same file
+  needed a different check again: a configuration path was verified against two directories
+  and then handed verbatim to a Maven run that looks in one, which no amount of reading
+  reveals and the first run from another directory does. So when you write something that
+  describes code elsewhere — a script's help, a README command, a manual's account of an
+  example — open that code, and run the thing in the configuration your text claims to
+  support.
 - **User-facing prose has a register, and it is not this file's (ADR-0039).** The README,
   `docs/manual/`, public Javadoc, the commented `.conf` examples, `CONTRIBUTING.md` and the
   CHANGELOG are written for a technical reader at roughly B2 English who does not read it as
