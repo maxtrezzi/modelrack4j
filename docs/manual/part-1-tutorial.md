@@ -410,7 +410,8 @@ mvn -q -pl modelrack4j-examples exec:java \
     -Dexec.args=modelrack4j-examples/src/main/resources/examples.conf
 ```
 
-Needs both `ANTHROPIC_API_KEY` and `OPENAI_API_KEY`. It asks each model the same question and
+Needs both `ANTHROPIC_API_KEY` and `OPENAI_API_KEY`. It asks you for a question on standard
+input — press Enter to take the default one — then puts that same question to each model and
 prints what each one has.
 
 Look at what the code does *not* do:

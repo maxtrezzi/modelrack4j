@@ -115,7 +115,9 @@ than listed as one long **Added** block.
   proxy with a `@Tool` method instead of calling the model directly — built on the bundle
   that turn fetched, which is how a reload reaches code that uses `AiServices`.
 - `ThreeModelCouncil`, an example that asks one question of three models configured together
-  and prints the three answers, with no provider branch anywhere in the code.
+  and prints the three answers, with no provider branch anywhere in the code. The question is
+  read from standard input, so it is yours rather than a fixed one; press Enter for the
+  default, or pipe a line in to script it.
 - `DatabaseSource`, an example whose configuration is held in memory rather than in a file,
   standing in for a database row, driven by the application itself. It shows every answer
   `reload()` gives — a name added, a name updated, nothing changed, and a rejected reload
@@ -127,7 +129,9 @@ than listed as one long **Added** block.
   to, because `exec:java` resolves `modelrack4j-core` from `~/.m2` rather than from the
   reactor, and each
   `--help` says what that example shows, what it costs, which keys it needs and the plain
-  `mvn` command for Windows, where there are no `.bat` counterparts.
+  `mvn` command for Windows, where there are no `.bat` counterparts. They also keep the JDK
+  warning about `sun.misc.Unsafe` out of the example's output: `exec:java` runs inside the
+  Maven process, and it is Maven's own bundled Guava that triggers it, not this project.
 - The configuration the file-driven examples read is `examples.conf`. It was called
   `council.conf`, which named only one of the two examples that use it.
 - The bundled examples set no `temperature` on their Anthropic blocks. Anthropic has

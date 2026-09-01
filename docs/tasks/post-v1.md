@@ -2524,3 +2524,85 @@ diff before committing, which is the check `CLAUDE.md` asks for.
 - `build/check-docs.py`: 44 ADRs, 58 tracked markdown files, no problems.
 - No ADR: [ADR-0003](../adr/0003-bundle-holds-config-shaped-inputs-only.md) already draws this
   boundary where the work leaves it, and nothing about the scope moved.
+
+---
+
+### P22 — The council asks your question, and Maven's warning stops landing in the output
+
+**Status:** Done 2026-09-01 · **Branch:** `task/p22-council-asks-your-question`
+
+Two complaints from one run of `./run-council.sh`, both about what the terminal showed rather
+than about the library: the example asks a question the reader did not choose, and four lines
+of JVM warning arrive before it.
+
+#### The question is now an input
+
+`ThreeModelCouncil` had one fixed question in a `private static final String PROMPT`. It now
+prints the default, reads one line from standard input, and uses the default when that line is
+empty or standard input has already ended. So `./run-council.sh` is interactive, and
+`echo "..." | ./run-council.sh` scripts it.
+
+Standard input rather than a second command-line argument, and the reason is in the launcher
+already: `exec:java` splits `-Dexec.args` on whitespace, which is why `build/run-example.sh`
+refuses a configuration path containing a space. A question does not survive that split
+either.
+
+It is asked **after** the registry is built and the names are printed, and **before** the first
+request. After, so a configuration that does not parse costs nobody a typed question; before,
+so all three models get the same one — asking per model would make the example a chat, and the
+point of it is three answers to one question.
+
+The reader is not closed, on purpose: closing a `BufferedReader` wrapped around `System.in`
+closes `System.in` with it.
+
+#### The warning was Maven's, not ours
+
+The block is four lines, three of which name the method:
+
+```
+WARNING: A terminally deprecated method in sun.misc.Unsafe has been called
+WARNING: sun.misc.Unsafe::objectFieldOffset has been called by
+         com.google.common.util.concurrent.AbstractFuture$UnsafeAtomicHelper
+         (file:/usr/share/maven/lib/guava.jar)
+```
+
+`mvn -pl modelrack4j-examples dependency:tree | grep -c guava` is **0**: Guava is not a
+dependency of this project, directly or transitively. The jar is the copy Maven itself ships
+(Guava 32.0.1 in Maven 3.8.7 on this machine), and the same warning appears when running
+`dependency:tree`, which executes no example code at all. It reaches the example's output
+because `exec:java` runs the main class **inside the Maven process**. JDK 24 and later warn on
+every `sun.misc.Unsafe` memory-access call, so a newer JDK made a pre-existing call visible.
+
+`build/run-example.sh` now exports
+`MAVEN_OPTS=--sun-misc-unsafe-memory-access=allow`, which permits the call without the
+warning. Verified: `./run-atomic.sh 2>&1 | grep -c 'sun.misc.Unsafe'` is `0`; the same
+`exec:java` run with `MAVEN_OPTS` unset gives `3`.
+
+**The flag is probed, not assumed.** It does not exist before JDK 23, and an unrecognised
+launcher option makes the JVM fail to start rather than being ignored:
+`-XX:+IgnoreUnrecognizedVMOptions` covers `-XX` options, not launcher ones. This project's
+floor is Java 17
+([ADR-0019](../adr/0019-target-java-17.md)), so the script runs
+`java --sun-misc-unsafe-memory-access=allow -version` first and only exports the flag if that
+succeeds. `$JAVA_HOME` is preferred over the `java` on `PATH`, because that is the JVM Maven
+will use.
+
+This is a launcher fix, so it applies to all five examples, not only the council.
+
+#### Verified
+
+Run live on the machine in this repository's measurement note (AMD Ryzen 7 7840HS, Pop!_OS
+24.04, Temurin 25, Maven 3.8.7):
+
+- `echo "In one short sentence: what is a configuration layer?" | ./run-council.sh` — three
+  real requests, three answers to *that* question, and no warning in the output.
+- The default path, driven for free by pointing the example at a configuration holding a
+  deliberately invalid key: an empty line on standard input printed
+  `(using the default question)` and went on to the request, which failed with the expected
+  401. The prompt and the fallback are exercised before any money is spent.
+- `./run-council.sh --help` re-read after editing `build/run-example.sh`.
+
+#### No ADR
+
+Nothing here constrains future code. The example's question was never a decision, and the
+`MAVEN_OPTS` line changes how a script invokes Maven, not what the library does.

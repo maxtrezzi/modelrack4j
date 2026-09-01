@@ -97,6 +97,7 @@ Phase 0 gates everything else; nothing below M0 should start before its blockers
 | [P19](post-v1.md#p19--configuration-sources-and-a-reload-the-application-can-ask-for) | Configuration sources, and a reload the application can ask for | **Done** — a layer can be a database row; ADR-0042 |
 | [P20](post-v1.md#p20--writing-a-configuration-layer-back) | Writing a configuration layer back | **Done** — validate before storing; the edit API built and removed; ADR-0044 |
 | [P21](post-v1.md#p21--what-the-library-leaves-available-said-out-loud) | What the library leaves available, said out loud | **Done** — *configuring* those from a file is what is out of scope; `ConsoleChat` gained `/tools`, and the example set stayed at five |
+| [P22](post-v1.md#p22--the-council-asks-your-question-and-mavens-warning-stops-landing-in-the-output) | `ThreeModelCouncil` reads its question, and the launcher silences a warning that is not ours | **Done** — the question comes from standard input; `--sun-misc-unsafe-memory-access=allow`, probed rather than assumed |
 | [D1](open-decisions.md#d1--glm-route-if-no-maintained-module-exists) | GLM route if no maintained module | **Closed** — never became live |
 | [D2](open-decisions.md#d2--repository-visibility) | Repository visibility | **Settled** — public, not released; ADR-0034 |
 | [D3](open-decisions.md#d3--token-window-memory-on-a-remote-estimator) | Token-window memory on a remote estimator | **Settled** — opt-in flag |

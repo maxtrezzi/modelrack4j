@@ -17,6 +17,10 @@ package io.github.maxtrezzi.modelrack4j.examples;
 
 import io.github.maxtrezzi.modelrack4j.LlmBundle;
 import io.github.maxtrezzi.modelrack4j.LlmRegistry;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.List;
 
@@ -34,6 +38,13 @@ import java.util.List;
  *     -Dexec.args=modelrack4j-examples/src/main/resources/examples.conf
  * }</pre>
  *
+ * <p>It asks you for the question first, on standard input, and uses a default one if you
+ * press Enter. A piped line works too, which is how it is driven in a script:
+ *
+ * <pre>{@code
+ * echo "Name one risk of caching a bundle in a field." | ./run-council.sh
+ * }</pre>
+ *
  * <p>Note what this demonstrates about the API: the registry is asked for a bundle at the
  * point of use, never cached in a field. That is the habit the holder API exists to
  * encourage, and it is what makes hot reload reach this code: a bundle kept in a field
@@ -41,7 +52,7 @@ import java.util.List;
  */
 public final class ThreeModelCouncil {
 
-    private static final String PROMPT =
+    private static final String DEFAULT_QUESTION =
             "In one sentence: why do layered configuration files resolve after merging?";
 
     private ThreeModelCouncil() {
@@ -51,8 +62,9 @@ public final class ThreeModelCouncil {
      * Loads the configuration and asks each named model the same question.
      *
      * @param args one argument: the path to a configuration file
+     * @throws IOException if the question cannot be read from standard input
      */
-    public static void main(String[] args) {
+    public static void main(String[] args) throws IOException {
         if (args.length != 1) {
             System.err.println("usage: ThreeModelCouncil <config-file>");
             System.exit(2);
@@ -64,6 +76,11 @@ public final class ThreeModelCouncil {
                 .build()) {
 
             System.out.println("configured names: " + registry.names());
+
+            // Asked after the configuration has loaded, so a file that does not parse costs
+            // nobody a typed question, and before the first request, so every model gets the
+            // same one.
+            String question = readQuestion();
 
             for (String name : registry.names()) {
                 // Asked for on every use, deliberately. See the class javadoc.
@@ -79,8 +96,37 @@ public final class ThreeModelCouncil {
                         + bundle.moderationModel().isPresent());
                 System.out.println("  memory configured: "
                         + bundle.chatMemoryProvider().isPresent());
-                System.out.println("  answer: " + bundle.chatModel().chat(PROMPT));
+                System.out.println("  answer: " + bundle.chatModel().chat(question));
             }
         }
+    }
+
+    /**
+     * Reads the question every model will be asked, or returns the default one.
+     *
+     * <p>Standard input rather than a second command-line argument: {@code exec:java} splits
+     * {@code -Dexec.args} on whitespace, which a question does not survive.
+     *
+     * @return the line that was typed or piped in, or {@link #DEFAULT_QUESTION} when it is
+     *     empty or standard input has already ended
+     * @throws IOException if standard input cannot be read
+     */
+    private static String readQuestion() throws IOException {
+        System.out.println();
+        System.out.println("The question every configured model will be asked.");
+        System.out.println("Press Enter for: " + DEFAULT_QUESTION);
+        System.out.print("> ");
+        System.out.flush();
+
+        // Not closed on purpose: closing this reader would close System.in with it.
+        BufferedReader console =
+                new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
+        String line = console.readLine();
+        String question = line == null ? "" : line.trim();
+        if (question.isEmpty()) {
+            System.out.println("(using the default question)");
+            return DEFAULT_QUESTION;
+        }
+        return question;
     }
 }
