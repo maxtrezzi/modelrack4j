@@ -2372,7 +2372,7 @@ own" of the exception table, and there are four.
 
 ### P21 — What the library leaves available, said out loud
 
-**Status:** Not started · **Branch:** `task/p21-advanced-langchain4j-stays-available`
+**Status:** Done · **Branch:** `task/p21-advanced-langchain4j-stays-available`
 
 The documentation reads as if the advanced parts of LangChain4j were unavailable to a
 modelrack4j user. They are not. The library instantiates the models and hands them over;
@@ -2413,7 +2413,8 @@ the scope does not move: this is wording plus a demonstration, so it produces no
 
 The owner's steer, 2026-09-01: **the set of examples is itself a candidate for a clean-up,
 and this item must not grow it by default.** Five mains exist today — `AtomicSnapshot` (244
-lines), `ConsoleChat` (371), `DatabaseSource` (181), `ProviderSwap` (164) and
+lines), `ConsoleChat` (371), `DatabaseSource` (233 — this entry first said 181, corrected
+2026-09-01 by `wc -l` at `8232bf3` and at `a143b43`), `ProviderSwap` (164) and
 `ThreeModelCouncil` (86). P20 added no example, so five is still the number. Before writing a
 sixth, ask which of the five still earn their place, whether any two are the same
 demonstration in different words, and whether the `AiServices` part belongs inside one that
@@ -2439,3 +2440,87 @@ dependency** (`mvn -o -pl modelrack4j-examples dependency:list`, 2026-09-01).
 of the examples in the README and the manual all have to move together. P18 shipped a
 launcher whose help described code it did not contain, and P19 left the launcher's "the free
 example is `./run-atomic.sh`" line stale in two places a diff never showed.
+
+#### The example set: five stays five
+
+Nothing was added and nothing was removed. Each of the five pins a claim no other one pins:
+`AtomicSnapshot` the torn read between two `get()` calls, `DatabaseSource` a layer that is not
+a file and the `store()` order, `ProviderSwap` the provider changing under a call site that
+names none, `ConsoleChat` the interactive whole, `ThreeModelCouncil` several names answering
+one question. The closest pair is `ConsoleChat` and `ThreeModelCouncil` — both loop over
+`names()` and both read capabilities off the bundle — and they still part company on the thing
+each exists for: the council asks all three the *same* question in one run, which is the
+scenario the README opens with, and it does it in 86 lines. Removing it would cost the
+coordinated update in five places and buy nothing.
+
+So the `AiServices` demonstration went inside `ConsoleChat`, as the entry above expected. It
+is a `/tools` command: typed during a chat it toggles the answering path, and the questions
+that follow go through an `AiServices` proxy built on the bundle *that turn* fetched, with one
+`@Tool` method (a clock) that prints when it runs. The toggle resets on entering a
+configuration, the same way the memory does. Three things made it worth putting here rather
+than in a sixth main:
+
+- The per-turn `registry.get(name)` was already there, so the AiService inherits it. The
+  point being demonstrated — an assistant built once at start-up holds that snapshot's
+  `ChatModel` for ever — is the cached-bundle mistake one level up, and it is visible only
+  next to code that does the right thing.
+- The bundle's `ChatMemoryProvider` goes straight into `AiServices.chatMemory(...)`, which is
+  what [ADR-0004](../adr/0004-expose-chatmemoryprovider.md) exposed it for, and the same
+  `ChatMemory` serves both paths — so toggling mid-conversation keeps the history. Verified
+  live, below.
+- No new script, no new `--help`, no new row in the two example tables: the update was one
+  sentence in each of the places that already describe `ConsoleChat`.
+
+The AiService path calls `chatModel()` even when the configuration also builds a streaming
+model. An AiService streams by declaring a `TokenStream` return type, which is a second method
+rather than a second object, and a demonstration of `@Tool` does not need it.
+
+#### The wording, and a fourth place the entry had not found
+
+The three passages the entry named were all fixed: the README pitch, and both **Out of scope**
+lists. The fix is the same in each — the scope boundary is now stated as *configuring* those
+features from a file, and the sentence that says using them is unaffected sits in the bullet
+rather than after it. `README.md` and `part-2-reference.md` each gained a section, **What you
+still write yourself**, with the `AiServices.builder(...)` code and the rule that it is built
+at the point of use.
+
+Two further places said it, and only one was findable by grepping for the words the entry
+quoted:
+
+- `CONTRIBUTING.md` — "`AiServices`, tools, RAG, retry and fallback pools are all on that
+  list". Same defect, different wording, in the file an outside contributor reads *first*.
+- `CLAUDE.md`'s own scope-boundaries list, which is exempt from the register rule but not from
+  being current. It now separates configuring from using, and says not to let the wording
+  drift back.
+
+`docs/manual/part-1-tutorial.md` gained a short paragraph at the end of step 10, where the
+caching rule already lives, because the two rules are the same rule.
+
+The first draft of the fix over-claimed in the same way the text it was fixing did. It said
+`AiServices`, `@Tool` methods, RAG retrievers and guardrails "take a `ChatModel`, a
+`StreamingChatModel`, a `ModerationModel` or a `ChatMemoryProvider` as their input", in three
+places. Only the AiService does. `javap` over the aggregate shows guardrails and retrievers
+arriving through `inputGuardrails(...)`, `outputGuardrails(...)` and `contentRetriever(...)`
+on the same builder, and a retriever's own input is an `EmbeddingModel`, which this library
+does not build at all. All three passages now say the accurate thing — they are registered on
+an `AiServices`, and a bundle holds what the `AiServices` is built from — and the two
+user-facing ones add that RAG needs an `EmbeddingModel` of your own. Caught by reading the
+diff before committing, which is the check `CLAUDE.md` asks for.
+
+#### Verified
+
+- `mvn -B clean verify` green with every provider key unset: **137 tests in core**, unchanged,
+  because no library module was touched. The only Java changed is `ConsoleChat`.
+- Run live, twice, on the machine in this repository's measurement note (AMD Ryzen 7 7840HS,
+  Pop!_OS 24.04, Temurin 25), by piping a scripted conversation into `./run-chat.sh`:
+  - `CR` (OpenAI `gpt-5.1`, moderated, **no** memory): `/tools`, then "What time is it right
+    now?" — one moderation call, then the tool call printed by `now()`, then an answer
+    carrying the value the tool returned.
+  - `SL` (Anthropic `claude-sonnet-5`, `message-window` memory): a direct turn asking it to
+    remember a number, then `/tools`, then a question needing both the number and the time —
+    the answer had both, so the `ChatMemory` really is shared across the toggle.
+  Five chat calls and one moderation call in total.
+- `./run-chat.sh --help` re-read after editing `build/run-example.sh`.
+- `build/check-docs.py`: 44 ADRs, 58 tracked markdown files, no problems.
+- No ADR: [ADR-0003](../adr/0003-bundle-holds-config-shaped-inputs-only.md) already draws this
+  boundary where the work leaves it, and nothing about the scope moved.

@@ -486,6 +486,12 @@ Council(LlmRegistry registry) { this.model = registry.get("SL").chatModel(); }
 Nothing throws when you get this wrong. The reload happens, the file changes, and your model
 quietly stays as it was. Inject the **registry**, not a `ChatModel`.
 
+`AiServices`, `@Tool` methods and RAG are unaffected by all of this. You register them on an
+`AiServices`, which is built from the `ChatModel` a bundle holds, so you write them as you
+would without this library — and you build them at the point of use, for the reason above. Part 2 has the code in [What you still write
+yourself](part-2-reference.md#what-you-still-write-yourself), and `./run-chat.sh` runs it:
+type `/tools` during a chat and ask what time it is.
+
 ---
 
 ## If your configuration is not in a file

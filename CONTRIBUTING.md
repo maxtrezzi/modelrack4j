@@ -17,8 +17,10 @@ Two documents will answer most "would you take a PR for X?" questions faster tha
 will:
 
 - **[Out of scope](README.md#out-of-scope)** — things this library will deliberately never do.
-  `AiServices`, tools, RAG, retry and fallback pools are all on that list, and the answer for
-  them is settled rather than undecided.
+  Configuring `AiServices`, tools and RAG from a file is on that list, with retry and fallback
+  pools, and the answer for them is settled rather than undecided. *Using* those features is
+  not on it and needs nothing from us: a bundle holds the objects they take — see
+  [What you still write yourself](README.md#what-you-still-write-yourself).
 - **[`docs/adr/`](docs/adr/README.md)** — every design decision, with the alternatives that
   were rejected and why. If a change would contradict one of these, that is not a blocker, but
   the discussion starts from the reasoning already recorded there rather than from scratch.

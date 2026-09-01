@@ -45,7 +45,8 @@ rejected change offered through store(), which refuses it before the row is writ
         layered=true
         cost="a conversation"
         shows="An interactive menu of every configured model. Edit the configuration while it
-runs and the menu changes underneath you."
+runs and the menu changes underneath you. Type /tools during a chat and the next questions go
+through an AiService with a @Tool method, built on that turn's bundle."
         ;;
     council)
         script="run-council.sh"; main="ThreeModelCouncil"; needs_keys=true;  takes_config=true

@@ -15,12 +15,15 @@
  */
 package io.github.maxtrezzi.modelrack4j.examples;
 
+import dev.langchain4j.agent.tool.Tool;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.memory.ChatMemory;
 import dev.langchain4j.model.chat.response.ChatResponse;
 import dev.langchain4j.model.chat.response.StreamingChatResponseHandler;
 import dev.langchain4j.model.moderation.Moderation;
+import dev.langchain4j.service.AiServices;
+import dev.langchain4j.service.SystemMessage;
 import io.github.maxtrezzi.modelrack4j.LlmBundle;
 import io.github.maxtrezzi.modelrack4j.LlmRegistry;
 import io.github.maxtrezzi.modelrack4j.UnknownConfigurationException;
@@ -29,6 +32,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.time.ZonedDateTime;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
@@ -64,6 +68,10 @@ import java.util.concurrent.TimeUnit;
  *       cached bundle keeps working and silently stops reflecting the file.
  *   <li>Each of the bundle's optional parts is used when it is there and skipped when it is
  *       not: streaming, moderation on the way in, and memory across turns.
+ *   <li>{@code /tools} answers the next questions through an {@link AiServices} proxy with a
+ *       {@code @Tool} method instead of calling the model directly. This library configures
+ *       no part of that, and does not need to: an AiService takes a {@code ChatModel} and a
+ *       {@code ChatMemory}, and a bundle is where those come from.
  * </ul>
  *
  * @implNote Adding a provider means adding its module to this POM as well as a block to the
@@ -73,6 +81,9 @@ public final class ConsoleChat {
 
     /** Typed during a chat, returns to the menu. */
     private static final String MENU_COMMAND = "/menu";
+
+    /** Typed during a chat, switches the answering path between direct and AiService. */
+    private static final String TOOLS_COMMAND = "/tools";
 
     /** Typed anywhere, ends the session. */
     private static final String EXIT_COMMAND = "/exit";
@@ -239,7 +250,12 @@ public final class ConsoleChat {
         System.out.println("chatting with " + name
                 + entered.config().description().map(text -> " — " + text).orElse("")
                 + (memory.isPresent() ? "" : " (no memory configured: each turn is independent)"));
-        System.out.println(MENU_COMMAND + " for the menu, " + EXIT_COMMAND + " to quit.");
+        System.out.println(MENU_COMMAND + " for the menu, " + TOOLS_COMMAND
+                + " to answer through an AiService with a tool, " + EXIT_COMMAND + " to quit.");
+
+        // Off at the start of every visit, like the memory above: entering a configuration
+        // starts from the plain path, and the transcript says so when that changes.
+        boolean throughAiService = false;
 
         while (true) {
             System.out.print(System.lineSeparator() + "you> ");
@@ -250,6 +266,13 @@ public final class ConsoleChat {
             String question = line.trim();
             if (MENU_COMMAND.equalsIgnoreCase(question)) {
                 return Outcome.MENU;
+            }
+            if (TOOLS_COMMAND.equalsIgnoreCase(question)) {
+                throughAiService = !throughAiService;
+                System.out.println(throughAiService
+                        ? "  [AiService on: ask it for the time and watch the tool run]"
+                        : "  [AiService off: back to calling the bundle's models directly]");
+                continue;
             }
             if (question.isEmpty()) {
                 continue;
@@ -268,7 +291,11 @@ public final class ConsoleChat {
             if (isFlagged(bundle, question)) {
                 continue;
             }
-            answer(bundle, memory, question);
+            if (throughAiService) {
+                answerThroughAiService(bundle, memory, question);
+            } else {
+                answer(bundle, memory, question);
+            }
         }
     }
 
@@ -309,6 +336,74 @@ public final class ConsoleChat {
             // session, so report it and let the user ask again. The question stays in memory
             // without an answer beside it, which is honest: it was asked.
             System.out.println(System.lineSeparator() + "  [request failed: " + e + "]");
+        }
+    }
+
+    /**
+     * Answers the same question through an {@link AiServices} proxy that has a tool, instead
+     * of calling the bundle's models directly.
+     *
+     * <p>The interface, its {@code @SystemMessage} and the {@code @Tool} method below are
+     * code. No configuration file describes them, and this library never tries to: what it
+     * supplies is the {@code ChatModel} and the {@code ChatMemory} the AiService is built
+     * from. Everything LangChain4j offers on top of a model stays available here.
+     *
+     * @implNote Built on the bundle this turn already fetched, and thrown away afterwards.
+     *     An assistant built once at start-up would hold that snapshot's {@code ChatModel}
+     *     for the life of the process — the cached-bundle mistake one level up, and just as
+     *     silent. Building one is a proxy and a few assignments, so per turn is cheap.
+     *     <p>This path uses {@code chatModel()} even when the configuration also builds a
+     *     streaming model: an AiService streams by returning a {@code TokenStream}, which is
+     *     a different method signature rather than a different object.
+     */
+    private static void answerThroughAiService(
+            LlmBundle bundle, Optional<ChatMemory> memory, String question) {
+        AiServices<Assistant> building = AiServices.builder(Assistant.class)
+                .chatModel(bundle.chatModel())
+                .tools(new ClockTool());
+        // The same ChatMemory the direct path uses, so /tools in the middle of a
+        // conversation keeps its history. AiServices writes both messages into it itself,
+        // which is why this path does not touch the memory the way answer() does.
+        memory.ifPresent(building::chatMemory);
+
+        System.out.print(bundle.name() + "> ");
+        try {
+            System.out.println(building.build().ask(question));
+        } catch (RuntimeException e) {
+            System.out.println(System.lineSeparator() + "  [request failed: " + e + "]");
+        }
+    }
+
+    /**
+     * The AiService: an interface, implemented by LangChain4j at run time rather than by any
+     * class in this example.
+     */
+    interface Assistant {
+
+        /**
+         * Answers one question, calling the tool when the answer depends on the time.
+         *
+         * @param question what the user typed
+         * @return the assistant's answer
+         */
+        @SystemMessage("You are terse: answer in at most two sentences. "
+                + "Call the clock tool whenever the answer depends on the current date or time.")
+        String ask(String question);
+    }
+
+    /**
+     * The one tool the assistant may call.
+     *
+     * @implNote It prints when it runs, so a tool call is visible in the transcript instead
+     *     of only in the answer, where a model could as easily have guessed the value.
+     */
+    static final class ClockTool {
+
+        @Tool("The current date and time, in the time zone of the machine this runs on.")
+        String now() {
+            ZonedDateTime now = ZonedDateTime.now();
+            System.out.println(System.lineSeparator() + "  [tool called: now() -> " + now + "]");
+            return now.toString();
         }
     }
 

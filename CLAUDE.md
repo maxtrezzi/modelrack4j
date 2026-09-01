@@ -307,8 +307,14 @@ in-flight requests may still hold them.
 
 ## Scope boundaries (say no to these)
 
-- `AiServices`, `@Tool` methods, RAG retrievers, guardrails — code-shaped, not
-  config-shaped. Permanently out of scope (ADR-0003).
+- **Configuring** `AiServices`, `@Tool` methods, RAG retrievers or guardrails from a file —
+  code-shaped, not config-shaped. Permanently out of scope (ADR-0003). ***Using* them is not
+  out of scope and never was**: they are registered on an `AiServices`, and a bundle holds the
+  objects an `AiServices` is built from. The
+  documentation said this badly enough to read as a limit on the reader's own application,
+  which is what P21 fixed — README and the reference now carry a *What you still write
+  yourself* section, and `ConsoleChat`'s `/tools` command runs an `AiServices` proxy with a
+  `@Tool` method. Do not let that wording drift back toward "not supported".
 - Provider pools / fallback / retry — Resilience4j territory, never.
 - `EmbeddingModel` — not in v1 (does not depend on `ChatModel`).
 - `ReloadableChatModel` hot-swap wrapper — designed for, deferred to v2. Note hot *reload*
