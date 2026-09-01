@@ -77,11 +77,22 @@ import org.slf4j.LoggerFactory;
  * configuration, and a name whose block did not change keeps the very bundle instance it
  * had.
  *
+ * <h2>Writing a layer back</h2>
+ *
+ * <p>A layer the application owns can also be written.
+ * {@link #store(WritableConfigSource, String)} validates a new text, applies it and stores
+ * it as one step, so a text that would break the configuration is refused before anything
+ * changes; {@link #storeIfUnchanged(WritableConfigSource, String, String)} does the same
+ * only while the layer still holds the text the change was based on, which is what more than
+ * one writer needs. A store raises no reload event: its caller already knows what changed,
+ * and gets it as a return value.
+ *
  * @implNote {@link #get(String)} and {@link #names()} are safe to call from any thread at
  *     any time, including during a reload, and never wait for one. Reloads themselves are
  *     serialised, so listeners still run one reload at a time; they run on whichever thread
  *     caused that reload — a notifier's, or the caller's of {@link #reload()} — and a
- *     listener that blocks delays the next reload.
+ *     listener that blocks delays the next reload. A store takes the same lock and holds it
+ *     across the layer's own write, so a slow store delays the next reload too.
  */
 public final class LlmRegistry implements AutoCloseable {
 
@@ -104,7 +115,8 @@ public final class LlmRegistry implements AutoCloseable {
 
     /**
      * The published snapshot. Reads are lock-free and never wait; writes happen under
-     * {@link #reloadLock}, which is what keeps two reloads from racing to publish.
+     * {@link #reloadLock}, which is what keeps two writers — reloads and stores alike — from
+     * racing to publish.
      */
     private volatile Map<String, LlmBundle> bundles;
 
@@ -228,9 +240,9 @@ public final class LlmRegistry implements AutoCloseable {
      * well. An exception thrown by a listener is logged and affects neither the other
      * listeners nor later reloads.
      *
-     * <p><strong>A rejected {@link ConfigEdit#commit()} does not come here.</strong> An edit
-     * has a caller, and that caller gets the exception; nothing was published and nothing was
-     * stored, so there is no state for a listener to react to.
+     * <p><strong>A rejected {@link #store(WritableConfigSource, String)} does not come
+     * here.</strong> A store has a caller, and that caller gets the exception; nothing was
+     * published and nothing was stored, so there is no state for a listener to react to.
      *
      * @param listener called with the rejected reload's cause
      * @throws NullPointerException if the listener is null
@@ -334,72 +346,177 @@ public final class LlmRegistry implements AutoCloseable {
     }
 
     /**
-     * Starts a change to one configuration layer, to be applied and stored together.
+     * Stores a new text for one configuration layer: applied and written together, or
+     * neither.
      *
      * <p>The layer must be one this registry was built from, and must be writable — a base
      * layer you ship stays read-only because you never made it a
      * {@link WritableConfigSource}.
      *
      * <pre>{@code
-     * registry.edit(userLayer).set("SL.model-name", "claude-opus-5").commit();
+     * registry.store(userLayer, """
+     *     llm.SL {
+     *       provider   = anthropic
+     *       model-name = "claude-opus-5"
+     *       api-key    = ${ANTHROPIC_API_KEY}
+     *     }
+     *     """);
      * }</pre>
      *
-     * @param target the layer to write
-     * @return an empty edit to add changes to
-     * @throws ConfigValidationException if the layer is not one of this registry's own
-     * @throws NullPointerException if the target is null
-     * @see ConfigEdit
+     * <p><strong>The text replaces the layer's whole content.</strong> To change part of it,
+     * start from {@link ConfigSource#text()} and give back the result. Write only what
+     * belongs to this layer: copying in the values it inherits from the layers below freezes
+     * them here, and a later change to a lower layer then stops reaching the application —
+     * silently, because the result is still a valid configuration.
+     *
+     * <p>The text is stored exactly as you give it and is never resolved, so a
+     * {@code ${VAR}} in it stays a {@code ${VAR}} and no resolved secret is written.
+     *
+     * <p><strong>No reload event is fired for your own change</strong>, and no flag is needed
+     * to arrange that. The change is applied before it is stored, so a file watcher waking up
+     * afterwards re-reads, finds what is already live, and publishes nothing. A listener
+     * hears about changes made by somebody else, which is what a listener is for.
+     *
+     * <p><strong>Reading a layer and storing it back is two calls, and this one does not hold
+     * them together.</strong> Each store is atomic against reloads and against other stores,
+     * but two threads that both read {@link ConfigSource#text()} and then store lose one of
+     * the two changes. Use {@link #storeIfUnchanged(WritableConfigSource, String, String)}
+     * where more than one writer is possible.
+     *
+     * @param target the layer to write, which must be one of this registry's own
+     * @param text the layer's new content, as HOCON
+     * @return what changed, or empty when the new text means exactly what was already live —
+     *     the comparison is on the parsed configuration, so a reformatting is stored and
+     *     reported as no change
+     * @throws ConfigValidationException if the layer is not one of this registry's own, if
+     *     the text does not parse or does not validate, or if it cannot be stored
+     * @throws RuntimeException whatever the layer's own
+     *     {@link WritableConfigSource#write(String)} threw, or a provider's builder. The
+     *     previous configuration is back in place and no listener ran.
+     * @throws NullPointerException if either argument is null
+     * @implNote The order is the whole contract. The text is staged and validated before
+     *     anything is published or stored, so a broken one is refused with nothing changed.
+     *     The swap happens <em>before</em> the write, which is what leaves a waking watcher
+     *     with an empty difference. If the write then fails, the previous snapshot goes back
+     *     and the caller is told by an exception; no listener ran, because listeners do not
+     *     run for a store at all.
      */
-    public ConfigEdit edit(WritableConfigSource target) {
+    public Optional<ReloadChange> store(WritableConfigSource target, String text) {
         Objects.requireNonNull(target, "target");
-        if (!sources.contains(target)) {
-            throw new ConfigValidationException("The layer '" + target.id() + "' is not one of"
-                    + " this registry's configuration sources, so it cannot be edited through"
-                    + " it. Its layers are: " + sources.stream().map(ConfigSource::id).toList());
+        Objects.requireNonNull(text, "text");
+        requireOwnLayer(target);
+        synchronized (reloadLock) {
+            return storeHoldingTheLock(target, text);
         }
-        return new ConfigEdit(this, target);
     }
 
     /**
-     * Validates, publishes and stores an edit, or leaves everything exactly as it was.
+     * Stores a new text for one configuration layer, but only if the layer still holds the
+     * text the change was based on.
      *
-     * @implNote The order is the whole contract. Validation happens against the staged text,
-     *     so a broken edit is refused before anything is published or stored. The swap
-     *     happens <em>before</em> the write, so that a watcher waking up afterwards re-reads,
-     *     finds the configuration already live, and publishes nothing — which is how an
-     *     application's own edit raises no reload event without needing a flag to suppress
-     *     one. If the write then fails, the previous snapshot goes back and the caller is
-     *     told by an exception; no listener ran, because listeners do not run for an edit at
-     *     all.
+     * <p>This is the answer to more than one writer. Read the layer, work out the new text,
+     * and pass both: if somebody else stored the layer in between, the store is refused
+     * instead of erasing their change, and {@link StaleLayerException#current()} gives the
+     * text to rebase onto.
+     *
+     * <pre>{@code
+     * String base = layer.text();
+     * while (true) {
+     *     try {
+     *         registry.storeIfUnchanged(layer, base, withMyChangeApplied(base));
+     *         break;
+     *     } catch (StaleLayerException stale) {
+     *         base = stale.current();
+     *     }
+     * }
+     * }</pre>
+     *
+     * <p>The comparison is on the text, character for character, not on what it means. A
+     * layer somebody reformatted or re-commented is a layer that moved, and this refuses it:
+     * the value of the check is that it sees every change, and a comment is a change a person
+     * made on purpose.
+     *
+     * <p>Everything else matches {@link #store(WritableConfigSource, String)} — validation
+     * before anything is published, rollback if the write fails, and no reload event for your
+     * own change.
+     *
+     * @param target the layer to write, which must be one of this registry's own
+     * @param expected the text the change was based on, as {@link ConfigSource#text()}
+     *     returned it
+     * @param text the layer's new content, as HOCON
+     * @return what changed, or empty when the new text means exactly what was already live
+     * @throws StaleLayerException if the layer no longer holds {@code expected}. Nothing was
+     *     published and nothing was stored.
+     * @throws ConfigValidationException if the layer is not one of this registry's own, if
+     *     the text does not parse or does not validate, or if it cannot be stored
+     * @throws RuntimeException whatever the layer's own
+     *     {@link WritableConfigSource#write(String)} threw, or a provider's builder. The
+     *     previous configuration is back in place and no listener ran.
+     * @throws NullPointerException if any argument is null
+     * @implNote The layer is read again inside the reload lock rather than trusting anything
+     *     read earlier, so the comparison and the write cannot be separated by another
+     *     writer. That read is I/O for a file layer, which is why it happens once and only
+     *     for this method.
      */
-    Optional<ReloadChange> commitEdit(ConfigEdit edit) {
-        WritableConfigSource target = edit.target();
+    public Optional<ReloadChange> storeIfUnchanged(
+            WritableConfigSource target, String expected, String text) {
+        Objects.requireNonNull(target, "target");
+        Objects.requireNonNull(expected, "expected");
+        Objects.requireNonNull(text, "text");
+        requireOwnLayer(target);
         synchronized (reloadLock) {
-            // Rendered here, not before: reading the layer outside this lock and writing
-            // inside it is a lost update whenever two edits overlap.
-            StagedWrite staged = StagedWrite.prepare(target, edit.render());
-            try {
-                Map<String, LlmBundle> previous = bundles;
-                Map<String, LlmBundle> next = loader.load(previous, staging(target, staged));
-                ReloadChange change = ReloadChange.between(previous, next);
-
-                bundles = next;   // published, but nobody is told: this is the caller's change
-                try {
-                    staged.commit();
-                } catch (RuntimeException notStored) {
-                    // Back to exactly the state before the edit. Nothing was announced, so
-                    // nothing has to be un-announced.
-                    bundles = previous;
-                    throw notStored;
-                }
-                return change.isEmpty() ? Optional.empty() : Optional.of(change);
-            } finally {
-                staged.discard();
+            String current = target.text();
+            if (!current.equals(expected)) {
+                throw new StaleLayerException(target.id(), current);
             }
+            return storeHoldingTheLock(target, text);
         }
     }
 
-    /** This registry's layers, with the edited one replaced by its staged text. */
+    /**
+     * Validates, publishes and stores, with {@link #reloadLock} already held.
+     *
+     * @param target the layer to write
+     * @param text the layer's new content
+     * @return what changed, or empty when nothing did
+     */
+    private Optional<ReloadChange> storeHoldingTheLock(
+            WritableConfigSource target, String text) {
+        StagedWrite staged = StagedWrite.prepare(target, text);
+        try {
+            Map<String, LlmBundle> previous = bundles;
+            Map<String, LlmBundle> next = loader.load(previous, staging(target, staged));
+            ReloadChange change = ReloadChange.between(previous, next);
+
+            bundles = next;   // published, but nobody is told: this is the caller's change
+            try {
+                staged.commit();
+            } catch (RuntimeException notStored) {
+                // Back to exactly the state before the store. Nothing was announced, so
+                // nothing has to be un-announced.
+                bundles = previous;
+                throw notStored;
+            }
+            return change.isEmpty() ? Optional.empty() : Optional.of(change);
+        } finally {
+            staged.discard();
+        }
+    }
+
+    /**
+     * Refuses a layer this registry does not read.
+     *
+     * @param target the layer named by the caller
+     * @throws ConfigValidationException if it is not one of this registry's sources
+     */
+    private void requireOwnLayer(WritableConfigSource target) {
+        if (!sources.contains(target)) {
+            throw new ConfigValidationException("The layer '" + target.id() + "' is not one of"
+                    + " this registry's configuration sources, so it cannot be stored through"
+                    + " it. Its layers are: " + sources.stream().map(ConfigSource::id).toList());
+        }
+    }
+
     private List<ConfigSource> staging(WritableConfigSource target, StagedWrite staged) {
         List<ConfigSource> layers = new ArrayList<>(sources.size());
         for (ConfigSource source : sources) {

@@ -18,8 +18,8 @@ package io.github.maxtrezzi.modelrack4j;
 /**
  * A write that has been prepared but not yet made permanent.
  *
- * <p>Splitting a write in two is what lets an edit be validated against the text that will be
- * stored, and then rolled back without a trace if storing it fails. {@link #source()} is what
+ * <p>Splitting a write in two is what lets a new text be validated against what will
+ * actually be stored, and then rolled back without a trace if storing it fails. {@link #source()} is what
  * the loader reads during validation; {@link #commit()} makes it the layer's real content;
  * {@link #discard()} throws the preparation away and must be safe to call either way.
  */

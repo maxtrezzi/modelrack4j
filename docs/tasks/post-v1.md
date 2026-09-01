@@ -779,7 +779,7 @@ from different generations.
 
 **Measured rather than argued.** A harness driving ~400 reloads at a 1 ms debounce, with one
 thread reading the pair as fast as it could, produced **220 mixed pairs in 111,597,529
-reads** — about two per million. Rare enough never to show up in a normal run of
+reads** — about two per million, on an AMD Ryzen 7 7840HS running Temurin 25. Rare enough never to show up in a normal run of
 `AtomicSnapshot`, which is exactly why the example reported zero and the README claimed *"the
 mixed pair never appears"*.
 
@@ -2209,3 +2209,161 @@ to the lower layer — `origin()` is what tells us which keys to write instead. 
 the reload event for a self-inflicted change needs no flag: applying before writing leaves the
 watcher's later diff empty, and `reload()` already returns early on an empty diff
 (`LlmRegistry.java`, the `change.isEmpty()` guard).
+
+---
+
+### P20 — Writing a configuration layer back
+
+**Status:** Done 2026-09-01 · **Branch:** `task/p20-writing-configuration-back` ·
+**Produced:** [ADR-0044](../adr/0044-store-a-layer-back-as-text-validated-before-it-is-stored.md)
+
+The write half of the request [P19](#p19--configuration-sources-and-a-reload-the-application-can-ask-for)
+answered the reading half of. `LlmRegistry.store(target, text)` validates a new layer text
+against the whole configuration, applies it, and only then stores it;
+`storeIfUnchanged(target, expected, text)` does the same while the layer still holds the text
+the change was based on. Both take a `WritableConfigSource`, which
+`ConfigSource.ofWritableFile(Path)` provides for a file.
+
+#### The edit API that was built, and then removed
+
+The item shipped a fluent per-key editor first — `registry.edit(layer).set(…).commit()`, 302
+lines with 440 lines of tests, reviewed and corrected — and then deleted it in favour of
+passing the text. The owner's question is what turned it over: *"sembra che il salvataggio
+fosse a volte solo parziale."*
+
+**The file was never written partly.** `render()` produced the layer's whole text and the
+write was temp-file-then-rename. What was partial by design was the *content*: the layer holds
+only its own keys, never the merged result, because writing the merge would freeze every
+inherited value in the higher layer. Correct, and from outside the API indistinguishable from
+a save that dropped things.
+
+That was the visible symptom of a deeper one: the library had an opinion about what the
+application should write. Three more consequences came from the same root — a layer with an
+`include` had to be refused outright, `set` needed a second method `setSubstitution` because
+it could not tell `"${X}"` from `${X}`, and the layer came back canonicalised. All four are
+gone now. What the library kept is the part an application cannot reproduce from outside: the
+order, and the rollback. [ADR-0044](../adr/0044-store-a-layer-back-as-text-validated-before-it-is-stored.md)
+carries the argument.
+
+#### What the compare-and-set had to answer
+
+A plain `store` is atomic against reloads and against other stores, and still cannot hold the
+caller's read and its own write together. Two tests state both halves. The loss is shown
+deterministically with latches, not with timing; the fix is shown at 25 rounds of two writers
+appending different lines and both surviving. Disabling the comparison in the registry
+(`current.equals(current)`) fails five tests, the concurrency one at round 0.
+
+`StaleLayerException` is not a `ConfigValidationException` on purpose: a lost race is
+retryable by the program, a validation failure is for a person.
+
+#### What the reviews found
+
+The first review, in the previous session, found three defects in the edit API — two
+concurrent commits losing one change in 199 of 200 rounds, a symlinked layer replaced by an
+ordinary file, and permissions narrowed from `rw-r--r--` to `rw-------` — plus two staged
+classes that were implicitly public because they were declared inside an interface, the same
+gotcha [P16](#p16--a-third-coherence-pass-and-the-surface-the-first-two-searched-past) found
+in `MemoryConfig.unknownType`.
+
+The second review, over the rewrite, produced eleven findings, all applied. Two mattered:
+
+- **A plain `write(String)` inherited a refusal it did not need.** The include check sat in
+  `stage()`, which `write()` shares with the store path, so a direct file write with an
+  include through a symlink was refused although it validates nothing. Confirmed by running a
+  throwaway test, not by reading. The check moved to `StagedFileWrite`, which is the path that
+  validates.
+- **The destination was resolved twice**, once in `stage()` and once in `commitStaged()`. A
+  ConfigMap swaps its link whenever it likes and does not wait for the reload lock, so the two
+  answers can differ: the staged file is written beside one directory and moved onto another,
+  carrying permissions copied from a file it no longer replaces. It is resolved once now and
+  carried in a `StagedFile` record. `stage_resolvesTheDestinationOnce` pins it, and putting
+  the second resolution back fails exactly that test.
+
+The rest were the documentation the code had outgrown — `LlmRegistry`'s class Javadoc still
+said configuration is picked up "in one of two ways" and never mentioned that the registry can
+write — plus the `write()` contract the rollback silently assumed, which is now stated: **an
+implementation must store nothing at all if it throws.**
+
+#### Mutation testing
+
+Run by hand on core, twice, per [ADR-0041](../adr/0041-mutation-testing-on-core-only.md) and
+[ADR-0043](../adr/0043-keep-mutation-testing-out-of-ci.md). The first run scored 187 of 192
+and found three gaps in the suite, none in the code — matching
+[P17](#p17--mutation-testing-on-core)'s pattern:
+
+| Not killed | What it meant |
+|---|---|
+| `WritableFileConfigSource.write` ×2 | The public `write(String)` was exercised by no test at all: the store path reaches `stage`/`commitStaged` directly through `StagedFileWrite` and never calls it. |
+| `StagedFileSource.text` | Never called by anything. It is a `FileBacked` source, so the loader parses it through its file, and `text()` is the unused half of the interface. |
+| `destination`'s `catch (IOException)` | Never entered. |
+
+Four tests closed the first two. The final run is **192 of 194**, and the three that remain
+are explained rather than open: `LlmRegistry.reload:339` is an **equivalent mutant** — the
+line is literally `return Optional.empty();` and the mutator replaces the return value with
+`Optional.empty()`, so no test can kill it, and the real contract is asserted in
+`ConfigSourceTest:109` and `:137`; `Builder.chooseNotifier:755` times out, which PIT counts as
+killed; and `destination`'s fallback needs `Files.exists` to be true and `toRealPath()` to
+throw immediately afterwards. That last one is now commented and logged, and left uncovered on
+purpose.
+
+#### Two rules the item changed
+
+**A measurement carries the machine it came from.** The owner rejected the watcher latency
+figures in the README and the manual: they said "Measured on Linux (inotify, Temurin 25)" and
+named no hardware. *"O metti l'hardware o non lo citi."* Dropping the number would leave an
+unmeasurable adjective, so the machine went in instead — AMD Ryzen 7 7840HS, ext4 on NVMe,
+Pop!_OS 24.04 (kernel 7.0.11), Temurin 25 — beside every copy of the latency figures, the
+~2.5 ms event burst the 300 ms debounce is sized against, and ADR-0038's "about two per
+million" mixed reads. Each says in the same breath that one machine is not a benchmark.
+`CLAUDE.md` carries the rule.
+
+**An accepted ADR is immutable in its substance, not in a detail supplied later.** Completing
+that last figure meant editing ADR-0038, which
+[ADR-0015](../adr/0015-track-work-items-in-docs-tasks.md)'s practice forbade outright. The
+owner ruled that immutability lives in the substance. The exception is exactly one thing — the
+*conditions* of a figure the ADR already quotes may be completed in place, because supplying
+them adds nothing to the argument and changes no decision — and it is not a licence to append
+a finding, a date or a correction. Both `CLAUDE.md` and `docs/adr/README.md` state it with its
+limit.
+
+It does **not** reverse the ruling of 2026-08-25, which took a confirming measurement out of
+ADR-0020's body and put it in M0's verification record — the `Re-measured 2026-08-25` block
+in [M0](milestones.md#m0--skeleton-and-ci). Appending a finding is still forbidden, and that
+is still where a finding goes. What changed is narrower than that ruling, not opposite to it.
+
+#### The documentation and the example
+
+`DatabaseSource` was the example this reached, and it was teaching the weaker pattern: it
+saved into the row and then reloaded, and its step 4 left the row holding invalid text with
+nothing pointing at a better way. It now runs six steps — the four answers `reload()` gives,
+then the same rejected change through `store()`, which refuses it before the row is written,
+then a valid one applied and stored in one step. Running it caught two sentences the change
+had just falsified: the opening line still said every change below is applied by calling
+`reload()`, and the report helper printed "reload() returned…" for a store. The two lines that
+describe the row's contents now read the row instead of repeating a value by hand.
+
+Two things found while checking the documentation, neither of them caused by this item.
+`build/run-example.sh:32` still told `--help` that the example "Shows all four answers reload()
+can give" — a wrapper describing code it does not contain, the
+[P18](#p18--the-distance-between-arriving-and-running-something) defect. And
+`docs/manual/README.md` said *"the one worth knowing here: `AtomicSnapshot` is free"* while
+`build/run-example.sh:88` has said for some time that two examples are free.
+
+One sentence P20 made false and then made true again: the tutorial calls Part 2 "the full
+API", which stopped holding the moment `store` existed and holds again now that the reference
+documents it. One that was simply false: the reference said "Those three are the library's
+own" of the exception table, and there are four.
+
+#### Verified
+
+- `mvn -B clean verify` green with every provider key unset in the environment; **137 tests in
+  core**, 45 of them in `ConfigStoreTest`.
+- `javap` over the built jar: **19 public types**, against 17 on `main` — the branch adds
+  `WritableConfigSource` and `StaleLayerException`. The branch's earlier commits also stood at
+  19, with `ConfigEdit` where `StaleLayerException` now is, so the net count is unchanged
+  across the rewrite and only against `main` is it +2. `StagedFile` is package-private, so the
+  P16 gotcha did not recur.
+- Mutation testing: 192 of 194, survivors accounted for above.
+- Every fix in both reviews checked by reverting it and watching a named test fail.
+- `./run-database.sh` run end to end; `./run-database.sh --help` re-read after editing it.
+- `build/check-docs.py`: 44 ADRs, 58 tracked markdown files, no problems.

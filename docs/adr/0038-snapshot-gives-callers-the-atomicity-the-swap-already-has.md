@@ -29,9 +29,9 @@ one.
 
 **Measured, not reasoned about.** A harness driving ~400 reloads at a 1 ms debounce while one
 thread read the pair as fast as it could produced **220 mixed pairs in 111,597,529 reads** —
-about two per million. Rare enough never to appear in a normal run of the `AtomicSnapshot`
-example, which is why the example reported zero and the README said *"the mixed pair never
-appears"*.
+about two per million, on an AMD Ryzen 7 7840HS running Temurin 25. Rare enough never to
+appear in a normal run of the `AtomicSnapshot` example, which is why the example reported
+zero and the README said *"the mixed pair never appears"*.
 
 That is the same shape of over-claim [ADR-0033](0033-provider-exceptions-pass-through-untranslated.md)
 corrected for exceptions: a guarantee stated one notch wider than it holds. There it was

@@ -15,8 +15,6 @@
  */
 package io.github.maxtrezzi.modelrack4j;
 
-import java.nio.file.Path;
-
 /**
  * A staged write to a file layer: written beside the target, then moved onto it.
  *
@@ -27,16 +25,19 @@ import java.nio.file.Path;
 final class StagedFileWrite implements StagedWrite {
 
     private final WritableFileConfigSource target;
-    private final Path staged;
+    private final WritableFileConfigSource.StagedFile staged;
 
     StagedFileWrite(WritableFileConfigSource target, String text) {
+        // Asked here rather than inside stage(): it is validating the staged file that needs
+        // the include to resolve the same way, and a plain write() validates nothing.
+        target.requireIncludeCanBeValidated(text);
         this.target = target;
         this.staged = target.stage(text);
     }
 
     @Override
     public ConfigSource source() {
-        return new StagedFileSource(target.id(), staged);
+        return new StagedFileSource(target.id(), staged.path());
     }
 
     @Override

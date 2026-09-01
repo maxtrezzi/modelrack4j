@@ -18,9 +18,9 @@ costs to run, and links to each source file. [Part 2's
 Examples](part-2-reference.md#examples) says what claim each one pins down and which
 credentials it needs.
 
-The one worth knowing here: **`AtomicSnapshot` is free.** It reads configuration and sends
-no request, so it needs no credential and costs nothing — start there if you only want to
-see something work.
+The one worth knowing here: **two of the five are free.** `AtomicSnapshot` and
+`DatabaseSource` send no request at all, so they need no credential and cost nothing — start
+with either if you only want to see something work.
 
 ## What lives where
 

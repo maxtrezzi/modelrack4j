@@ -25,8 +25,8 @@ import java.nio.file.Path;
  *     of file-backed source. {@code include "sibling.conf"} resolves relative to the file
  *     that contains the line, and only {@code parseFile} knows which file that is; handing
  *     the same bytes to {@code parseString} makes the includer fall back to the classpath,
- *     where an allow-missing include quietly finds nothing (ADR-0042). Validating an edit
- *     needs the same treatment, against the not-yet-committed file.
+ *     where an allow-missing include quietly finds nothing (ADR-0042). Validating a text
+ *     about to be stored needs the same treatment, against the not-yet-committed file.
  */
 interface FileBacked extends ConfigSource {
 

@@ -113,7 +113,7 @@ claim rather than the library in general.
 | Example | Demonstrates | Needs |
 |---|---|---|
 | `AtomicSnapshot` | [Snapshot-wide atomicity](#reload-semantics): a single save changes two models at once, while four threads keep reading both — once via two separate `get()` calls, once via one `snapshot()` shared for both lookups. A `get()` pair can occasionally catch one model already updated and the other not (a torn read); a `snapshot()` pair never can, because both lookups read the same frozen snapshot. The counter is real, not decorative: sabotaging the swap to publish one model 5 ms early makes the `get()` count jump to tens of thousands. | **nothing** — reads configuration only, sends no request |
-| `DatabaseSource` | [Configuration that is not a file](#configuration-that-is-not-a-file): a layer held in memory, standing in for a database row, with the application calling `reload()` itself. It shows all four answers `reload()` can give — a name added, a name updated, nothing changed, and a rejected reload that leaves the previous configuration live. | **nothing** — sends no request |
+| `DatabaseSource` | [Configuration that is not a file](#configuration-that-is-not-a-file): a layer held in memory, standing in for a database row, driven entirely by the application. It shows all four answers `reload()` can give — a name added, a name updated, nothing changed, and a rejected reload that leaves the previous configuration live — and then the same rejected change offered through [`store()`](#storing-a-layer-back) instead, which refuses it before the row is written rather than after. | **nothing** — sends no request |
 | `ProviderSwap` | The provider as configuration: the same method, called twice around a file edit, answered by `AnthropicChatModel` and then `OpenAiChatModel`. The method names no provider and has no branch. | `ANTHROPIC_API_KEY` + `OPENAI_API_KEY`, two requests |
 | `ConsoleChat` | Everything interactively: a menu of configured models, streaming where configured, moderation on input where configured, memory across turns, and reload while you watch. | `ANTHROPIC_API_KEY` + `OPENAI_API_KEY` with the shipped `examples.conf`, which configures both providers; a configuration of your own can need one |
 | `ThreeModelCouncil` | The multi-model scenario: three names, one question, capabilities read from the bundle. | two provider keys |
@@ -404,13 +404,99 @@ LlmRegistry.builder()
 The registry owns whatever notifier it was given, from a successful `build()` until
 `close()`.
 
+### Storing a layer back
+
+An application that lets its users change the configuration has to save that change
+somewhere. Saving it yourself and then calling `reload()` works, but the two steps are in the
+wrong order: if the new text is invalid, the reload rejects it and the layer is left holding
+text that does not load. The next start then fails.
+
+`store` puts them in the right order:
+
+```java
+WritableConfigSource userLayer = ConfigSource.ofWritableFile(Path.of("user.conf"));
+
+LlmRegistry registry = LlmRegistry.builder()
+        .sources(List.of(ConfigSource.ofFile(basePath), userLayer))
+        .build();
+
+Optional<ReloadChange> change = registry.store(userLayer, newText);
+```
+
+It validates the whole configuration against the new text, applies it, and only then stores
+it. A text that would not load is refused, with nothing written and nothing changed. If
+storing itself fails — a read-only file, a database that is down — the previous configuration
+comes back and the call throws.
+
+**Only a `WritableConfigSource` can be the target.** Whether a layer can be read says nothing
+about whether it can be written, so a base layer you ship stays read-only because you never
+made it one. `ConfigSource.ofWritableFile(Path)` gives you one for a file; implement the
+interface for anything else.
+
+**The text replaces the layer's whole content.** To change one value, start from `text()` and
+give back the result. Write only what belongs to this layer. If you copy in the values it
+inherits from the layers below, those values are frozen there, and a later change to a lower
+layer stops reaching your application — silently, because the result is still valid.
+
+**The text is stored as you give it, and is never resolved.** A `${VAR}` in it stays a
+`${VAR}`, so no resolved secret is written into the layer.
+
+**A store raises no reload event.** The caller made the change and gets it back as the return
+value, so no listener runs. A file watcher that wakes up afterwards re-reads, finds what is
+already live, and publishes nothing.
+
+| Method | Contract |
+|---|---|
+| `store(WritableConfigSource, String)` | Validates, applies, stores. Returns what changed, or empty when the new text means what was already live — a text that only reformats is stored, and reported as no change. |
+| `storeIfUnchanged(WritableConfigSource, String, String)` | The same, but only while the layer still holds the text passed as `expected`. Otherwise throws `StaleLayerException`, which carries the text the layer holds now. |
+| `ConfigSource.ofWritableFile(Path)` | A file layer that can also be written. It writes through a temporary file beside the file it will replace, so a reader never sees half a write; it follows a symbolic link instead of replacing it; and it keeps the permissions the file already had. |
+| `WritableConfigSource.write(String)` | What the library calls to store the text. Implement it for a layer of your own: make it one statement, and make sure it stores nothing at all if it throws. |
+
+#### More than one writer
+
+A store is atomic against reloads and against other stores. It does not hold your *read* and
+your *store* together: two threads that both call `text()` and then `store(...)` lose one of
+the two changes. Where that can happen, pass the text you started from:
+
+```java
+String base = userLayer.text();
+while (true) {
+    try {
+        registry.storeIfUnchanged(userLayer, base, withMyChangeApplied(base));
+        break;
+    } catch (StaleLayerException stale) {
+        base = stale.current();   // somebody else wrote it: apply your change to that
+    }
+}
+```
+
+The comparison is on the text, character for character, not on what it means. A layer that
+somebody reformatted or added a comment to is a layer that moved, and the store is refused.
+That is the point of the check: a comment is a change a person made on purpose.
+
+`StaleLayerException` carries two things: `current()`, the text the layer holds now, and
+`layerId()`, the `id()` of the layer that moved — useful when one retry loop serves more than
+one layer.
+
+#### Two limits
+
+**`include` in a layer you store.** It keeps working: the include is resolved during
+validation next to the file itself, exactly as it will be resolved afterwards. The one case
+that is refused is a layer reached through a symbolic link into another directory, because
+the include would be checked in one directory and read in another.
+
+**A dropped `include` is not caught.** The library cannot tell a deliberate removal from an
+accidental one. If your new text leaves out an `include` the configuration did not strictly
+need, the store succeeds and the values it brought are gone. Validation is the only guard
+here, and it only asks whether the result loads.
+
 ### One lookup, or several that must agree
 
 `get()` reads the live configuration on every call. That is what makes a reload visible, and
 it means **a reload can land between two consecutive calls**, so the two calls return bundles
 built from two different generations of the configuration. It is rare — measured at roughly
-two per million pairs of reads while a reload ran every few milliseconds — but it is
-reproducible, and where several models have to agree it is a correctness problem rather than
+two per million pairs of reads while a reload ran every few milliseconds, on an AMD Ryzen 7
+7840HS running Temurin 25 — but it is reproducible, and where several models have to agree it is a correctness problem rather than
 a cosmetic one.
 
 `snapshot()` reads the published generation once and hands it back:
@@ -475,8 +561,9 @@ component participates, including `description`.
 | `ConfigValidationException` | A file is unreadable, a block is malformed, a value is out of range, a substitution is unresolved, or a provider rejects its configuration. Unchecked. |
 | `UnknownConfigurationException` | `get()` on a name that is not in the current snapshot. |
 | `UncheckedIOException` | Watching was requested and a directory cannot be watched. |
+| `StaleLayerException` | `storeIfUnchanged()` on a layer that no longer holds the text the change was based on. Carries that layer's current text, to apply the change to instead. Unchecked. |
 
-Those three are the library's own, and they are thrown identically whichever provider a block
+Those four are the library's own, and they are thrown identically whichever provider a block
 names. **Everything a model call throws belongs to the provider instead**, and those types are
 not portable between providers.
 
@@ -571,16 +658,21 @@ symlink to its real path at registration — the obvious implementation — make
 
 ### Latency
 
-Measured on Linux (inotify, Temurin 25), write to event observed, 20 samples:
+Measured on one Linux machine — AMD Ryzen 7 7840HS, ext4 on NVMe, Pop!_OS 24.04 (kernel
+7.0.11), Temurin 25 — over inotify, write to event observed, 20 samples:
 
 | min | median | max |
 |---|---|---|
 | 0.37 ms | **0.50 ms** | 0.63 ms |
 
+One machine is not a benchmark. What the numbers say is that the notification is push-based
+and costs well under a millisecond there; a slower disk or a busy machine moves them, and no
+part of the design depends on the value.
+
 Add the debounce, so a saved file is live roughly 300 ms later by default. Events for one
-logical write arrive within ~2.5 ms, which is the burst the default is chosen to cover. Lowering it
-below the time your writer takes to finish produces reloads of half-written files, which are
-rejected as failures rather than applied.
+logical write arrived within ~2.5 ms on the same machine, which is the burst the default is
+chosen to cover. Lowering it below the time your writer takes to finish produces reloads of
+half-written files, which are rejected as failures rather than applied.
 
 > **macOS is not measured.** The JDK's `WatchService` there is polling-based internally, so
 > latency is expected to be substantially higher — seconds, not sub-milliseconds. Nothing in

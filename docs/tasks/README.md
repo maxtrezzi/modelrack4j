@@ -95,6 +95,7 @@ Phase 0 gates everything else; nothing below M0 should start before its blockers
 | [P17](post-v1.md#p17--mutation-testing-on-core) | Mutation testing on core | **Done** — 4 defects in the suite, none in the code; ADR-0041 |
 | [P18](post-v1.md#p18--the-distance-between-arriving-and-running-something) | README ordering, a launcher for the examples, and where the Java idiom rule lives | **Done** — config example moved from line 165 to line 11; one `run-*.sh` per example; `examples.conf` |
 | [P19](post-v1.md#p19--configuration-sources-and-a-reload-the-application-can-ask-for) | Configuration sources, and a reload the application can ask for | **Done** — a layer can be a database row; ADR-0042 |
+| [P20](post-v1.md#p20--writing-a-configuration-layer-back) | Writing a configuration layer back | **Done** — validate before storing; the edit API built and removed; ADR-0044 |
 | [D1](open-decisions.md#d1--glm-route-if-no-maintained-module-exists) | GLM route if no maintained module | **Closed** — never became live |
 | [D2](open-decisions.md#d2--repository-visibility) | Repository visibility | **Settled** — public, not released; ADR-0034 |
 | [D3](open-decisions.md#d3--token-window-memory-on-a-remote-estimator) | Token-window memory on a remote estimator | **Settled** — opt-in flag |
@@ -151,9 +152,14 @@ drifting), and the rest were documentation the code had already outgrown.
 [Task 0.8](phase-0-verification.md#task-08--watch-strategy-spike) needs hardware. The README
 states the gap rather than papering over it.
 
-**Configuration no longer has to be a file**
-([P19](post-v1.md#p19--configuration-sources-and-a-reload-the-application-can-ask-for),
-[ADR-0042](../adr/0042-read-configuration-from-sources-not-files.md)). A layer is text and a
-label, so it can be a database row; files keep their watcher, and anything else asks for a
-reload. The write half — an application saving a configuration its user edited — is what
-raised this, and is deliberately not done yet.
+**Configuration no longer has to be a file, and a layer the application owns can be written
+back** ([P19](post-v1.md#p19--configuration-sources-and-a-reload-the-application-can-ask-for),
+[ADR-0042](../adr/0042-read-configuration-from-sources-not-files.md);
+[P20](post-v1.md#p20--writing-a-configuration-layer-back),
+[ADR-0044](../adr/0044-store-a-layer-back-as-text-validated-before-it-is-stored.md)). A layer
+is text and a label, so it can be a database row; files keep their watcher, and anything else
+asks for a reload. `store(target, text)` closes the loop the other way: it validates the new
+text against the whole configuration, applies it, and only then stores it, so a text that
+would not load is refused before it is saved rather than after. P20 built a fluent per-key
+edit API first and removed it — the library had an opinion about *what* to write, and only
+the ordering was ever worth owning.

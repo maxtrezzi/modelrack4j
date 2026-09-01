@@ -81,8 +81,8 @@ final class SnapshotLoader {
      *
      * @param previous the live snapshot, whose bundles are carried over where the parsed
      *     configuration is unchanged
-     * @param layers the layers to read, which during an edit is this registry's list with the
-     *     edited one replaced by its staged text
+     * @param layers the layers to read, which during a store is this registry's list with
+     *     the layer being written replaced by its staged text
      * @return a complete snapshot, sorted by name
      * @throws ConfigValidationException if any layer is unreadable, any block is invalid, or
      *     any provider rejects or fails to build its configuration

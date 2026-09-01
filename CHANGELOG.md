@@ -52,6 +52,19 @@ than listed as one long **Added** block.
   `Optional` when nothing did. It is what a layer nothing can watch — a database row — uses
   instead of the watcher, and it throws when the new configuration is rejected, leaving the
   previous one live. Reloads run one at a time, no matter who asks for one; readers never wait.
+- `registry.store(layer, text)` writes a layer back: it validates the whole configuration
+  against the new text, applies it, and only then stores it, so a text that would not load is
+  refused with nothing written and nothing changed. If storing fails, the previous
+  configuration comes back and the call throws. A store fires no reload listener — the caller
+  made the change and is given it back as the return value — and a file watcher waking up
+  afterwards finds the configuration already live and publishes nothing. The target must be a
+  `WritableConfigSource`, which `ConfigSource.ofWritableFile(Path)` provides for a file;
+  reading a layer says nothing about whether it may be written.
+- `registry.storeIfUnchanged(layer, expected, text)` is the same, but only while the layer
+  still holds `expected`, compared character for character. Otherwise it throws
+  `StaleLayerException`, which carries the text the layer holds now, to apply the change to
+  and try again. Use it wherever more than one writer is possible: a plain `store` is atomic
+  against reloads and other stores, but it cannot hold your read and your store together.
 - `ChangeNotifier` is the extension point for telling the registry that configuration
   changed by a mechanism the library does not provide, such as a database `LISTEN`/`NOTIFY`.
   `Builder.watch(true)` builds the file one for you. That one is `FileChangeNotifier`, and it
@@ -102,9 +115,11 @@ than listed as one long **Added** block.
 - `ThreeModelCouncil`, an example that asks one question of three models configured together
   and prints the three answers, with no provider branch anywhere in the code.
 - `DatabaseSource`, an example whose configuration is held in memory rather than in a file,
-  standing in for a database row, with the application calling `reload()` itself. It shows
-  every answer `reload()` gives: a name added, a name updated, nothing changed, and a
-  rejected reload after which the previous configuration is still live. It needs no key.
+  standing in for a database row, driven by the application itself. It shows every answer
+  `reload()` gives — a name added, a name updated, nothing changed, and a rejected reload
+  after which the previous configuration is still live — and then the same rejected change
+  through `store()`, which refuses it before the row is written rather than after. It needs
+  no key.
 - One script per example at the repository root — `run-atomic.sh`, `run-database.sh`,
   `run-swap.sh`, `run-chat.sh`, `run-council.sh`. Each installs the project first if it has
   to, because `exec:java` resolves `modelrack4j-core` from `~/.m2` rather than from the
@@ -137,7 +152,7 @@ than listed as one long **Added** block.
 - **Not published to Maven Central.** `mvn install` locally; publishing is a later
   milestone.
 - **macOS reload latency is unmeasured.** The JDK's `WatchService` is polling-based there;
-  the figures in the README are Linux only.
+  the figures in the README come from one Linux machine, which is named beside them.
 - Moderation is silently ignored by LangChain4j on the `AiServices` streaming path
   ([langchain4j#2779](https://github.com/langchain4j/langchain4j/issues/2779)).
 - GLM has no whole-call timeout: its client's `callTimeout` and `writeTimeout` are

@@ -34,12 +34,16 @@ Superseding or amending an ADR means editing only the old file's `Status` line a
 the pointer. Its body stays untouched — including the parts the newer ADR overrode, since
 those are what make the change legible.
 
-**The body is also frozen against additions.** A measurement that confirms an ADR, a number
-someone wishes had been recorded, a note that upstream has since changed — none of these are
-appended here, no matter how clearly dated. They belong in
-[`../tasks/`](../tasks/README.md), which exists to record what was found. `Status`,
-`Supersedes` and `Amends` are the only lines that ever change, because they are the
-mechanism itself.
+**The body is also frozen against additions.** A measurement that confirms an ADR, a finding
+that came later, a note that upstream has since changed — none of these are appended here, no
+matter how clearly dated. They belong in [`../tasks/`](../tasks/README.md), which exists to
+record what was found.
+
+**One narrow exception:** the *conditions* of a figure the ADR already quotes may be
+completed in place. ADR-0038's "about two per million" named no machine, and a number whose
+meaning depends on the hardware is incomplete without one; supplying it contradicts nothing
+and changes no decision. If the new words change what the ADR claims, it is a new ADR
+instead.
 
 ## When to write one
 
@@ -86,7 +90,8 @@ by number, since the numbering only reflects the order of the original appendix.
 | [0020](0020-core-depends-on-langchain4j-aggregate.md) | Core also depends on the `langchain4j` aggregate, for `ChatMemoryProvider` | Accepted — dependency set amended by ADR-0028 |
 | [0028](0028-core-logs-through-slf4j-api.md) | The watcher logs, and core takes slf4j-api to do it | Accepted |
 | [0007](0007-layered-hocon-via-typesafe-config.md) | Layered HOCON via Typesafe Config as a core dependency | Accepted |
-| [0042](0042-read-configuration-from-sources-not-files.md) | Read configuration from sources, not files; the application can ask for a reload | Accepted |
+| [0042](0042-read-configuration-from-sources-not-files.md) | Read configuration from sources, not files; the application can ask for a reload | Accepted — the write half widened by ADR-0044 |
+| [0044](0044-store-a-layer-back-as-text-validated-before-it-is-stored.md) | Store a layer back as text, validated before it is stored | Accepted |
 | [0006](0006-named-configurations-with-per-name-diffing.md) | Named configurations, one merged snapshot, per-name diffing | Accepted |
 | [0032](0032-description-is-part-of-the-config-record.md) | `description` is an ordinary part of the config record | Accepted |
 | [0010](0010-discriminators-only-with-two-real-variants.md) | Discriminated variants only where two real variants exist today | Accepted — estimator-availability premise amended by ADR-0021 |

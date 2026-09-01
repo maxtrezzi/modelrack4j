@@ -93,14 +93,21 @@ contributor-facing version of this rule, because an outside contributor never re
 file.
 
 Content moves from the discussion log to the ADR by **rewriting**, never copying — the log
-is private material, the ADR is the distilled public result. Accepted ADRs are immutable:
-to change a decision, write a new ADR and mark the old one `Superseded by ADR-NNNN` (or
-`Accepted — <aspect> amended by ADR-NNNN` if only part of it moved), leaving its body
-alone. **Frozen means frozen against additions too** — a later measurement, correction or
-finding does not get appended to an accepted ADR, however well dated or however clearly it
-confirms the decision. It goes to `docs/tasks/`, which is where "what was found" belongs
-(ADR-0015). The only lines that may ever change in an accepted ADR are `Status`,
-`Supersedes` and `Amends`, because those *are* the amend mechanism.
+is private material, the ADR is the distilled public result. Accepted ADRs are immutable **in
+their substance**: to change a decision, write a new ADR and mark the old one
+`Superseded by ADR-NNNN` (or `Accepted — <aspect> amended by ADR-NNNN` if only part of it
+moved), leaving the argument alone. **A later measurement, correction or finding does not get
+appended**, however well dated or however clearly it confirms the decision. It goes to
+`docs/tasks/`, which is where "what was found" belongs (ADR-0015). `Status`, `Supersedes` and
+`Amends` change freely, because those *are* the amend mechanism.
+
+**One narrow thing may be completed in place: the conditions of a figure the ADR already
+quotes.** The owner ruled this on 2026-09-01, after ADR-0038's "about two per million" was
+found to name no machine. A number whose meaning depends on the hardware is incomplete
+without it, and supplying it adds nothing to the argument, contradicts nothing, and changes
+no decision — that is what makes it a detail rather than substance. The exception stops
+exactly there. It is not a licence to append a finding, a date, a correction, or a "this
+later turned out to be…"; if the new words change what the ADR *claims*, it is a new ADR.
 
 Not every discussion produces an ADR; every discussion produces a log. Recording too
 little is the failure mode — a short ADR beats none.
@@ -187,7 +194,8 @@ builders throw for reasons `validate()` cannot predict.
 
 **How much of that atomicity a caller gets is a separate question, and ADR-0038 answers it.**
 `get()` reads the live snapshot on every call, so two consecutive calls can straddle a swap
-and return bundles from different generations — measured at about two per million pairs.
+and return bundles from different generations — measured at about two per million pairs, on
+an AMD Ryzen 7 7840HS running Temurin 25.
 `snapshot()` reads the generation once and hands back an `LlmSnapshot`, and `get()` now
 delegates to it. Do not re-describe `get()` as "a volatile read and a map lookup": it also
 allocates that wrapper (P14). A held snapshot never updates, so one per unit of work, never
@@ -215,6 +223,33 @@ watcher unchanged. Two consequences that look like tidying and are not:
   application can reload too, and two reloads at once would both read the same snapshot and
   the later would discard the earlier in silence, after its listeners had announced it.
   Readers do not take that lock, so ADR-0038 is unaffected.
+
+**A layer the application owns can be written back (P20).** `store(target, text)` stages the
+text, validates the whole configuration against the staged copy, publishes, and only then
+stores — and puts the previous snapshot back if storing fails. Four things about it are
+load-bearing:
+
+- **The order is the contract, and it is why the method exists at all.** Writing first and
+  reloading second — the only route P19 left — leaves invalid text in the layer when the
+  reload rejects it, and the next start fails. Publishing *before* storing is what leaves a
+  waking watcher an empty diff, so a store fires no listener with no flag to arrange it.
+- **`storeIfUnchanged(target, expected, text)` is a third writer, and the reload lock now
+  covers a read-modify-write.** A plain `store` cannot hold the caller's `text()` and its own
+  write together; the compare happens inside the lock, against a fresh `text()`, and throws
+  `StaleLayerException` carrying the current text. Two concurrent stores are still serialised
+  either way — what the CAS adds is that the *caller's* read is part of the deal.
+- **The registry stores text, never an `LlmConfig`.** An application holds resolved values,
+  so an API that took one back would write the resolved secret into the layer. Measured in
+  P20: `api-key = ${?HOME}` in the layer, `/home/...` from `config.apiKey()`.
+- **ADR-0042's include hazard has a write-side twin, and the check compares directories
+  rather than testing for a symlink.** A staged file sits beside its destination so an
+  include resolves during validation the way it will resolve afterwards — but the layer is
+  parsed through the *configured* path, so when a link points into another directory the two
+  disagree. Measured with `config-1.4.9`: parsing through the link finds the sibling next to
+  the link, parsing the staged copy finds the one next to the target. That combination is
+  refused, and only on the validating path: a plain `WritableConfigSource.write` validates
+  nothing and must not inherit the refusal. Resolve the destination **once**, in `stage()`,
+  and carry it to the commit — resolving again lets a ConfigMap swap the link in between.
 
 **Core dependency isolation (ADR-0005, amended by ADR-0020 and then ADR-0028).**
 `modelrack4j-core` declares exactly four compile dependencies: `langchain4j-core`,
@@ -258,6 +293,13 @@ conditional on that — filter by filename for a plain file, but for a symlinked
 
 macOS `WatchService` is polling-based internally. Its latency is measured on Linux only and
 the gap is stated rather than papered over; do not substitute a plausible figure.
+
+**A latency figure carries the machine it came from, or it is not quoted at all.** "Measured
+on Linux, 0.50 ms median" tells a reader nothing they can reproduce or compare against: a
+number that depends on the hardware is meaningless without it. The three places that quote
+the watcher figures now name the machine — AMD Ryzen 7 7840HS, ext4 on NVMe, Pop!_OS 24.04
+(kernel 7.0.11), Temurin 25 — and say in the same breath that one machine is not a benchmark.
+If you measure something new on this machine, record the machine with it, in `docs/tasks/`.
 
 **Lifecycle (ADR-0014).** A name removed from config is removed from the registry; `get()`
 then throws `UnknownConfigurationException`. Superseded bundles are NOT closed in v1 —

@@ -19,8 +19,8 @@ import java.nio.file.Path;
 import java.util.Objects;
 
 /**
- * An edit's proposed text, staged in a real file beside the layer it will replace, so it can
- * be validated the way the committed file will actually be read.
+ * The proposed text of a store, staged in a real file beside the layer it will replace, so
+ * it can be validated the way the committed file will actually be read.
  *
  * @param id the <em>target's</em> id, not the staged file's, so an error message names the
  *     layer the application knows about rather than a temporary path it never chose

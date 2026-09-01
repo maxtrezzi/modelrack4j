@@ -24,6 +24,7 @@ import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.PosixFilePermission;
 import java.util.Objects;
 import java.util.Set;
+import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -34,16 +35,42 @@ import org.slf4j.LoggerFactory;
  *     then moved onto the target. Two things need that, not one. A reader that catches a
  *     partly written file sees a broken layer, and the watcher is exactly such a reader
  *     (ADR-0013). And the staged file has to sit beside the real one so that an
- *     {@code include "sibling.conf"} inside it resolves against the same directory when the
- *     edit is validated, which is what lets validation see what the committed file will
- *     actually mean.
+ *     {@code include "sibling.conf"} inside it resolves against the same directory when
+ *     the new text is validated, which is what lets validation see what the committed
+ *     file will actually mean.
  */
 record WritableFileConfigSource(Path file) implements WritableConfigSource, FileBacked {
 
     private static final Logger log = LoggerFactory.getLogger(WritableFileConfigSource.class);
 
-    /** Prefix for the staged file, so an interrupted edit is recognisable in a directory. */
+    /** Prefix for the staged file, so an interrupted write is recognisable in a directory. */
     private static final String STAGE_PREFIX = ".modelrack4j-staged-";
+
+    /**
+     * An {@code include} directive at the start of a line. Deliberately lexical:
+     * {@link #requireIncludeCanBeValidated(String)} refuses the whole combination rather than
+     * working out whether this particular include would find the same file both ways.
+     */
+    private static final Pattern INCLUDE = Pattern.compile("(?m)^\\s*include\\s");
+
+    /**
+     * A file written beside its destination and waiting to be moved onto it.
+     *
+     * @param path the staged file
+     * @param destination the path it will replace, resolved once
+     * @implNote The destination travels with the staged file rather than being resolved again
+     *     at commit time. Resolving twice lets a symbolic link move in between — which is
+     *     exactly what ADR-0024 exists for, and does not wait for this registry's lock — and
+     *     the staged file would then be written beside one directory and moved onto another,
+     *     carrying permissions copied from a file it no longer replaces.
+     */
+    record StagedFile(Path path, Path destination) {
+
+        StagedFile {
+            Objects.requireNonNull(path, "path");
+            Objects.requireNonNull(destination, "destination");
+        }
+    }
 
     WritableFileConfigSource {
         Objects.requireNonNull(file, "file");
@@ -62,12 +89,17 @@ record WritableFileConfigSource(Path file) implements WritableConfigSource, File
     @Override
     public void write(String text) {
         Objects.requireNonNull(text, "text");
-        Path staged = stage(text);
+        StagedFile prepared = stage(text);
+        boolean committed = false;
         try {
-            commitStaged(staged);
-        } catch (RuntimeException e) {
-            discardStaged(staged);
-            throw e;
+            commitStaged(prepared);
+            committed = true;
+        } finally {
+            // A finally rather than a catch: an Error must not leave the staged file behind
+            // either, and there is nothing here that wants to see the failure.
+            if (!committed) {
+                discardStaged(prepared);
+            }
         }
     }
 
@@ -78,7 +110,7 @@ record WritableFileConfigSource(Path file) implements WritableConfigSource, File
      * @return the staged file, which the caller must either commit or discard
      * @throws ConfigValidationException if the staged file cannot be written
      */
-    Path stage(String text) {
+    StagedFile stage(String text) {
         Path destination = destination();
         Path directory = destination.getParent();
         if (directory == null) {
@@ -89,7 +121,7 @@ record WritableFileConfigSource(Path file) implements WritableConfigSource, File
             Path staged = Files.createTempFile(directory, STAGE_PREFIX, ".conf");
             Files.writeString(staged, text, StandardCharsets.UTF_8);
             copyPermissions(destination, staged);
-            return staged;
+            return new StagedFile(staged, destination);
         } catch (IOException e) {
             throw new ConfigValidationException(
                     "Cannot write the configuration beside " + file + ": " + e.getMessage(), e);
@@ -97,7 +129,45 @@ record WritableFileConfigSource(Path file) implements WritableConfigSource, File
     }
 
     /**
-     * The path the staged file is written beside and then moved onto: the target with any
+     * Refuses a text that contains an {@code include} when the staged file used to validate it
+     * would not sit in the directory the layer is parsed through.
+     *
+     * <p>Only a caller that <em>validates</em> the staged file needs this. A plain
+     * {@link #write(String)} replaces the file and validates nothing, so it does not ask.
+     *
+     * @param text the proposed new text
+     * @throws ConfigValidationException if the include would be validated against one
+     *     directory and read against another
+     * @implNote {@code include "sibling.conf"} resolves relative to the file holding the line,
+     *     and a symbolic link makes that two different files: measured with
+     *     {@code config-1.4.9}, parsing through the link finds the sibling next to the
+     *     <em>link</em>, while parsing the staged file beside the link's target finds the
+     *     sibling next to the <em>target</em>. Validating against one and then running on the
+     *     other would approve a configuration nobody ever gets, so this combination is
+     *     refused. It reaches further than a symbolic link on the file itself — a link
+     *     anywhere in the path has the same effect, which is why the two parent directories
+     *     are compared rather than the file being tested.
+     */
+    void requireIncludeCanBeValidated(String text) {
+        if (!INCLUDE.matcher(text).find()) {
+            return;
+        }
+        Path staging = destination().getParent();
+        Path readThrough = file.toAbsolutePath().normalize().getParent();
+        if (staging == null || staging.equals(readThrough)) {
+            return;
+        }
+        throw new ConfigValidationException("The layer " + file + " is reached through a"
+                + " symbolic link — the file itself, or a directory on the way to it — and the"
+                + " text being stored contains an include. An include is resolved next to the"
+                + " file that holds it, so it would be validated in " + staging + " and then"
+                + " read in " + readThrough + ", which are not the same directory. Store this"
+                + " layer without an include, or point it at the real file rather than at the"
+                + " link.");
+    }
+
+    /**
+     * The path a staged file is written beside and then moved onto: the target with any
      * symbolic link followed.
      *
      * @implNote Writing to the link itself would <em>replace</em> it with an ordinary file.
@@ -105,12 +175,18 @@ record WritableFileConfigSource(Path file) implements WritableConfigSource, File
      *     mounts the configuration as a link and swaps it — and leaves the data the link
      *     pointed at behind, still holding the old content. Following the link keeps the link
      *     a link. Where the link's target is read-only, as a ConfigMap's is, the write fails
-     *     and the edit rolls back, which is the honest outcome.
+     *     and the store rolls back, which is the honest outcome.
      */
     private Path destination() {
         try {
             return Files.exists(file) ? file.toRealPath() : file.toAbsolutePath().normalize();
         } catch (IOException cannotResolve) {
+            // The file is there but the link cannot be followed: a loop, or a directory on
+            // the way this process may not traverse. The unresolved path is the honest
+            // fallback — it is what a write with no link would have used, and the move then
+            // fails naming the real problem rather than this one.
+            log.debug("modelrack4j could not resolve {} to a real path: {}",
+                    file, cannotResolve.toString());
             return file.toAbsolutePath().normalize();
         }
     }
@@ -119,7 +195,7 @@ record WritableFileConfigSource(Path file) implements WritableConfigSource, File
      * Gives the staged file the permissions the file it will replace already has.
      *
      * @implNote {@code createTempFile} makes a file only its owner can read, and a move
-     *     carries that onto the target. Without this, one edit silently turns a
+     *     carries that onto the target. Without this, one write silently turns a
      *     world-readable configuration into an owner-only one — measured as
      *     {@code rw-r--r--} becoming {@code rw-------}.
      */
@@ -137,21 +213,21 @@ record WritableFileConfigSource(Path file) implements WritableConfigSource, File
     }
 
     /**
-     * Moves a staged file onto the target.
+     * Moves a staged file onto the destination it was prepared for.
      *
-     * @param staged the file returned by {@link #stage(String)}
+     * @param prepared the file returned by {@link #stage(String)}
      * @throws ConfigValidationException if the move fails
      */
-    void commitStaged(Path staged) {
-        Path destination = destination();
+    void commitStaged(StagedFile prepared) {
         try {
             try {
-                Files.move(staged, destination, StandardCopyOption.ATOMIC_MOVE,
-                        StandardCopyOption.REPLACE_EXISTING);
+                Files.move(prepared.path(), prepared.destination(),
+                        StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
             } catch (AtomicMoveNotSupportedException notAtomic) {
                 // Some filesystems cannot promise it. A replacing move is still one call and
                 // still better than truncating the target and writing into it.
-                Files.move(staged, destination, StandardCopyOption.REPLACE_EXISTING);
+                Files.move(prepared.path(), prepared.destination(),
+                        StandardCopyOption.REPLACE_EXISTING);
             }
         } catch (IOException e) {
             throw new ConfigValidationException(
@@ -160,15 +236,15 @@ record WritableFileConfigSource(Path file) implements WritableConfigSource, File
     }
 
     /** Removes a staged file that will not be committed. Never throws. */
-    void discardStaged(Path staged) {
+    void discardStaged(StagedFile prepared) {
         try {
-            Files.deleteIfExists(staged);
+            Files.deleteIfExists(prepared.path());
         } catch (IOException e) {
-            // Nothing useful to do: the edit already failed, and a leftover staged file is
+            // Nothing useful to do: the store already failed, and a leftover staged file is
             // inert — it is not the configured path, so nothing reads it. Logged rather than
             // thrown, because throwing here would replace the real failure with this one.
             log.warn("modelrack4j could not remove the staged file {}: {}",
-                    staged, e.toString());
+                    prepared.path(), e.toString());
         }
     }
 }
