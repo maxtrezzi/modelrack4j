@@ -2367,3 +2367,75 @@ own" of the exception table, and there are four.
 - Every fix in both reviews checked by reverting it and watching a named test fail.
 - `./run-database.sh` run end to end; `./run-database.sh --help` re-read after editing it.
 - `build/check-docs.py`: 44 ADRs, 58 tracked markdown files, no problems.
+
+---
+
+### P21 — What the library leaves available, said out loud
+
+**Status:** Not started · **Branch:** `task/p21-advanced-langchain4j-stays-available`
+
+The documentation reads as if the advanced parts of LangChain4j were unavailable to a
+modelrack4j user. They are not. The library instantiates the models and hands them over;
+`AiServices`, `@Tool` methods, RAG retrievers and guardrails keep working exactly as they do
+on plain LangChain4j, because a bundle holds the same `ChatModel`, `StreamingChatModel`,
+`ModerationModel` and `ChatMemoryProvider` those APIs already take as inputs. What is out of
+scope is *configuring* them from a HOCON file, not *using* them.
+
+#### Where the wording misleads
+
+- `README.md:85` — "It deliberately does not do prompt templating, `AiServices`, tools, RAG,
+  retries or fallback", in the middle of the pitch. True about the library's own job, and
+  read as a limit on the reader's application.
+- `README.md:622` and `docs/manual/part-2-reference.md:808` — both **Out of scope** lists
+  head the bullet with "`AiServices`, `@Tool` methods, RAG retrievers, guardrails". The
+  second half of that same bullet already says the right thing ("This library builds the
+  inputs you hand to `AiServices`; it does not wrap it") — it just arrives after a heading
+  the reader has already parsed as "not supported here".
+
+All three line numbers were re-checked against `main` at `8232bf3`; they move whenever those
+files are edited, so read the quoted words rather than trusting the number.
+
+[ADR-0003](../adr/0003-bundle-holds-config-shaped-inputs-only.md) is not being reopened and
+the scope does not move: this is wording plus a demonstration, so it produces no ADR.
+
+#### Two halves
+
+1. **Prose.** Separate "not configured here" from "not usable" wherever the boundary is
+   stated — the README pitch, both **Out of scope** lists, and anywhere else the manual
+   draws it. Keep the boundary itself intact; the fix is a sentence saying what the caller
+   still does with the bundle, not a softer scope.
+2. **Code.** Show it: wire a bundle into `AiServices` with an interface and a `@Tool`
+   method, and — the part only this library can show — call `registry.get(name)` per request
+   so the AiService is rebuilt on the current bundle and survives a reload. Where it goes is
+   the next section.
+
+#### Prefer evolving an example over adding one, and consider removing some
+
+The owner's steer, 2026-09-01: **the set of examples is itself a candidate for a clean-up,
+and this item must not grow it by default.** Five mains exist today — `AtomicSnapshot` (244
+lines), `ConsoleChat` (371), `DatabaseSource` (181), `ProviderSwap` (164) and
+`ThreeModelCouncil` (86). P20 added no example, so five is still the number. Before writing a
+sixth, ask which of the five still earn their place, whether any two are the same
+demonstration in different words, and whether the `AiServices` part belongs inside one that
+already exists.
+`ConsoleChat` is the obvious host — it already loops, and already calls `registry.get(name)`
+once per turn, which is exactly the habit an AiService rebuilt per request has to show.
+
+Removing an example costs the same coordinated update as adding one — the script, its
+`--help`, `build/run-example.sh`, and the lists in the README and the manual — so settle the
+whole shape of the example set in one pass rather than adding here and pruning later.
+
+#### Checked in advance
+
+`dev.langchain4j:langchain4j:1.19.0` is already `compile` scope on `modelrack4j-examples`,
+transitively through core's aggregate dependency
+([ADR-0020](../adr/0020-core-depends-on-langchain4j-aggregate.md)), and
+`dev/langchain4j/service/AiServices.class` is in that jar. So the example needs **no new
+dependency** (`mvn -o -pl modelrack4j-examples dependency:list`, 2026-09-01).
+
+#### If it becomes a new example
+
+`build/run-example.sh` and its `--help`, a `run-*.sh` at the repository root, and every list
+of the examples in the README and the manual all have to move together. P18 shipped a
+launcher whose help described code it did not contain, and P19 left the launcher's "the free
+example is `./run-atomic.sh`" line stale in two places a diff never showed.
