@@ -115,7 +115,7 @@ claim rather than the library in general.
 | `AtomicSnapshot` | [Snapshot-wide atomicity](#reload-semantics): a single save changes two models at once, while four threads keep reading both — once via two separate `get()` calls, once via one `snapshot()` shared for both lookups. A `get()` pair can occasionally catch one model already updated and the other not (a torn read); a `snapshot()` pair never can, because both lookups read the same frozen snapshot. The counter is real, not decorative: sabotaging the swap to publish one model 5 ms early makes the `get()` count jump to tens of thousands. | **nothing** — reads configuration only, sends no request |
 | `DatabaseSource` | [Configuration that is not a file](#configuration-that-is-not-a-file): a layer held in memory, standing in for a database row, driven entirely by the application. It shows all four answers `reload()` can give — a name added, a name updated, nothing changed, and a rejected reload that leaves the previous configuration live — and then the same rejected change offered through [`store()`](#storing-a-layer-back) instead, which refuses it before the row is written rather than after. | **nothing** — sends no request |
 | `ProviderSwap` | The provider as configuration: the same method, called twice around a file edit, answered by `AnthropicChatModel` and then `OpenAiChatModel`. The method names no provider and has no branch. | `ANTHROPIC_API_KEY` + `OPENAI_API_KEY`, two requests |
-| `ConsoleChat` | Everything interactively: a menu of configured models, streaming where configured, moderation on input where configured, memory across turns, and reload while you watch. | `ANTHROPIC_API_KEY` + `OPENAI_API_KEY` with the shipped `examples.conf`, which configures both providers; a configuration of your own can need one |
+| `ConsoleChat` | Everything interactively: a menu of configured models, streaming where configured, moderation on input where configured, memory across turns, and reload while you watch. `/tools` switches the answering path to an `AiServices` proxy with a `@Tool` method — see [What you still write yourself](#what-you-still-write-yourself) — built on the bundle that turn fetched. | `ANTHROPIC_API_KEY` + `OPENAI_API_KEY` with the shipped `examples.conf`, which configures both providers; a configuration of your own can need one |
 | `ThreeModelCouncil` | The multi-model scenario: three names, one question, capabilities read from the bundle. | two provider keys |
 
 Run them with `exec:java` after `mvn install` — the plugin resolves `modelrack4j-core` from
@@ -801,12 +801,59 @@ tests assert on them.
 
 ---
 
+## What you still write yourself
+
+The library configures models. Everything LangChain4j offers on top of a model — `@Tool`
+methods, RAG retrievers, guardrails — is registered on an `AiServices`, and an `AiServices` is
+built from a `ChatModel`. That is what an `LlmBundle` holds, together with the
+`StreamingChatModel`, the `ModerationModel` and the `ChatMemoryProvider` an AiService can also
+take. So none of this is affected by the library, and you write it as you would on plain
+LangChain4j:
+
+```java
+interface Assistant {
+    @SystemMessage("You are terse.")
+    String ask(String question);
+}
+
+LlmBundle bundle = registry.get("SL");
+
+AiServices<Assistant> building = AiServices.builder(Assistant.class)
+        .chatModel(bundle.chatModel())
+        .tools(new ClockTool());
+bundle.chatMemoryProvider()
+        .ifPresent(provider -> building.chatMemory(provider.get(userId)));   // your own id
+
+String answer = building.build().ask(question);
+```
+
+Two rules for that code:
+
+- **Build the AiService where you use it, not once at start-up.** It captures the objects it
+  is given, so an assistant built at start-up holds that snapshot's `ChatModel` for the life
+  of the process, and a reload never reaches it. It is the caching mistake of
+  [Using it](#using-it) one level higher up. An AiService is a proxy over the objects passed
+  in, so building one per request is affordable.
+- **Moderation is ignored on the `AiServices` streaming path.** Upstream behaviour, described
+  under [Providers](#providers).
+- **RAG needs an `EmbeddingModel`, and the library does not configure one** — it is
+  [out of scope](#out-of-scope) for v1. Build it in code and pass it to your retriever. The
+  chat model in the same AiService still comes from the bundle.
+
+`ConsoleChat` runs exactly this: `/tools` during a chat sends the following questions through
+an AiService with a clock tool, rebuilt each turn on the bundle that turn fetched.
+
+---
+
 ## Out of scope
 
 Deliberate and permanent:
 
-- **`AiServices`, `@Tool` methods, RAG retrievers, guardrails.** Code-shaped, not
-  config-shaped. This library builds the inputs you pass to `AiServices`; it does not wrap it.
+- **Configuring `AiServices`, `@Tool` methods, RAG retrievers or guardrails from a file.**
+  Code-shaped, not config-shaped: no configuration file can express an interface or a method
+  body. Using them is not restricted — this library builds the inputs you pass to
+  `AiServices`, and [What you still write
+  yourself](#what-you-still-write-yourself) shows how.
 - **Provider pools, fallback, retry, circuit breaking.** Resilience4j owns that.
 - **Generic reloadable configuration.** Apache Commons Configuration owns that.
 - **`EmbeddingModel`** — not in v1.

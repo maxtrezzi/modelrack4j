@@ -111,7 +111,9 @@ than listed as one long **Added** block.
   and asks the same question again through the same call site.
 - `ConsoleChat`, an interactive example: a menu of every configured model, chat with the one
   you pick, `/menu` to switch, `/exit` to leave. Watches its configuration files, so editing
-  one while it runs changes the menu underneath you.
+  one while it runs changes the menu underneath you. `/tools` answers through an `AiServices`
+  proxy with a `@Tool` method instead of calling the model directly — built on the bundle
+  that turn fetched, which is how a reload reaches code that uses `AiServices`.
 - `ThreeModelCouncil`, an example that asks one question of three models configured together
   and prints the three answers, with no provider branch anywhere in the code.
 - `DatabaseSource`, an example whose configuration is held in memory rather than in a file,

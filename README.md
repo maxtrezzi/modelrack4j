@@ -82,8 +82,10 @@ on the provider — so the configuration is validated against the provider's rea
 Enabling moderation on Anthropic is a startup error naming the block, not an empty `Optional`
 you discover in production.
 
-It deliberately does not do prompt templating, `AiServices`, tools, RAG, retries or
-fallback — see [Out of scope](#out-of-scope).
+It configures models, and nothing else. Prompt templating, `AiServices`, `@Tool` methods and
+RAG stay in your code, where they keep working on the models it hands you —
+[What you still write yourself](#what-you-still-write-yourself) has the code. Retries and
+fallback belong to a library built for them; see [Out of scope](#out-of-scope).
 
 > That is the case against building this yourself on top of plain LangChain4j. If you are on
 > Spring Boot or Quarkus, the comparison is a different one — read on.
@@ -256,7 +258,7 @@ Each one demonstrates a single claim from [Why](#why) rather than the library in
 | [`AtomicSnapshot`](modelrack4j-examples/src/main/java/io/github/maxtrezzi/modelrack4j/examples/AtomicSnapshot.java) | A single save changes two models at once, while four threads keep reading both; reading through `snapshot()` never catches a mix of old and new, reading through two `get()` calls can, though a single run often catches none | **free, no API key** |
 | [`DatabaseSource`](modelrack4j-examples/src/main/java/io/github/maxtrezzi/modelrack4j/examples/DatabaseSource.java) | Configuration held in memory instead of a file, standing in for a database row, driven by the application: all four answers `reload()` can give, then the same rejected change through `store()`, which refuses it before the row is written | **free, no API key** |
 | [`ProviderSwap`](modelrack4j-examples/src/main/java/io/github/maxtrezzi/modelrack4j/examples/ProviderSwap.java) | The same call site answered by Anthropic, then by OpenAI, after a file edit | two requests |
-| [`ConsoleChat`](modelrack4j-examples/src/main/java/io/github/maxtrezzi/modelrack4j/examples/ConsoleChat.java) | An interactive menu of every configured model; edit the file while it runs and the menu changes | a conversation |
+| [`ConsoleChat`](modelrack4j-examples/src/main/java/io/github/maxtrezzi/modelrack4j/examples/ConsoleChat.java) | An interactive menu of every configured model; edit the file while it runs and the menu changes; `/tools` answers through an `AiServices` proxy with a `@Tool` method, rebuilt on the current bundle each turn | a conversation |
 | [`ThreeModelCouncil`](modelrack4j-examples/src/main/java/io/github/maxtrezzi/modelrack4j/examples/ThreeModelCouncil.java) | The scenario above: three models, one question, no provider branch in the code | three requests |
 
 Start with `AtomicSnapshot` if you want to see the least obvious guarantee at no cost:
@@ -615,12 +617,49 @@ than being an error — one config layer commonly spans several providers.
 
 ---
 
+## What you still write yourself
+
+The library builds models from a file. It does not build the code that uses them, and it does
+not sit between the two. `@Tool` methods, RAG retrievers and guardrails are all registered on
+an `AiServices`, and an `AiServices` is built from a `ChatModel`. That is what a bundle holds,
+together with the `StreamingChatModel`, the `ModerationModel` and the `ChatMemoryProvider` an
+AiService can also take:
+
+```java
+interface Assistant {                 // your interface, and ClockTool is your class
+    String ask(String question);      // with a @Tool method on it
+}
+
+Assistant assistant = AiServices.builder(Assistant.class)
+        .chatModel(registry.get("SL").chatModel())      // the model the file configured
+        .tools(new ClockTool())
+        .build();
+
+String answer = assistant.ask(question);
+```
+
+Build the AiService where you use it, for the same reason you ask for the bundle there: one
+built at start-up holds the model from that moment and never sees a reload. Building one is
+cheap — it is a proxy over the objects you pass in.
+
+`ConsoleChat` runs this. Type `/tools` during a chat, ask it for the time, and the answer
+arrives through an AiService whose `@Tool` method was called on the way.
+
+Two things to know about this path. RAG needs one object the library does not configure — an
+`EmbeddingModel`, which is not in v1: build it yourself and pass it to your retriever, while
+the chat model still comes from the bundle. And LangChain4j ignores moderation on the
+`AiServices` streaming path — see [Providers](#providers).
+
+---
+
 ## Out of scope
 
 Deliberately, permanently:
 
-- **`AiServices`, `@Tool` methods, RAG retrievers, guardrails.** Code-shaped, not
-  config-shaped. This library builds the inputs you hand to `AiServices`; it does not wrap it.
+- **Configuring `AiServices`, `@Tool` methods, RAG retrievers or guardrails from a file.**
+  Code-shaped, not config-shaped, so no file describes them. Using them is a different
+  question and the answer is yes — see
+  [What you still write yourself](#what-you-still-write-yourself).
 - **Provider pools, fallback, retry, circuit breaking.** Resilience4j owns that.
 - **Generic reloadable configuration.** Apache Commons Configuration owns that; the scope
   here is LangChain4j objects specifically.
