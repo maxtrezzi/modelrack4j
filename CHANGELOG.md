@@ -115,9 +115,9 @@ than listed as one long **Added** block.
   proxy with a `@Tool` method instead of calling the model directly — built on the bundle
   that turn fetched, which is how a reload reaches code that uses `AiServices`.
 - `ThreeModelCouncil`, an example that asks one question of three models configured together
-  and prints the three answers, with no provider branch anywhere in the code. The question is
-  read from standard input, so it is yours rather than a fixed one; press Enter for the
-  default, or pipe a line in to script it.
+  and prints the three answers, with no provider branch anywhere in the code. The questions
+  are read from standard input, one after another, until you type `/exit`. There is no
+  default question, because each one costs a request per model.
 - `DatabaseSource`, an example whose configuration is held in memory rather than in a file,
   standing in for a database row, driven by the application itself. It shows every answer
   `reload()` gives — a name added, a name updated, nothing changed, and a rejected reload

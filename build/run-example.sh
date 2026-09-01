@@ -51,9 +51,9 @@ through an AiService with a @Tool method, built on that turn's bundle."
     council)
         script="run-council.sh"; main="ThreeModelCouncil"; needs_keys=true;  takes_config=true
         layered=false
-        cost="three requests"
-        shows="Three models, one question, no provider branch anywhere in the code. It asks you
-for the question first; press Enter to take the default, or pipe a line in."
+        cost="three requests per question"
+        shows="Three models, one question at a time, no provider branch anywhere in the code.
+It asks you for a question, all three answer it, and it asks again until you type /exit."
         ;;
     *)
         echo "run-example.sh is the shared implementation behind ./run-atomic.sh," >&2

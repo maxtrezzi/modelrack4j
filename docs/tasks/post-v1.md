@@ -2533,27 +2533,38 @@ diff before committing, which is the check `CLAUDE.md` asks for.
 
 Two complaints from one run of `./run-council.sh`, both about what the terminal showed rather
 than about the library: the example asks a question the reader did not choose, and four lines
-of JVM warning arrive before it.
+of JVM warning arrive before it. The first fix went one round further — the question became an
+input with a default on Enter, and then the default went away and the single question became a
+loop.
 
-#### The question is now an input
+#### The questions are now typed, in a loop
 
-`ThreeModelCouncil` had one fixed question in a `private static final String PROMPT`. It now
-prints the default, reads one line from standard input, and uses the default when that line is
-empty or standard input has already ended. So `./run-council.sh` is interactive, and
-`echo "..." | ./run-council.sh` scripts it.
+`ThreeModelCouncil` had one fixed question in a `private static final String PROMPT`, asked
+once. It now reads a question from standard input, puts it to every configured model, and asks
+for the next one, until `/exit` — or until standard input ends, which is what makes
+`printf '%s\n' "..." /exit | ./run-council.sh` work in a script. An empty line asks again
+rather than doing anything.
 
-Standard input rather than a second command-line argument, and the reason is in the launcher
-already: `exec:java` splits `-Dexec.args` on whitespace, which is why `build/run-example.sh`
-refuses a configuration path containing a space. A question does not survive that split
-either.
+**There is no default question.** The first version of this had one, on Enter, and the owner
+removed it: a question that costs one request per model should be one somebody meant to ask,
+and Enter is what a reader presses to see what happens. The example prints how many requests
+each question costs — from `registry.names().size()`, so it is right for a configuration that
+is not the bundled three.
 
-It is asked **after** the registry is built and the names are printed, and **before** the first
-request. After, so a configuration that does not parse costs nobody a typed question; before,
-so all three models get the same one — asking per model would make the example a chat, and the
-point of it is three answers to one question.
+Standard input rather than a command-line argument, and the reason is in the launcher already:
+`exec:java` splits `-Dexec.args` on whitespace, which is why `build/run-example.sh` refuses a
+configuration path containing a space. A question does not survive that split either.
+
+The prompt comes **after** the registry is built and the names are printed, so a configuration
+that does not parse costs nobody a typed question. Inside one round every model gets the same
+question — asking per model would make this a chat, which is what `ConsoleChat` already is.
+
+Two details borrowed from `ConsoleChat`, so the two examples behave the same way: `/exit` is
+matched with `equalsIgnoreCase`, and a failing request is **not** caught. A provider error ends
+the run with its stack trace here as it does there.
 
 The reader is not closed, on purpose: closing a `BufferedReader` wrapped around `System.in`
-closes `System.in` with it.
+closes `System.in` with it. It is opened once, outside the loop.
 
 #### The warning was Maven's, not ours
 
@@ -2594,12 +2605,14 @@ This is a launcher fix, so it applies to all five examples, not only the council
 Run live on the machine in this repository's measurement note (AMD Ryzen 7 7840HS, Pop!_OS
 24.04, Temurin 25, Maven 3.8.7):
 
-- `echo "In one short sentence: what is a configuration layer?" | ./run-council.sh` — three
-  real requests, three answers to *that* question, and no warning in the output.
-- The default path, driven for free by pointing the example at a configuration holding a
-  deliberately invalid key: an empty line on standard input printed
-  `(using the default question)` and went on to the request, which failed with the expected
-  401. The prompt and the fallback are exercised before any money is spent.
+- `printf '%s\n' "In one short sentence: what is a configuration layer?" /exit | ./run-council.sh`
+  — three real requests, three answers to *that* question, the prompt returning afterwards,
+  and no warning anywhere in the output.
+- The three paths that spend nothing, driven for free by pointing the example at a
+  configuration holding a deliberately invalid key: `/exit` on its own leaves without sending
+  a request, an empty line asks again, and standard input ending with no `/exit` leaves the
+  same way `/exit` does.
+- `1 request` rather than `1 requests` on that one-model configuration.
 - `./run-council.sh --help` re-read after editing `build/run-example.sh`.
 
 #### No ADR

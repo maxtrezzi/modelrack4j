@@ -411,8 +411,9 @@ mvn -q -pl modelrack4j-examples exec:java \
 ```
 
 Needs both `ANTHROPIC_API_KEY` and `OPENAI_API_KEY`. It asks you for a question on standard
-input — press Enter to take the default one — then puts that same question to each model and
-prints what each one has.
+input, puts that same question to each model, prints what each one has, and then asks for the
+next question. Type `/exit` to leave. There is no default question: every one of them costs
+three requests.
 
 Look at what the code does *not* do:
 

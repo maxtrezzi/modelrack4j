@@ -38,11 +38,12 @@ import java.util.List;
  *     -Dexec.args=modelrack4j-examples/src/main/resources/examples.conf
  * }</pre>
  *
- * <p>It asks you for the question first, on standard input, and uses a default one if you
- * press Enter. A piped line works too, which is how it is driven in a script:
+ * <p>You type the question, on standard input, and every configured model answers it. It then
+ * asks for the next one, until you type {@code /exit}. Each question costs one request per
+ * model. Piped lines work too, which is how it is driven in a script:
  *
  * <pre>{@code
- * echo "Name one risk of caching a bundle in a field." | ./run-council.sh
+ * printf '%s\n' "Name one risk of caching a bundle in a field." /exit | ./run-council.sh
  * }</pre>
  *
  * <p>Note what this demonstrates about the API: the registry is asked for a bundle at the
@@ -52,17 +53,16 @@ import java.util.List;
  */
 public final class ThreeModelCouncil {
 
-    private static final String DEFAULT_QUESTION =
-            "In one sentence: why do layered configuration files resolve after merging?";
+    private static final String EXIT_COMMAND = "/exit";
 
     private ThreeModelCouncil() {
     }
 
     /**
-     * Loads the configuration and asks each named model the same question.
+     * Loads the configuration and asks each named model every question that is typed.
      *
      * @param args one argument: the path to a configuration file
-     * @throws IOException if the question cannot be read from standard input
+     * @throws IOException if a question cannot be read from standard input
      */
     public static void main(String[] args) throws IOException {
         if (args.length != 1) {
@@ -76,57 +76,72 @@ public final class ThreeModelCouncil {
                 .build()) {
 
             System.out.println("configured names: " + registry.names());
+            int models = registry.names().size();
+            System.out.println("Every question goes to all of them, so each one costs "
+                    + models + (models == 1 ? " request." : " requests."));
 
-            // Asked after the configuration has loaded, so a file that does not parse costs
-            // nobody a typed question, and before the first request, so every model gets the
-            // same one.
-            String question = readQuestion();
+            // Not closed on purpose: closing this reader would close System.in with it.
+            BufferedReader console =
+                    new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
 
-            for (String name : registry.names()) {
-                // Asked for on every use, deliberately. See the class javadoc.
-                LlmBundle bundle = registry.get(name);
-                System.out.println();
-                System.out.println("=== " + name + " (" + bundle.config().provider()
-                        + " / " + bundle.config().modelName() + ") ===");
-                bundle.config().description()
-                        .ifPresent(description -> System.out.println("  " + description));
-                System.out.println("  streaming available: "
-                        + bundle.streamingChatModel().isPresent());
-                System.out.println("  moderation available: "
-                        + bundle.moderationModel().isPresent());
-                System.out.println("  memory configured: "
-                        + bundle.chatMemoryProvider().isPresent());
-                System.out.println("  answer: " + bundle.chatModel().chat(question));
+            String question;
+            while ((question = readQuestion(console)) != null) {
+                askEveryModel(registry, question);
             }
+            System.out.println("bye.");
         }
     }
 
     /**
-     * Reads the question every model will be asked, or returns the default one.
+     * Reads the next question, asking again when the line is empty.
      *
-     * <p>Standard input rather than a second command-line argument: {@code exec:java} splits
-     * {@code -Dexec.args} on whitespace, which a question does not survive.
+     * <p>Standard input rather than a command-line argument: {@code exec:java} splits
+     * {@code -Dexec.args} on whitespace, which a question does not survive. There is no
+     * default question, because a question that costs money should be one somebody meant to
+     * ask.
      *
-     * @return the line that was typed or piped in, or {@link #DEFAULT_QUESTION} when it is
-     *     empty or standard input has already ended
+     * @param console standard input, wrapped once by the caller
+     * @return the question, or {@code null} when the user typed {@code /exit} or standard
+     *     input ended
      * @throws IOException if standard input cannot be read
      */
-    private static String readQuestion() throws IOException {
-        System.out.println();
-        System.out.println("The question every configured model will be asked.");
-        System.out.println("Press Enter for: " + DEFAULT_QUESTION);
-        System.out.print("> ");
-        System.out.flush();
+    private static String readQuestion(BufferedReader console) throws IOException {
+        while (true) {
+            System.out.println();
+            System.out.print("question, or " + EXIT_COMMAND + " to quit: ");
+            System.out.flush();
 
-        // Not closed on purpose: closing this reader would close System.in with it.
-        BufferedReader console =
-                new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
-        String line = console.readLine();
-        String question = line == null ? "" : line.trim();
-        if (question.isEmpty()) {
-            System.out.println("(using the default question)");
-            return DEFAULT_QUESTION;
+            String line = console.readLine();
+            if (line == null) {
+                return null;
+            }
+            String question = line.trim();
+            if (EXIT_COMMAND.equalsIgnoreCase(question)) {
+                return null;
+            }
+            if (!question.isEmpty()) {
+                return question;
+            }
         }
-        return question;
+    }
+
+    /** Puts one question to every configured model, in turn. */
+    private static void askEveryModel(LlmRegistry registry, String question) {
+        for (String name : registry.names()) {
+            // Asked for on every use, deliberately. See the class javadoc.
+            LlmBundle bundle = registry.get(name);
+            System.out.println();
+            System.out.println("=== " + name + " (" + bundle.config().provider()
+                    + " / " + bundle.config().modelName() + ") ===");
+            bundle.config().description()
+                    .ifPresent(description -> System.out.println("  " + description));
+            System.out.println("  streaming available: "
+                    + bundle.streamingChatModel().isPresent());
+            System.out.println("  moderation available: "
+                    + bundle.moderationModel().isPresent());
+            System.out.println("  memory configured: "
+                    + bundle.chatMemoryProvider().isPresent());
+            System.out.println("  answer: " + bundle.chatModel().chat(question));
+        }
     }
 }
