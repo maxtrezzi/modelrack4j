@@ -51,8 +51,9 @@ through an AiService with a @Tool method, built on that turn's bundle."
     council)
         script="run-council.sh"; main="ThreeModelCouncil"; needs_keys=true;  takes_config=true
         layered=false
-        cost="three requests"
-        shows="Three models, one question, no provider branch anywhere in the code."
+        cost="three requests per question"
+        shows="Three models, one question at a time, no provider branch anywhere in the code.
+It asks you for a question, all three answer it, and it asks again until you type /exit."
         ;;
     *)
         echo "run-example.sh is the shared implementation behind ./run-atomic.sh," >&2
@@ -182,6 +183,18 @@ if [ "$needs_keys" = true ]; then
 fi
 
 cd "$root"
+
+# JDK 24 and later print a warning for every sun.misc.Unsafe memory-access call, and Maven's
+# own bundled Guava makes one. exec:java runs the example inside the Maven JVM, so that
+# warning lands in the middle of the example's output, blaming a jar the project does not
+# depend on. This flag permits the call without the warning.
+#
+# It is probed rather than assumed: the flag does not exist before JDK 23, an unrecognised
+# launcher option is fatal rather than ignored, and this project's floor is Java 17.
+java_bin="${JAVA_HOME:+$JAVA_HOME/bin/}java"
+if "$java_bin" --sun-misc-unsafe-memory-access=allow -version >/dev/null 2>&1; then
+    export MAVEN_OPTS="${MAVEN_OPTS:+$MAVEN_OPTS }--sun-misc-unsafe-memory-access=allow"
+fi
 
 if [ "$build" = true ] || [ ! -d "$HOME/.m2/repository/io/github/maxtrezzi/modelrack4j-core" ]; then
     echo "Installing the project — exec:java resolves modelrack4j-core from ~/.m2."

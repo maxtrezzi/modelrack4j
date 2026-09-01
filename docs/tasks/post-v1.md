@@ -2524,3 +2524,98 @@ diff before committing, which is the check `CLAUDE.md` asks for.
 - `build/check-docs.py`: 44 ADRs, 58 tracked markdown files, no problems.
 - No ADR: [ADR-0003](../adr/0003-bundle-holds-config-shaped-inputs-only.md) already draws this
   boundary where the work leaves it, and nothing about the scope moved.
+
+---
+
+### P22 — The council asks your question, and Maven's warning stops landing in the output
+
+**Status:** Done 2026-09-01 · **Branch:** `task/p22-council-asks-your-question`
+
+Two complaints from one run of `./run-council.sh`, both about what the terminal showed rather
+than about the library: the example asks a question the reader did not choose, and four lines
+of JVM warning arrive before it. The first fix went one round further — the question became an
+input with a default on Enter, and then the default went away and the single question became a
+loop.
+
+#### The questions are now typed, in a loop
+
+`ThreeModelCouncil` had one fixed question in a `private static final String PROMPT`, asked
+once. It now reads a question from standard input, puts it to every configured model, and asks
+for the next one, until `/exit` — or until standard input ends, which is what makes
+`printf '%s\n' "..." /exit | ./run-council.sh` work in a script. An empty line asks again
+rather than doing anything.
+
+**There is no default question.** The first version of this had one, on Enter, and the owner
+removed it: a question that costs one request per model should be one somebody meant to ask,
+and Enter is what a reader presses to see what happens. The example prints how many requests
+each question costs — from `registry.names().size()`, so it is right for a configuration that
+is not the bundled three.
+
+Standard input rather than a command-line argument, and the reason is in the launcher already:
+`exec:java` splits `-Dexec.args` on whitespace, which is why `build/run-example.sh` refuses a
+configuration path containing a space. A question does not survive that split either.
+
+The prompt comes **after** the registry is built and the names are printed, so a configuration
+that does not parse costs nobody a typed question. Inside one round every model gets the same
+question — asking per model would make this a chat, which is what `ConsoleChat` already is.
+
+Two details borrowed from `ConsoleChat`, so the two examples behave the same way: `/exit` is
+matched with `equalsIgnoreCase`, and a failing request is **not** caught. A provider error ends
+the run with its stack trace here as it does there.
+
+The reader is not closed, on purpose: closing a `BufferedReader` wrapped around `System.in`
+closes `System.in` with it. It is opened once, outside the loop.
+
+#### The warning was Maven's, not ours
+
+The block is four lines, three of which name the method:
+
+```
+WARNING: A terminally deprecated method in sun.misc.Unsafe has been called
+WARNING: sun.misc.Unsafe::objectFieldOffset has been called by
+         com.google.common.util.concurrent.AbstractFuture$UnsafeAtomicHelper
+         (file:/usr/share/maven/lib/guava.jar)
+```
+
+`mvn -pl modelrack4j-examples dependency:tree | grep -c guava` is **0**: Guava is not a
+dependency of this project, directly or transitively. The jar is the copy Maven itself ships
+(Guava 32.0.1 in Maven 3.8.7 on this machine), and the same warning appears when running
+`dependency:tree`, which executes no example code at all. It reaches the example's output
+because `exec:java` runs the main class **inside the Maven process**. JDK 24 and later warn on
+every `sun.misc.Unsafe` memory-access call, so a newer JDK made a pre-existing call visible.
+
+`build/run-example.sh` now exports
+`MAVEN_OPTS=--sun-misc-unsafe-memory-access=allow`, which permits the call without the
+warning. Verified: `./run-atomic.sh 2>&1 | grep -c 'sun.misc.Unsafe'` is `0`; the same
+`exec:java` run with `MAVEN_OPTS` unset gives `3`.
+
+**The flag is probed, not assumed.** It does not exist before JDK 23, and an unrecognised
+launcher option makes the JVM fail to start rather than being ignored:
+`-XX:+IgnoreUnrecognizedVMOptions` covers `-XX` options, not launcher ones. This project's
+floor is Java 17
+([ADR-0019](../adr/0019-target-java-17.md)), so the script runs
+`java --sun-misc-unsafe-memory-access=allow -version` first and only exports the flag if that
+succeeds. `$JAVA_HOME` is preferred over the `java` on `PATH`, because that is the JVM Maven
+will use.
+
+This is a launcher fix, so it applies to all five examples, not only the council.
+
+#### Verified
+
+Run live on the machine in this repository's measurement note (AMD Ryzen 7 7840HS, Pop!_OS
+24.04, Temurin 25, Maven 3.8.7):
+
+- `printf '%s\n' "In one short sentence: what is a configuration layer?" /exit | ./run-council.sh`
+  — three real requests, three answers to *that* question, the prompt returning afterwards,
+  and no warning anywhere in the output.
+- The three paths that spend nothing, driven for free by pointing the example at a
+  configuration holding a deliberately invalid key: `/exit` on its own leaves without sending
+  a request, an empty line asks again, and standard input ending with no `/exit` leaves the
+  same way `/exit` does.
+- `1 request` rather than `1 requests` on that one-model configuration.
+- `./run-council.sh --help` re-read after editing `build/run-example.sh`.
+
+#### No ADR
+
+Nothing here constrains future code. The example's question was never a decision, and the
+`MAVEN_OPTS` line changes how a script invokes Maven, not what the library does.

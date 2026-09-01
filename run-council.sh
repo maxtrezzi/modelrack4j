@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# ThreeModelCouncil — three requests. Three models, one question.
+# ThreeModelCouncil — three requests per question. Three models, the questions you type.
 #
 # Run './run-council.sh --help' for what it does and what it costs.
 # The work is in build/run-example.sh, shared with the other three.
