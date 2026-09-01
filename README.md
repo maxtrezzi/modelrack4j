@@ -254,7 +254,7 @@ Each one demonstrates a single claim from [Why](#why) rather than the library in
 | Example | Shows | Cost |
 |---|---|---|
 | [`AtomicSnapshot`](modelrack4j-examples/src/main/java/io/github/maxtrezzi/modelrack4j/examples/AtomicSnapshot.java) | A single save changes two models at once, while four threads keep reading both; reading through `snapshot()` never catches a mix of old and new, reading through two `get()` calls can, though a single run often catches none | **free, no API key** |
-| [`DatabaseSource`](modelrack4j-examples/src/main/java/io/github/maxtrezzi/modelrack4j/examples/DatabaseSource.java) | Configuration held in memory instead of a file, standing in for a database row, with the application calling `reload()` itself; shows all four answers `reload()` can give, including a rejected one | **free, no API key** |
+| [`DatabaseSource`](modelrack4j-examples/src/main/java/io/github/maxtrezzi/modelrack4j/examples/DatabaseSource.java) | Configuration held in memory instead of a file, standing in for a database row, driven by the application: all four answers `reload()` can give, then the same rejected change through `store()`, which refuses it before the row is written | **free, no API key** |
 | [`ProviderSwap`](modelrack4j-examples/src/main/java/io/github/maxtrezzi/modelrack4j/examples/ProviderSwap.java) | The same call site answered by Anthropic, then by OpenAI, after a file edit | two requests |
 | [`ConsoleChat`](modelrack4j-examples/src/main/java/io/github/maxtrezzi/modelrack4j/examples/ConsoleChat.java) | An interactive menu of every configured model; edit the file while it runs and the menu changes | a conversation |
 | [`ThreeModelCouncil`](modelrack4j-examples/src/main/java/io/github/maxtrezzi/modelrack4j/examples/ThreeModelCouncil.java) | The scenario above: three models, one question, no provider branch in the code | three requests |
@@ -418,6 +418,23 @@ Files and other sources mix in one list, in the same order. `reload()` returns w
 or nothing when the configuration turns out to be the same. See the
 [reference](docs/manual/part-2-reference.md#configuration-that-is-not-a-file).
 
+### Writing a layer back
+
+The two lines above save first and validate second, so an invalid text is already in the row
+when the reload rejects it, and the next start fails. `store` does it the other way round:
+
+```java
+registry.store(row, newText);   // validated, applied, and only then saved
+```
+
+Nothing is written and nothing changes if the text would not load; if saving itself fails,
+the previous configuration comes back and the call throws. A store raises no reload event —
+the caller already knows what changed, and is given it as the return value. The target has to
+be a `WritableConfigSource`, which is the interface above plus a `write(String)` method;
+`ConfigSource.ofWritableFile(path)` gives you one for a file. Where more than one writer is
+possible, `storeIfUnchanged(layer, base, newText)` refuses instead of erasing somebody else's
+change. See [Storing a layer back](docs/manual/part-2-reference.md#storing-a-layer-back).
+
 ## Hot reload
 
 ```java
@@ -441,8 +458,8 @@ registry.onReloadFailure(failure ->
   configuration on every call — that is what makes reload work, and it means **a reload can
   land between two consecutive calls**, so they return models built from two different
   generations of the configuration. Rare (measured at roughly two per million read pairs
-  under a reload every few milliseconds) but reproducible, and a correctness hazard wherever
-  several models must agree. Where they must, take a snapshot:
+  under a reload every few milliseconds, on an AMD Ryzen 7 7840HS running Temurin 25) but
+  reproducible, and a correctness hazard wherever several models must agree. Where they must, take a snapshot:
 
   ```java
   LlmSnapshot models = registry.snapshot();   // one read of the current generation
@@ -505,16 +522,22 @@ gives you.
 
 ### Latency
 
-Measured on **Linux** (inotify, Temurin 25), write → event observed, 20 samples:
+Measured on **one Linux machine** — AMD Ryzen 7 7840HS, ext4 on NVMe, Pop!_OS 24.04
+(kernel 7.0.11), Temurin 25 — over inotify, write → event observed, 20 samples:
 
 | min | median | max |
 |---|---|---|
 | 0.37 ms | **0.50 ms** | 0.63 ms |
 
-Plus the debounce, so a save is live roughly 300 ms later by default. Events for one logical
-write arrive within ~2.5 ms, which is the burst the 300 ms default is chosen to cover;
-lowering it below the time your writer takes to finish produces reloads of half-written
-files, which are rejected as failures rather than applied.
+One machine is not a benchmark. Read it as *the notification is push-based and costs well
+under a millisecond here*, not as a number your hardware will repeat — a slower disk or a
+loaded machine moves it, and nothing in the design depends on where it lands.
+
+What you actually wait for is the debounce, so a save is live roughly 300 ms later by
+default. Events for one logical write arrived within ~2.5 ms on the same machine, which is
+the burst the 300 ms default is chosen to cover; lowering it below the time your writer takes
+to finish produces reloads of half-written files, which are rejected as failures rather than
+applied.
 
 > **macOS is not measured.** The JDK's `WatchService` there is polling-based internally, so
 > latency is expected to be substantially higher — on the order of seconds, not

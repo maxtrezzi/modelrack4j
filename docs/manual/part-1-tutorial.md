@@ -513,12 +513,33 @@ registry.reload();   // returns what changed, or nothing if it did not
 ```
 
 The rest behaves exactly as it does for a file, including section 7: an invalid row is
-rejected and the previous configuration stays live. `./run-database.sh` runs this end to end
-and costs nothing.
+rejected and the previous configuration stays live.
+
+Those two lines have one weakness. If `newText` is invalid, the reload rejects it — but the
+row already holds it, and the next start of your program will fail. So let the registry do
+both steps, in the right order:
+
+```java
+WritableConfigSource row = new WritableConfigSource() {
+    public String id()   { return "llm_config#42"; }
+    public String text() { return jdbc.readConfigText(42); }
+    public void write(String text) { jdbc.updateConfigText(42, text); }   // the new method
+};
+
+registry.store(row, newText);   // validated, applied, and only then saved
+```
+
+If the text would not load, nothing is written and nothing changes. A `WritableConfigSource`
+is a `ConfigSource` with one more method, `write(String)`, which saves the text it is given.
+When the layer is a file your program owns, `ConfigSource.ofWritableFile(path)` gives you one
+already written.
+
+`./run-database.sh` runs all of this end to end and costs nothing.
 
 The reference has the details, in
-[Configuration that is not a file](part-2-reference.md#configuration-that-is-not-a-file) and
-[Asking for a reload](part-2-reference.md#asking-for-a-reload).
+[Configuration that is not a file](part-2-reference.md#configuration-that-is-not-a-file),
+[Asking for a reload](part-2-reference.md#asking-for-a-reload) and
+[Storing a layer back](part-2-reference.md#storing-a-layer-back).
 
 ---
 

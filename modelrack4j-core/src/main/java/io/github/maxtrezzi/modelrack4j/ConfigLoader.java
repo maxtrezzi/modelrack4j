@@ -110,7 +110,7 @@ final class ConfigLoader {
     private static Config parse(ConfigSource source) {
         ConfigParseOptions options =
                 ConfigParseOptions.defaults().setOriginDescription(source.id());
-        if (source instanceof FileConfigSource fileSource) {
+        if (source instanceof FileBacked fileSource) {
             // setAllowMissing(false) so a layer that disappeared is an error rather than an
             // empty layer; FileConfigSource.text() makes the same check for every other
             // caller of the source.

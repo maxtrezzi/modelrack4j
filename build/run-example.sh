@@ -31,7 +31,8 @@ snapshot() never catches a mixed pair; reading through two get() calls sometimes
         layered=false
         cost="free, and sends no request"
         shows="Configuration held in memory instead of a file, standing in for a database row,
-with the application calling reload() itself. Shows all four answers reload() can give."
+driven by the application itself. Shows all four answers reload() can give, then the same
+rejected change offered through store(), which refuses it before the row is written."
         ;;
     swap)
         script="run-swap.sh";    main="ProviderSwap";      needs_keys=true;  takes_config=false

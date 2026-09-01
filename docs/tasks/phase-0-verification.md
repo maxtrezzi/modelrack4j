@@ -598,7 +598,9 @@ the visible path still resolved, its real path had moved to `..gen2`, and its co
 generation 2 — so the change is detectable, and only the *trigger* was missing.
 
 **4. Latency — measured here, but not on the platform the task asks about.** On Linux, over
-20 samples of write → event observed:
+20 samples of write → event observed. The machine is part of the finding: AMD Ryzen 7 7840HS,
+ext4 on NVMe, Pop!_OS 24.04 (kernel 7.0.11), Temurin 25. A latency figure without the
+hardware it came from is not reproducible and not worth quoting.
 
 | min | median | max |
 |---|---|---|

@@ -19,6 +19,7 @@ import io.github.maxtrezzi.modelrack4j.ConfigSource;
 import io.github.maxtrezzi.modelrack4j.ConfigValidationException;
 import io.github.maxtrezzi.modelrack4j.LlmRegistry;
 import io.github.maxtrezzi.modelrack4j.ReloadChange;
+import io.github.maxtrezzi.modelrack4j.WritableConfigSource;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
@@ -28,8 +29,8 @@ import java.util.concurrent.atomic.AtomicReference;
  *
  * <p>The four other examples keep their configuration on disk, where the library can watch it
  * and reload by itself. An application that lets its <em>users</em> add a model usually keeps
- * that model in a database instead, and a database row has no directory to watch. Two things
- * follow, and this example is both of them.
+ * that model in a database instead, and a database row has no directory to watch. Three
+ * things follow, and this example is all three.
  *
  * <p><strong>A layer is a {@code ConfigSource}: a label and its text.</strong> The class
  * below stands in for a table. Nothing about it is special — it holds a string and hands it
@@ -47,6 +48,13 @@ import java.util.concurrent.atomic.AtomicReference;
  *       live afterwards — the same rule a bad file follows.
  * </ol>
  *
+ * <p><strong>The application can also hand the new text to the registry instead of saving it
+ * first.</strong> {@link LlmRegistry#store(WritableConfigSource, String)} validates the text,
+ * applies it and stores it as one step. Step 4 shows what the other order costs: the row
+ * already holds the broken text by the time the reload rejects it, and somebody has to repair
+ * it. Steps 5 and 6 show the same change offered through {@code store} — refused before
+ * anything is written, and then applied and stored together.
+ *
  * <p>It sends no request and needs no API key, so it costs nothing to run.
  */
 public final class DatabaseSource {
@@ -61,7 +69,7 @@ public final class DatabaseSource {
      *     implementation runs its query here. One that read the row once and remembered it
      *     would never report a change.
      */
-    private static final class Row implements ConfigSource {
+    private static final class Row implements WritableConfigSource {
 
         private final AtomicReference<String> stored;
 
@@ -80,7 +88,15 @@ public final class DatabaseSource {
             return stored.get();
         }
 
-        void store(String newText) {
+        /**
+         * Replaces the row's whole text. A real implementation runs one {@code UPDATE} here.
+         *
+         * @implNote One statement, not several: a reader that catches a half-written row sees
+         *     a broken layer. And it must store nothing at all if it throws, because the
+         *     registry puts the previous configuration back on that assumption.
+         */
+        @Override
+        public void write(String newText) {
             stored.set(newText);
         }
     }
@@ -95,30 +111,34 @@ public final class DatabaseSource {
 
         try (LlmRegistry registry = LlmRegistry.builder().sources(List.of(row)).build()) {
             System.out.println("Configuration comes from " + row.id()
-                    + ", which nothing can watch. Every change below is applied by calling"
-                    + " reload().");
+                    + ", which nothing can watch. The application applies every change below"
+                    + " itself: with reload() in steps 1 to 4, and with store() in 5 and 6.");
             print("at startup", registry);
 
             System.out.println();
             System.out.println("1. The user adds a model. The row is updated, then reloaded.");
-            row.store(models(new Model("SL", "gpt-5.1"), new Model("SH", "gpt-5.1")));
-            report(registry.reload());
+            row.write(models(new Model("SL", "gpt-5.1"), new Model("SH", "gpt-5.1")));
+            report("reload()", registry.reload());
             print("now", registry);
 
             System.out.println();
             System.out.println("2. The user edits SL to a different model name.");
-            row.store(models(new Model("SL", "gpt-5.1-mini"), new Model("SH", "gpt-5.1")));
-            report(registry.reload());
+            row.write(models(new Model("SL", "gpt-5.1-mini"), new Model("SH", "gpt-5.1")));
+            report("reload()", registry.reload());
             print("now", registry);
 
             System.out.println();
             System.out.println("3. The application reloads without having changed anything.");
-            report(registry.reload());
+            report("reload()", registry.reload());
+
+            String good = models(new Model("SL", "gpt-5.1-mini"), new Model("SH", "gpt-5.1"));
+            String broken = "llm { SL { provider = not-a-provider, api-key = \"x\","
+                    + " model-name = \"m\" } }";
 
             System.out.println();
-            System.out.println("4. The row is saved with a provider that does not exist.");
-            row.store("llm { SL { provider = not-a-provider, api-key = \"x\","
-                    + " model-name = \"m\" } }");
+            System.out.println("4. The row is saved with a provider that does not exist, and"
+                    + " only then reloaded.");
+            row.write(broken);
             try {
                 registry.reload();
                 System.out.println("   unreachable: the reload should have been rejected");
@@ -126,21 +146,53 @@ public final class DatabaseSource {
                 System.out.println("   rejected: " + rejected.getMessage());
             }
             print("still", registry);
+            System.out.println("   but the row now holds the broken text, and the application"
+                    + " has to put it right: " + oneLine(row.text()));
+
             System.out.println();
-            System.out.println("Nothing was half-applied: a rejected reload leaves the whole"
-                    + " previous configuration live.");
+            System.out.println("5. The same change offered through store() instead. The row is"
+                    + " repaired first.");
+            row.write(good);
+            try {
+                registry.store(row, broken);
+                System.out.println("   unreachable: the store should have been rejected");
+            } catch (ConfigValidationException rejected) {
+                System.out.println("   rejected: " + rejected.getMessage());
+            }
+            print("still", registry);
+            System.out.println("   and the row was never written: "
+                    + oneLine(row.text()));
+
+            System.out.println();
+            System.out.println("6. A change that is valid, through store(): validated, applied"
+                    + " and stored in one step.");
+            report("store()", registry.store(row,
+                    models(new Model("SL", "gpt-5.1"), new Model("SH", "gpt-5.1"))));
+            print("now", registry);
+            System.out.println("   No reload() was needed, and no listener ran: the caller"
+                    + " made the change and was given it back.");
+
+            System.out.println();
+            System.out.println("Nothing was half-applied: a rejected reload, and a rejected"
+                    + " store, both leave the whole previous configuration live. The"
+                    + " difference is what they leave in the row.");
         }
     }
 
-    private static void report(Optional<ReloadChange> change) {
+    private static void report(String call, Optional<ReloadChange> change) {
         if (change.isEmpty()) {
-            System.out.println("   reload() returned nothing: the configuration is the same,"
-                    + " so no bundle was rebuilt and no listener ran.");
+            System.out.println("   " + call + " returned nothing: the configuration is"
+                    + " the same, so no bundle was rebuilt and no listener ran.");
             return;
         }
         ReloadChange c = change.get();
-        System.out.println("   reload() returned added=" + c.added()
+        System.out.println("   " + call + " returned added=" + c.added()
                 + " updated=" + c.updated() + " removed=" + c.removed());
+    }
+
+    /** The row's text on one line, so a print can show it as it really stands. */
+    private static String oneLine(String text) {
+        return text.replaceAll("\\s+", " ").strip();
     }
 
     private static void print(String when, LlmRegistry registry) {
