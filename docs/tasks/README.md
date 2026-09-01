@@ -96,6 +96,7 @@ Phase 0 gates everything else; nothing below M0 should start before its blockers
 | [P18](post-v1.md#p18--the-distance-between-arriving-and-running-something) | README ordering, a launcher for the examples, and where the Java idiom rule lives | **Done** — config example moved from line 165 to line 11; one `run-*.sh` per example; `examples.conf` |
 | [P19](post-v1.md#p19--configuration-sources-and-a-reload-the-application-can-ask-for) | Configuration sources, and a reload the application can ask for | **Done** — a layer can be a database row; ADR-0042 |
 | [P20](post-v1.md#p20--writing-a-configuration-layer-back) | Writing a configuration layer back | **Done** — validate before storing; the edit API built and removed; ADR-0044 |
+| [P21](post-v1.md#p21--what-the-library-leaves-available-said-out-loud) | What the library leaves available, said out loud | **Not started** — the docs read as if `AiServices`, tools and RAG were off-limits; the example set gets a clean-up in the same pass |
 | [D1](open-decisions.md#d1--glm-route-if-no-maintained-module-exists) | GLM route if no maintained module | **Closed** — never became live |
 | [D2](open-decisions.md#d2--repository-visibility) | Repository visibility | **Settled** — public, not released; ADR-0034 |
 | [D3](open-decisions.md#d3--token-window-memory-on-a-remote-estimator) | Token-window memory on a remote estimator | **Settled** — opt-in flag |
