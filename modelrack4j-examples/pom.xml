@@ -7,7 +7,7 @@
   <parent>
     <groupId>io.github.maxtrezzi</groupId>
     <artifactId>modelrack4j-parent</artifactId>
-    <version>0.1.0-SNAPSHOT</version>
+    <version>0.1.0</version>
   </parent>
 
   <artifactId>modelrack4j-examples</artifactId>
@@ -21,9 +21,19 @@
       to resolve core's types at all — two automatic modules cannot share a name.
     -->
     <automatic.module.name>io.github.maxtrezzi.modelrack4j.examples</automatic.module.name>
-    <!-- Per the module layout: examples are never published. -->
+    <!--
+      Per the module layout: examples are never published.
+
+      Two properties, because they cover two different builds. maven.deploy.skip stops an
+      ordinary `mvn deploy`. Under -Prelease it stops nothing: the Central publishing plugin
+      runs with <extensions>true</extensions> and its lifecycle participant removes
+      maven-deploy-plugin from the build entirely, so no code reads that property any more.
+      skipPublishing is the parameter the publishing plugin itself reads (per-module since
+      its 0.9.0). Removing either one publishes this module to Maven Central by accident.
+    -->
     <maven.deploy.skip>true</maven.deploy.skip>
     <maven.install.skip>true</maven.install.skip>
+    <skipPublishing>true</skipPublishing>
   </properties>
 
   <dependencies>

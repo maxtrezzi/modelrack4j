@@ -1,12 +1,19 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!--
+  child.project.url.inherit.append.path belongs on <project>, not on <url>: the XSD declares
+  it as an attribute of the Model type. Put on <url> it is accepted and silently ignored, and
+  the effective POM of every child then ends in the module directory. The three child.scm.*
+  attributes are declared on the Scm type instead, so those DO go on <scm> below.
+-->
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd"
+         child.project.url.inherit.append.path="false">
   <modelVersion>4.0.0</modelVersion>
 
   <groupId>io.github.maxtrezzi</groupId>
   <artifactId>modelrack4j-parent</artifactId>
-  <version>0.1.0-SNAPSHOT</version>
+  <version>0.1.0</version>
   <packaging>pom</packaging>
 
   <name>modelrack4j</name>
@@ -14,6 +21,12 @@
     Named, ready-to-use bundles of LangChain4j objects from layered HOCON configuration,
     with validated hot reload. Unofficial and independent of the LangChain4j project.
   </description>
+  <!--
+    Inherited by every child unchanged, thanks to the attribute on <project> above. Without
+    it Maven appends the module directory, so modelrack4j-core would publish
+    https://github.com/maxtrezzi/modelrack4j/modelrack4j-core — a 404, in a field Central
+    requires.
+  -->
   <url>https://github.com/maxtrezzi/modelrack4j</url>
   <inceptionYear>2026</inceptionYear>
 
@@ -33,7 +46,9 @@
     </developer>
   </developers>
 
-  <scm>
+  <scm child.scm.connection.inherit.append.path="false"
+       child.scm.developerConnection.inherit.append.path="false"
+       child.scm.url.inherit.append.path="false">
     <connection>scm:git:https://github.com/maxtrezzi/modelrack4j.git</connection>
     <developerConnection>scm:git:git@github.com:maxtrezzi/modelrack4j.git</developerConnection>
     <url>https://github.com/maxtrezzi/modelrack4j</url>
@@ -62,7 +77,7 @@
       build embeds "now" and nobody downstream can verify that a published jar was built
       from the tag it claims. Bump this at each release, to that release's date.
     -->
-    <project.build.outputTimestamp>2026-08-26T00:00:00Z</project.build.outputTimestamp>
+    <project.build.outputTimestamp>2026-09-02T00:00:00Z</project.build.outputTimestamp>
 
     <!--
       A1: the JPMS module name every published jar advertises. Overridden per module. It
@@ -104,6 +119,13 @@
       different build on two machines and on two days.
     -->
     <exec-maven-plugin.version>3.6.3</exec-maven-plugin.version>
+
+    <!--
+      M6: used only by the `release` profile below. Read from Central rather than recalled:
+      both were the latest release on 2026-09-02.
+    -->
+    <maven-gpg-plugin.version>3.2.8</maven-gpg-plugin.version>
+    <central-publishing-maven-plugin.version>0.11.0</central-publishing-maven-plugin.version>
   </properties>
 
   <dependencyManagement>
@@ -390,6 +412,82 @@
                 </goals>
               </execution>
             </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+
+    <!--
+      M6: signing and publishing to Maven Central. Everything here is OFF unless -Prelease
+      is passed, so an ordinary `mvn clean install` never asks for a GPG passphrase and
+      never contacts the Portal. A contributor needs neither the signing key nor Maven
+      3.9.2 to build this project.
+    -->
+    <profile>
+      <id>release</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-enforcer-plugin</artifactId>
+            <executions>
+              <execution>
+                <id>enforce-release-maven-version</id>
+                <phase>validate</phase>
+                <goals><goal>enforce</goal></goals>
+                <configuration>
+                  <rules>
+                    <!--
+                      central-publishing-maven-plugin declares requiredMavenVersion 3.9.2,
+                      and Maven enforces it. The build-wide floor stays at 3.8.7 because
+                      only a release needs more; this rule fails earlier and says which
+                      version is missing, where the plugin only refuses to run.
+                    -->
+                    <requireMavenVersion><version>[3.9.2,)</version></requireMavenVersion>
+                  </rules>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-gpg-plugin</artifactId>
+            <version>${maven-gpg-plugin.version}</version>
+            <executions>
+              <execution>
+                <id>sign-artifacts</id>
+                <!-- The `sign` goal's own default phase, stated rather than inherited. -->
+                <phase>verify</phase>
+                <goals><goal>sign</goal></goals>
+              </execution>
+            </executions>
+            <!--
+              No passphrase in this file, and none in any file. The plugin reads it from the
+              GnuPG agent or from MAVEN_GPG_PASSPHRASE. This repository is public.
+            -->
+          </plugin>
+
+          <plugin>
+            <groupId>org.sonatype.central</groupId>
+            <artifactId>central-publishing-maven-plugin</artifactId>
+            <version>${central-publishing-maven-plugin.version}</version>
+            <!--
+              extensions=true installs a lifecycle participant that REMOVES
+              maven-deploy-plugin from the build and injects `publish` in its place. That is
+              why maven.deploy.skip no longer keeps modelrack4j-examples unpublished — see
+              the skipPublishing property in that module's POM.
+            -->
+            <extensions>true</extensions>
+            <configuration>
+              <publishingServerId>central</publishingServerId>
+              <!--
+                A published component can never be changed or deleted. autoPublish=false
+                uploads the bundle and lets Central validate it, and leaves the last step to
+                a human on the Portal.
+              -->
+              <autoPublish>false</autoPublish>
+            </configuration>
           </plugin>
         </plugins>
       </build>

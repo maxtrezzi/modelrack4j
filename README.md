@@ -30,9 +30,8 @@ That is the whole idea. [Quick start](#quick-start) has the dependencies and the
 📖 **[The manual](docs/manual/README.md)** — a [tutorial](docs/manual/part-1-tutorial.md) that
 starts from nothing, and a [reference](docs/manual/part-2-reference.md) for everything else.
 
-**Status: pre-release, `0.1.0-SNAPSHOT`.** Not published to Maven Central yet — build and
-install it locally (see [Building](#building-from-source)). The API is 0.x and may still
-change; see [CHANGELOG.md](CHANGELOG.md).
+**Status: `0.1.0`, the first release, on Maven Central.** The API is 0.x and may still
+change in a minor release; see [CHANGELOG.md](CHANGELOG.md).
 
 ---
 
@@ -136,26 +135,21 @@ If neither applies, use the starter for your framework. It will be less code tha
 Core knows no providers. Add core **plus** each provider module you actually configure —
 each one registers itself through `ServiceLoader`.
 
-> **Build it first.** These coordinates are not on Maven Central yet, so copying the snippet
-> into a project resolves nothing until you have run `mvn clean install` in a clone of this
-> repository — see [Building from source](#building-from-source). The `-SNAPSHOT` suffix is
-> what tells you that: it resolves from your local `~/.m2`, not from Central.
-
 ```xml
 <dependency>
   <groupId>io.github.maxtrezzi</groupId>
   <artifactId>modelrack4j-core</artifactId>
-  <version>0.1.0-SNAPSHOT</version>
+  <version>0.1.0</version>
 </dependency>
 <dependency>
   <groupId>io.github.maxtrezzi</groupId>
   <artifactId>modelrack4j-provider-anthropic</artifactId>
-  <version>0.1.0-SNAPSHOT</version>
+  <version>0.1.0</version>
 </dependency>
 <dependency>
   <groupId>io.github.maxtrezzi</groupId>
   <artifactId>modelrack4j-provider-openai</artifactId>
-  <version>0.1.0-SNAPSHOT</version>
+  <version>0.1.0</version>
 </dependency>
 ```
 
@@ -167,7 +161,7 @@ Or import the BOM once and drop the versions:
     <dependency>
       <groupId>io.github.maxtrezzi</groupId>
       <artifactId>modelrack4j-bom</artifactId>
-      <version>0.1.0-SNAPSHOT</version>
+      <version>0.1.0</version>
       <type>pom</type>
       <scope>import</scope>
     </dependency>
@@ -672,7 +666,7 @@ Deliberately, permanently:
 ## Building from source
 
 ```bash
-mvn clean install                        # full build, installs 0.1.0-SNAPSHOT to ~/.m2
+mvn clean install                        # full build, installs 0.1.0 to ~/.m2
 mvn -pl modelrack4j-core -am test        # core and its dependencies
 mvn -Pintegration verify                 # provider tests against real APIs, keys from env
 ```

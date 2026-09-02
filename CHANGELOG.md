@@ -9,7 +9,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 release. Breaking changes will be called out under **Changed** with the migration, but they
 will not be held back for a major bump until the API settles at `1.0.0`.
 
-## [0.1.0] — unreleased
+## [0.1.0] — 2026-09-02
 
 The first release. Everything below is new, so it is grouped by what it gives you rather
 than listed as one long **Added** block.
@@ -155,8 +155,6 @@ than listed as one long **Added** block.
 
 ### Known limitations
 
-- **Not published to Maven Central.** `mvn install` locally; publishing is a later
-  milestone.
 - **macOS reload latency is unmeasured.** The JDK's `WatchService` is polling-based there;
   the figures in the README come from one Linux machine, which is named beside them.
 - Moderation is silently ignored by LangChain4j on the `AiServices` streaming path
@@ -167,6 +165,8 @@ than listed as one long **Added** block.
   the README's scope section.
 
 <!--
-  No link definition for [0.1.0] yet: the repository is public but deliberately not released,
-  so there is no v0.1.0 tag to compare against (ADR-0034). The link lands with the tag.
+  The tag is created after the release is published, never before: Maven Central accepts a
+  version once and forever, so a tag written first would be a promise the publish might not
+  keep (ADR-0045).
 -->
+[0.1.0]: https://github.com/maxtrezzi/modelrack4j/releases/tag/v0.1.0

@@ -17,7 +17,7 @@ that merely gets work done closes by being marked `Done`.
 - [`phase-0-verification.md`](phase-0-verification.md) — Tasks 0.1–0.8. Facts that must be
   checked against upstream sources before design details are fixed. Several ADRs rest on
   assumptions these tasks confirm or refute.
-- [`milestones.md`](milestones.md) — M0–M5. What ships, in what order.
+- [`milestones.md`](milestones.md) — M0–M6. What ships, in what order.
 - [`open-decisions.md`](open-decisions.md) — items blocked on the owner, not on work.
 - [`post-v1.md`](post-v1.md) — P1, P2, … work taken on after v1 closed.
 
@@ -76,6 +76,7 @@ Phase 0 gates everything else; nothing below M0 should start before its blockers
 | [M3](milestones.md#m3--hot-reload) | Hot reload | **Done** — 69 tests green |
 | [M4](milestones.md#m4--gemini-and-glm) | Gemini and GLM | **Done** — 87 tests green |
 | [M5](milestones.md#m5--release-readiness) | Release readiness — **v1 done** | **Done** — README, CHANGELOG, artifacts verified |
+| [M6](milestones.md#m6--gpg-signing-and-central-portal-publishing) | GPG signing and Central Portal publishing | **Done** — `0.1.0` on Maven Central, examples excluded, resolved from an empty repository |
 | [P1](post-v1.md#p1--console-chat-example) | Console chat example | **Done** — reload seen live |
 | [P2](post-v1.md#p2--a-short-description-per-configuration) | A short description per configuration | **Done** — ADR-0032 |
 | [P3](post-v1.md#p3--the-manual) | The manual: tutorial and reference | **Done** — every command run |
@@ -122,9 +123,12 @@ validation, four providers, hot reload atomic across the whole snapshot, and —
 README and CHANGELOG, with the installed `0.1.0-SNAPSHOT` artifacts proven consumable by a
 throwaway project outside the reactor.
 
-**Nothing is scheduled after it.** M6 (GPG signing, Central Portal publishing) is deliberately
-unscheduled: it is triggered by the library proving itself in the owner's first real project,
-not by a date.
+**M6 was unscheduled, its trigger fired on 2026-09-02, and it finished the same evening.** The
+owner tested the library, judged it publishable, and `0.1.0` went to Maven Central: seven
+artifacts signed and published, `modelrack4j-examples` excluded and confirmed absent from both
+the Portal and `repo1.maven.org`, and the whole thing resolved back from an empty local
+repository to prove the download comes from Central. The `v0.1.0` tag is created on `main`
+after the merge, never before the publish.
 
 **Nothing rests on unexercised code any more.** `mvn -Pintegration verify` reached a live API
 on 2026-08-24 ([P6](post-v1.md#p6--the-integration-tests-against-live-apis)): all four
@@ -133,11 +137,12 @@ finding, [ADR-0033](../adr/0033-provider-exceptions-pass-through-untranslated.md
 leaves behind is a standing cost rather than an open item — model IDs rot, and two of the four
 are now outside upstream's enums, so only a live run can catch the next one.
 
-**The repository is public as of 2026-08-25, and deliberately not released**
+**The repository became public on 2026-08-25, and stayed unreleased on purpose**
 ([D2](open-decisions.md#d2--repository-visibility),
 [ADR-0034](../adr/0034-the-repository-is-public-before-it-is-released.md)). The source and
-the reasoning are readable; the version is still `0.1.0-SNAPSHOT` with no tag, no release and
-no artifact, and M6 keeps its own trigger. Two habits become rules with that switch:
+the reasoning are readable. Public without released held for eight days: the version was
+`0.1.0-SNAPSHOT` with no tag, no release and no artifact until M6's trigger fired on
+2026-09-02. Two habits became rules with that switch:
 `brainstorm/` is now a confidentiality boundary rather than a convention, and secret
 discipline is pre-push rather than pre-release.
 

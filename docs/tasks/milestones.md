@@ -1,8 +1,9 @@
 # Milestones
 
-**v1 is done at M5.** Publishing to Maven Central is a separate later milestone (M6),
-triggered by the library proving itself in the owner's first real project rather than by a
-date. The v2 hot-swap wrapper is designed for but not built
+**v1 is done at M5, and `0.1.0` is on Maven Central since M6.** Publishing was kept a separate
+milestone on purpose, triggered by the library proving itself in the owner's first real project
+rather than by a date; the trigger fired on 2026-09-02. The v2 hot-swap wrapper is designed for
+but not built
 ([ADR-0011](../adr/0011-independent-name-and-deferred-wrapper.md)).
 
 ---
@@ -507,3 +508,173 @@ guarantees the project has not made yet.
 
 **Not done here, deliberately:** anything that publishes. No GPG plugin, no Central Portal
 configuration, no `deploy` execution — that is M6, and it is unscheduled by design.
+
+---
+
+### M6 — GPG signing and Central Portal publishing
+
+**Status:** Done 2026-09-02 — `0.1.0` published to Maven Central ·
+**Branch:** `milestone/m6-central-publishing` · **Entry:** M5, plus the trigger below
+
+**The trigger fired.** M6 had no entry until now, deliberately: it was unscheduled, and its
+condition was the library proving itself in the owner's first real project rather than a date.
+On 2026-09-02 the owner reported using it in that application and finding that hot reload works
+there. That is the whole condition, and it is why the version bump — the step the M6
+preparation deliberately held back on 2026-08-31 — is part of this milestone rather than of the
+preparation.
+
+**What the trigger actually establishes, stated narrowly.** The library ran inside a real
+application, not only inside its own tests and examples, and the feature the whole design is
+built around — a configuration file edited while the program runs, picked up without a restart
+— behaved as documented there. That is the one thing this repository could never check for
+itself: every reload test here drives a registry the test itself created, and every example is
+code written to demonstrate the library rather than code that needed it. Nothing else was
+reported: no measurement, no defect, and no exercise of the parts an application reaches only
+later — `store()`, a non-file `ConfigSource`, moderation, or a multi-model snapshot under load.
+This is the owner's report of their own use, recorded as such, and it is not evidence about
+those.
+
+On 2026-08-31 the argument for waiting was that a release before the consumer application ran
+would record the API changes that application demanded as published versions rather than as
+commits. The application has now run. What it has not yet done is ask for a change.
+
+**The account half was already done, on 2026-08-30/31, and none of it is in the repository:**
+a Central Portal account created with the GitHub login, which provisioned the namespace
+`io.github.maxtrezzi` automatically; an RSA 4096 signing key published to two keyservers; a
+user token in `~/.m2/settings.xml`; and Maven 3.9.16 through SDKMAN, because the publishing
+plugin requires 3.9.2 and this machine's `/usr/bin/mvn` is 3.8.7.
+
+The decisions are in
+[ADR-0045](../adr/0045-publish-through-the-central-portal-from-a-release-profile.md).
+
+#### Built
+
+- A **`release` profile** on the parent POM: `maven-gpg-plugin` 3.2.8 signing at `verify`,
+  `central-publishing-maven-plugin` 0.11.0 with `extensions=true`, `publishingServerId=central`
+  and `autoPublish=false`, and a profile-scoped `requireMavenVersion` of `[3.9.2,)`. An
+  ordinary `mvn clean install` is untouched and still needs no key.
+- **`skipPublishing` in `modelrack4j-examples`**, beside the `maven.deploy.skip` it does not
+  replace. Both are needed and the POM now says why.
+- **The url and scm inheritance attributes** on the parent, so a child does not publish a POM
+  whose `url` ends in the module directory.
+- **`build/check-release-bundle.sh`**, which reads a built bundle and asserts two things a
+  comment cannot: no `modelrack4j-examples` entry, and a `.asc` beside every `.jar` and
+  `.pom`.
+- **The version bumped to `0.1.0`** across the eight POMs, `project.build.outputTimestamp`
+  moved to the release date, the CHANGELOG dated, and the README and manual switched from
+  "build and install locally" to the Central coordinates.
+
+#### Found
+
+**Maven 3.9.16 builds this project.** That was open since 2026-08-31, because verifying it
+would have written into `target/` while another session was working. `mvn clean install`:
+BUILD SUCCESS, 170 tests, 23 s.
+
+**The planned dry run would have proved nothing, and the first attempt at it reached Central
+for real.** Two separate defects in the plan, both found by running it:
+
+1. `-DskipPublishing=true` is not a "build the bundle but upload nothing" switch. The flag is
+   read **per artifact**, inside the filter that decides what enters the bundle
+   (`PublishMojo.lambda$processRelease$1` → `isSkipPublishing`), so it produces an *empty*
+   bundle — and the assertion "the bundle holds no `modelrack4j-examples`" would have passed
+   against nothing at all.
+2. Blocking `centralBaseUrl` does not block a snapshot. With the version still at
+   `0.1.0-SNAPSHOT` the plugin took its snapshot path, which deploys straight to
+   `https://central.sonatype.com/repository/maven-snapshots/` — an address that comes from
+   `centralSnapshotsUrl`, a different parameter. The build therefore made a real authenticated
+   request to Central. It was refused with **403 Forbidden**: snapshot publishing is enabled
+   per namespace and `io.github.maxtrezzi` does not have it. Nothing was uploaded and no
+   deployment exists on the Portal — the snapshot path is an ordinary Maven repository
+   transfer, not the publisher API. The lesson is in ADR-0045's consequences, and the working
+   dry run blocks **both** URLs.
+
+That 403 also answers, without asking anyone, the middle path the M6 preparation had left
+open: publishing `0.1.0-SNAPSHOT` to Central so a consumer application could depend on it
+without committing to anything is not available today. It would need snapshot publishing
+enabled for the namespace first.
+
+**`child.project.url.inherit.append.path` does not go where the preparation put it.** It was
+written on `<url>`, following the shape of the three `child.scm.*` attributes, which do belong
+on `<scm>`. Maven accepted it in silence and ignored it: `mvn -pl modelrack4j-core
+help:effective-pom` still reported
+`https://github.com/maxtrezzi/modelrack4j/modelrack4j-core`. The XSD says why — the attribute
+is declared on the **`Model`** type, so it belongs on `<project>`, while the `child.scm.*`
+ones are declared on `Scm`. Reproduced in a two-POM project outside this repository, fixed,
+and re-checked: core, GLM and the BOM now all report the parent url unchanged. **A POM that
+reads correct is not evidence here** — only the effective POM is.
+
+#### Verified
+
+On the machine this repository measures on (AMD Ryzen 7 7840HS, Pop!_OS 24.04, Temurin 25),
+with Maven 3.9.16:
+
+- `mvn clean install` — BUILD SUCCESS, 170 tests, no key needed.
+- A dry run on the release path with both Central URLs pointed at `127.0.0.1:1`:
+  `central-bundle.zip` written, upload refused, build failed at the upload as intended.
+- The bundle holds **7 modules** — the parent and the BOM as POMs, core and the four providers
+  with a jar, a `-sources` jar and a `-javadoc` jar each — in **110 files**, and **zero**
+  paths naming `modelrack4j-examples`.
+- `build/check-release-bundle.sh` on that bundle: the exclusion check passes, and the
+  signature check fails on all 22 `.jar`/`.pom` artifacts, which is correct for a bundle built
+  with `-Dgpg.skip=true`.
+- **The same dry run signed**, with the owner typing the passphrase into the pinentry dialog:
+  `maven-gpg-plugin` signed 26 files across the eight modules, the upload failed at the blocked
+  address as intended, and the script printed *"bundle looks publishable"* — the exclusion
+  check and the signature check both green. One signature was then checked rather than
+  counted: `gpg --verify` on `modelrack4j-core-0.1.0.jar.asc` reports *Good signature* from
+  key `B9602C495E92406FF5DF24A9336FF7186A35E877`. The examples module is signed too, and still
+  does not enter the bundle.
+- Effective `url` and `scm` of three modules, read from `help:effective-pom`.
+- The profile-scoped Maven floor, by running `/usr/bin/mvn -Prelease validate` on 3.8.7:
+  *"Detected Maven Version: 3.8.7 is not in the allowed range [3.9.2,)"*, from the enforcer
+  rather than from the plugin.
+
+#### The release
+
+Run the same evening, in the order the entry had planned. The upload itself is one command;
+what is worth recording is what each step actually returned.
+
+`mvn -Prelease clean deploy` uploaded the bundle and Central validated it:
+`deploymentId 9b9ce361-f0dc-421c-8539-577f266c20ff`, state `VALIDATED`, `errors {}`,
+`warnings []`, holding the seven artifacts and — visible in the log as seven
+`Skipping Central Release Publishing for artifact 'modelrack4j-examples' at user's request`
+lines — not the examples. `autoPublish=false` did its job: the build stopped there.
+
+The owner pressed **Publish** on the Portal. The deployment was observed in `PUBLISHING` for
+**4 minutes 53 seconds** — 21:58:41 to 22:03:34, polled every 20 s — and then reached
+`PUBLISHED`. That is a lower bound on how long it took: the first poll already found it
+publishing, so the interval is measured from the first observation rather than from the
+press. While it was publishing, the status endpoint reported an empty `purls` list and
+`errors: {"common": ["Deployment components info not found"]}` — transitional, and gone once
+the state settled.
+
+**Verified after publication, not assumed:**
+
+- The Portal's own `published` endpoint: `true` for all seven artifacts, and **`false` for
+  `modelrack4j-examples`**, which is the one that matters.
+- `repo1.maven.org` serves `modelrack4j-core-0.1.0.jar` and its `.asc` (HTTP 200) and returns
+  **404** for `modelrack4j-examples-0.1.0.jar`.
+- Resolved into an **empty local repository** with
+  `mvn -Dmaven.repo.local=<temp> dependency:get`, so the download came from Central rather
+  than from the `~/.m2` the release build had just written.
+- The **published** parent POM carries all four inheritance attributes — the fix in this
+  milestone, checked where it finally counts rather than in the working tree.
+- The published `modelrack4j-provider-anthropic` jar carries its
+  `META-INF/services/io.github.maxtrezzi.modelrack4j.spi.ProviderFactory` entry, and
+  `modelrack4j-core` carries `META-INF/LICENSE` and `META-INF/NOTICE` stamped
+  `2026-09-02 00:00` — the reproducible-build timestamp, not the moment of the build.
+
+The `v0.1.0` tag is created on `main` after the merge, so that it is reachable from the branch
+it names: this repository squash-merges, so a tag on the pre-merge commit would sit outside
+`main`'s history.
+
+**A signed step needs a human, but not an interactive shell — and this entry first said
+otherwise.** The passphrase is not cached, and `gpg --batch --pinentry-mode error` here fails
+with `No pinentry`, which was written up as "no automated shell on this machine can supply the
+passphrase". That flag orders gpg to fail instead of asking, so the message was produced by
+the test rather than found by it. What is actually installed is `pinentry-gnome3`, as the
+default `/usr/bin/pinentry`, with `DISPLAY=:0` present: a signing step started from any shell
+opens a dialog on the desktop. A flag that changes the behaviour under test cannot be evidence
+about that behaviour.
+
+**An off-machine backup of the signing key.** It still sits on the same disk as the key.
