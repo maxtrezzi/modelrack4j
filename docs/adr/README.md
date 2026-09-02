@@ -80,7 +80,8 @@ by number, since the numbering only reflects the order of the original appendix.
 | [0034](0034-the-repository-is-public-before-it-is-released.md) | The repository is public before it is released | Accepted |
 | [0035](0035-ship-a-notice-file-for-attribution.md) | Ship a NOTICE file; §4(d) is the only attribution clause that reaches a binary | Accepted |
 | [0036](0036-claude-md-is-local-only.md) | `CLAUDE.md` is local-only; the tracked documentation is the source | Superseded by ADR-0037 |
-| [0037](0037-claude-md-is-tracked-and-maintained.md) | `CLAUDE.md` is tracked and maintained; hiding a file does not stop it drifting | Accepted |
+| [0037](0037-claude-md-is-tracked-and-maintained.md) | `CLAUDE.md` is tracked and maintained; hiding a file does not stop it drifting | Accepted — the file's name amended by ADR-0046 |
+| [0046](0046-agent-guidance-lives-in-agents-md.md) | Agent guidance lives in `AGENTS.md`, with `CLAUDE.md` left as a pointer | Accepted |
 
 **Structure and configuration**
 
