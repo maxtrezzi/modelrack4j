@@ -4,12 +4,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project state
 
-**v1 is complete and the repository is public.** Seven Maven modules, four providers, hot
-reload, a two-part manual and runnable examples. M0–M5 are done; M6 (GPG signing, Central
-Portal publishing) is unscheduled by design, triggered by the library proving itself in the
-owner's first real project rather than by a date. The version is `0.1.0-SNAPSHOT` with no
-tag and no released artifact — public and released are separate, and only the first has
-happened (ADR-0034).
+**v1 is complete, the repository is public, and `0.1.0` is released.** Seven Maven modules,
+four providers, hot reload, a two-part manual and runnable examples. M0–M6 are done: M6's
+trigger fired on 2026-09-02, when the owner tested the library and judged it publishable, and
+`io.github.maxtrezzi:modelrack4j-*:0.1.0` was signed and published to Maven Central the same
+evening. `modelrack4j-examples` is not published and is confirmed absent from Central.
+
+**A published version can never be changed or deleted.** That is new, and it changes what a
+mistake costs: before M6 a wrong API shape was a commit, now it is a permanent artifact. The
+project is `0.x` and its CHANGELOG reserves the right to break in a minor, so a fix is
+allowed — it is just also permanent. Releasing is ADR-0045: everything that signs or uploads
+lives in the `release` profile, `autoPublish=false` keeps a human at the Portal, and the tag
+comes after the publish.
 
 **This file is tracked and public.** It drifted badly once — its Project state section still
 claimed "no code exists yet" long after v1 shipped, and its watcher guidance still described
@@ -130,7 +136,15 @@ preference of the library's own design.
 ## Build and test
 
 Maven multi-module, Apache 2.0, artifacts `io.github.maxtrezzi:modelrack4j-*` (ADR-0025).
-Local install only for now (`-SNAPSHOT` to `~/.m2`); Central publishing is M6 and unscheduled.
+Publishing lives entirely in the `release` profile (ADR-0045), so an ordinary build never
+signs and never contacts Central. A release needs Maven 3.9.2+ — `/usr/bin/mvn` here is 3.8.7
+and SDKMAN's 3.9.16 is only on an *interactive* shell's `PATH` — and it needs the GPG
+passphrase, which is not cached. The passphrase does not require an interactive shell: gpg's
+default pinentry here is `pinentry-gnome3` and `DISPLAY` is set, so a signing step started
+from any shell opens a dialog on the desktop for a human to type into. **Do not conclude
+otherwise from `gpg --pinentry-mode error`** — that flag orders gpg to fail rather than ask,
+so its `No pinentry` says nothing about what is available.
+`build/check-release-bundle.sh` checks a built bundle before it is uploaded.
 
 ```bash
 mvn clean install                        # full build, all modules
@@ -418,9 +432,9 @@ in-flight requests may still hold them.
   entry there is a question for the owner, not work to pick up.
 - The §2 decision table in `brainstorm/PLAN.md` is closed: do not reopen those choices
   without asking. The ADRs carry the same decisions with their reasoning.
-- Milestones run M0 → M5 in `docs/tasks/milestones.md` and v1 was done at M5. **M6 is named
-  there but has no entry of its own**, deliberately: it is unscheduled, so there is nothing
-  to write down yet beyond its trigger. Post-v1 work is P1… in `docs/tasks/post-v1.md`.
+- Milestones run M0 → M6 in `docs/tasks/milestones.md`; v1 was done at M5, and M6 gained its
+  own entry on 2026-09-02 when its trigger fired. Post-v1 work is P1… in
+  `docs/tasks/post-v1.md`.
 - **The repository is public (ADR-0034).** Secret discipline is pre-push, not pre-release,
   and `brainstorm/` is a confidentiality boundary rather than a convention. Checks that read
   the working tree answer "does it work here", not "does it work for someone cloning" — the

@@ -130,3 +130,4 @@ by number, since the numbering only reflects the order of the original appendix.
 | [0040](0040-protect-main-with-required-checks-not-required-review.md) | Protect `main` with required checks, not required review | Accepted |
 | [0041](0041-mutation-testing-on-core-only.md) | Run mutation testing on core only, never on a provider module | Accepted — the deferred CI question amended by ADR-0043 |
 | [0043](0043-keep-mutation-testing-out-of-ci.md) | Keep mutation testing out of CI, in every form | Accepted |
+| [0045](0045-publish-through-the-central-portal-from-a-release-profile.md) | Publish through the Central Portal, from a `release` profile, with the last step manual | Accepted |

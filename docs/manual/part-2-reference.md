@@ -41,14 +41,8 @@ wrong. [Part 1](part-1-tutorial.md) is the way in; this is the page you come bac
 
 **Java 17 or newer.** Built and tested on 17, 21 and 25.
 
-**Not on Maven Central yet.** Build and install locally from a checkout:
-
-```bash
-git clone https://github.com/maxtrezzi/modelrack4j.git
-cd modelrack4j && mvn install
-```
-
-Import the BOM once, then declare artifacts without versions:
+**On Maven Central** since `0.1.0`. Import the BOM once, then declare artifacts without
+versions:
 
 ```xml
 <dependencyManagement>
@@ -56,7 +50,7 @@ Import the BOM once, then declare artifacts without versions:
     <dependency>
       <groupId>io.github.maxtrezzi</groupId>
       <artifactId>modelrack4j-bom</artifactId>
-      <version>0.1.0-SNAPSHOT</version>
+      <version>0.1.0</version>
       <type>pom</type>
       <scope>import</scope>
     </dependency>
@@ -891,7 +885,9 @@ starts with `0`. Breaking changes are called out in
 [CHANGELOG.md](../../CHANGELOG.md) under **Changed**, with the migration, but they are not held
 back for a major bump until the API settles at `1.0.0`.
 
-**Not published to Maven Central yet.** Build and `mvn install` locally.
+**Published to Maven Central** under `io.github.maxtrezzi`, signed, with a sources jar and a
+javadoc jar for each artifact. `modelrack4j-examples` is not published: it is demo code, and
+you read it in the repository rather than depending on it.
 
 **LangChain4j is pinned** at 1.19.0, imported through both its stable and community BOMs. The
 capability matrix on this page is a fact about that version, not a permanent property — it is
