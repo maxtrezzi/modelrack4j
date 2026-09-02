@@ -1,6 +1,6 @@
 # ADR-0037: `CLAUDE.md` is tracked and maintained, because hiding a file does not stop it drifting
 
-- **Status:** Accepted
+- **Status:** Accepted — the file's name amended by ADR-0046
 - **Date:** 2026-08-25
 - **Supersedes:** [ADR-0036](0036-claude-md-is-local-only.md)
 - **Amends:** —

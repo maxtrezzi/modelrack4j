@@ -10,6 +10,26 @@ local.conf
 application-local.*
 **/secrets.*
 
+# Key material — never commit, and never rely on remembering not to.
+#
+# On 2026-08-30 the GPG backup commands for the release key were run from inside this
+# checkout, so `chiave-privata.asc` and the revocation certificate landed in the working tree
+# of a PUBLIC repository as untracked but NOT ignored files — one `git add -A` from being
+# staged. They never reached a git object, and the rule below is why it cannot happen twice.
+# No file of these kinds belongs in this repository, so the list is deliberately wide.
+*.asc
+*.gpg
+*.pgp
+*.rev
+*.key
+*.pem
+*.p12
+*.pfx
+*.jks
+*.keystore
+secring.*
+gpg-backup*/
+
 # Personal Claude Code settings. The shared .claude/settings.json is committable; this one
 # is per-machine, and was previously ignored only by the author's global ignore file —
 # which does not travel to anyone else's checkout.

@@ -2619,3 +2619,70 @@ Run live on the machine in this repository's measurement note (AMD Ryzen 7 7840H
 
 Nothing here constrains future code. The example's question was never a decision, and the
 `MAVEN_OPTS` line changes how a script invokes Maven, not what the library does.
+
+---
+
+### P23 — Housekeeping: key-shaped files cannot be committed, and the guidance is called `AGENTS.md`
+
+**Status:** Done 2026-09-02 · **Branch:** `task/p23-gitignore-keys-and-agents-md` ·
+**Produced:** [ADR-0046](../adr/0046-agent-guidance-lives-in-agents-md.md)
+
+Two unrelated pieces of housekeeping, deliberately kept as one item because the owner asked
+for them together and neither is large enough to be a task of its own. They share nothing but
+the branch.
+
+#### `.gitignore` now covers key material
+
+The gap has a history. On 2026-08-30, while preparing [M6](milestones.md#m6--gpg-signing-and-central-portal-publishing),
+the backup commands for the release signing key were run from inside this checkout, so
+`chiave-privata.asc` and the revocation certificate landed in the working tree of a **public**
+repository as untracked and — the part that mattered — **not ignored**. One `git add -A` would
+have staged them. They were moved out, and `git log --all --diff-filter=A` confirmed they had
+never reached a git object, but nothing stopped it happening again: `.gitignore` covered
+`brainstorm/`, `.env`, `local.conf` and `**/secrets.*`, and nothing key-shaped.
+
+Eleven patterns now do: `*.asc`, `*.gpg`, `*.pgp`, `*.rev`, `*.key`, `*.pem`, `*.p12`, `*.pfx`,
+`*.jks`, `*.keystore`, `secring.*`, plus `gpg-backup*/` for the directory the incident actually
+created. The list is wider than what this project uses, on purpose — no file of any of those
+kinds belongs in this repository, so there is nothing to trade off.
+
+**Checked rather than assumed, in both directions.** `git ls-files` matches **zero** tracked
+files against those patterns, so nothing already committed becomes invisible. And recreating
+the incident — `touch chiave-privata.asc B9602C49.rev test.p12` — leaves `git status` clean,
+with `git check-ignore -v` naming the rule that catches each one.
+
+This closes the loose end [P7](#p7--closing-out-the-outside-review-of-the-public-repository)
+left open when it noted that `.gitignore` had no rule of this shape.
+
+#### `CLAUDE.md` is now `AGENTS.md`
+
+The file's name said which tool read it; its contents say nothing tool-specific. Renamed with
+`git mv`. **The history follows it only with `--follow`**: because `CLAUDE.md` still exists,
+with new content, git records the change as one deletion and one addition rather than as a
+rename, so plain `git log AGENTS.md` shows a single commit while `git log --follow AGENTS.md`
+walks back through P21, P20 and the rest. Worth knowing before concluding that the file has no
+past. `CLAUDE.md` stays behind as a pointer holding no guidance of
+its own, because Claude Code loads that name and because seven accepted ADRs cite it — ADR-0015,
+ADR-0025, ADR-0026, ADR-0036, ADR-0037, ADR-0039 and ADR-0043 — in bodies that cannot be
+edited. [ADR-0046](../adr/0046-agent-guidance-lives-in-agents-md.md) has the reasoning;
+[ADR-0037](../adr/0037-claude-md-is-tracked-and-maintained.md)'s status line now records that
+its file's name was amended, which is the only part of it that moved.
+
+**Three references were changed and the rest were left alone**, which is the distinction that
+took the reading. Inside the file, its title and its opening line named `CLAUDE.md` and now
+name `AGENTS.md`; every other self-reference in it says "this file" and needed nothing. In
+`docs/tasks/README.md`, one sentence states a *live* rule — that `Task 0.4` and `M3` are cited
+from the guidance file — and was updated. Everything else that mentions `CLAUDE.md` across
+`docs/tasks/` is a record of something that happened when the file had that name, and rewriting
+history to match a rename would make those entries wrong rather than current.
+
+**What this item did not do:** verify how Claude Code treats the `@AGENTS.md` import line. The
+pointer works either way, because the sentence above the import tells the reader in plain words
+to open the other file, and that is what ADR-0046 relies on. If a later session establishes the
+behaviour, it belongs here rather than in the ADR.
+
+#### Verified
+
+- `build/check-docs.py`: clean across 46 ADRs and 61 tracked markdown files.
+- `mvn clean install`: green, 170 tests. Nothing here touches code, and that is the point of
+  running it.

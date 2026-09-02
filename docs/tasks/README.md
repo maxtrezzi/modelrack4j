@@ -23,7 +23,7 @@ that merely gets work done closes by being marked `Done`.
 
 ## Conventions
 
-**Identifiers never change.** `Task 0.4` and `M3` are cited from `CLAUDE.md` and from the
+**Identifiers never change.** `Task 0.4` and `M3` are cited from `AGENTS.md` and from the
 ADRs. Renumbering silently breaks those references, so items are retired in place rather
 than renumbered, and new work takes the next free number.
 
@@ -99,6 +99,7 @@ Phase 0 gates everything else; nothing below M0 should start before its blockers
 | [P20](post-v1.md#p20--writing-a-configuration-layer-back) | Writing a configuration layer back | **Done** — validate before storing; the edit API built and removed; ADR-0044 |
 | [P21](post-v1.md#p21--what-the-library-leaves-available-said-out-loud) | What the library leaves available, said out loud | **Done** — *configuring* those from a file is what is out of scope; `ConsoleChat` gained `/tools`, and the example set stayed at five |
 | [P22](post-v1.md#p22--the-council-asks-your-question-and-mavens-warning-stops-landing-in-the-output) | `ThreeModelCouncil` asks the questions you type, and the launcher silences a warning that is not ours | **Done** — a question loop on standard input with no default and `/exit` to leave; `--sun-misc-unsafe-memory-access=allow`, probed rather than assumed |
+| [P23](post-v1.md#p23--housekeeping-key-shaped-files-cannot-be-committed-and-the-guidance-is-called-agentsmd) | Housekeeping: key-shaped files cannot be committed, and the guidance is called `AGENTS.md` | **Done** — 12 ignore patterns, tested in both directions; ADR-0046 |
 | [D1](open-decisions.md#d1--glm-route-if-no-maintained-module-exists) | GLM route if no maintained module | **Closed** — never became live |
 | [D2](open-decisions.md#d2--repository-visibility) | Repository visibility | **Settled** — public, not released; ADR-0034 |
 | [D3](open-decisions.md#d3--token-window-memory-on-a-remote-estimator) | Token-window memory on a remote estimator | **Settled** — opt-in flag |
