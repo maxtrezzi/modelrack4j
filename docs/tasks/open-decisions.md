@@ -150,3 +150,50 @@ problem, the report published as an artifact. It loses because nobody is obliged
 and because it still puts `mutationCoverage` in a file — and the only thing keeping PIT away
 from the provider modules and their paid `*IT.java` suites is that a person types
 `-pl modelrack4j-core`.
+
+---
+
+### D5 — A version token for optimistic concurrency
+
+**Status:** Needs decision ·
+**Raised by:** putting `storeIfUnchanged` behind an HTTP `PUT`
+
+`storeIfUnchanged(target, expected, text)` takes the whole expected document. Over HTTP that is
+an ETag-shaped problem solved without an ETag: the caller has to ship the entire previous
+document, encoded, in a header, because there is nothing smaller that means the same thing.
+
+The options, all cheap, none obviously right:
+
+- **Leave it.** The current signature cannot be misread, and a caller that already holds the
+  text it edited pays nothing. Anything smaller is a hash, and a hash is a second way to say
+  the same thing that can disagree with the first.
+- **`String version()` on `ConfigSource`** — a digest of `text()`, with a
+  `storeIfVersion(target, version, text)` beside the existing method. Natural over a network,
+  and it makes a layer's identity something a client can hold cheaply.
+- **A digest-taking overload only**, leaving the interface alone.
+
+Whichever wins, the byte-exact semantics stay: the point of the check is that a reformat or an
+added comment is a change somebody made on purpose.
+
+---
+
+### D6 — "Cannot store" is not "your configuration is invalid"
+
+**Status:** Needs decision ·
+**Raised by:** mapping the library's exceptions onto HTTP status codes
+
+`store` and `storeIfUnchanged` throw `ConfigValidationException` both when the text does not
+load **and** when the layer cannot be written — the javadoc says so plainly: *"if the text does
+not parse or does not validate, or if it cannot be stored"*. An application that turns the
+library's exceptions into HTTP responses has to answer `400` or `500` from that one type, and
+gets it wrong for one of the two cases: a read-only file or a full disk reaches the client as
+"your configuration is invalid", which it is not.
+
+- **Leave it.** One exception type is one thing to catch, and 0.x churn has a cost that a
+  permanent artifact makes permanent.
+- **A distinct exception for the storage half** — `ConfigStoreException`, thrown only once
+  validation has passed and the write itself fails. Breaking for anyone catching the current
+  type narrowly, which the CHANGELOG reserves the right to be in a minor.
+
+The rollback behaviour is not in question either way: a failed write already restores the
+previous snapshot before the exception leaves the method.
