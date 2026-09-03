@@ -102,7 +102,7 @@ Phase 0 gates everything else; nothing below M0 should start before its blockers
 | [P23](post-v1.md#p23--housekeeping-key-shaped-files-cannot-be-committed-and-the-guidance-is-called-agentsmd) | Housekeeping: key-shaped files cannot be committed, and the guidance is called `AGENTS.md` | **Done** — 12 ignore patterns, tested in both directions; ADR-0046 |
 | [P24](post-v1.md#p24--watchtrue-cannot-see-file-backed-layers-given-through-sources) | `watch(true)` cannot see file-backed layers given through `sources(...)` | **Not started** — silent drift between two path lists |
 | [P25](post-v1.md#p25--a-malformed-glm-key-fails-before-the-call-past-the-exception-guarantee) | A malformed GLM key fails before the call, past the exception guarantee | **Not started** — `validate()` could catch it at load |
-| [P26](post-v1.md#p26--two-documentation-gaps) | Two documentation gaps | **Not started** — one of them needs checking here first |
+| [P26](post-v1.md#p26--two-documentation-gaps) | Two documentation gaps | **Done** — both reproduced; the tutorial's step 7 printed a `WARN` its own `mvn -q` command suppresses |
 | [D1](open-decisions.md#d1--glm-route-if-no-maintained-module-exists) | GLM route if no maintained module | **Closed** — never became live |
 | [D2](open-decisions.md#d2--repository-visibility) | Repository visibility | **Settled** — public, not released; ADR-0034 |
 | [D3](open-decisions.md#d3--token-window-memory-on-a-remote-estimator) | Token-window memory on a remote estimator | **Settled** — opt-in flag |
@@ -161,9 +161,14 @@ two were wrong about the code and wrong in the project's favour, two forced deci
 [ADR-0036](../adr/0036-claude-md-is-local-only.md), because hiding a file does not stop it
 drifting), and the rest were documentation the code had already outgrown.
 
-**No decision is open.** One thing is, and it is not code: the macOS half of
-[Task 0.8](phase-0-verification.md#task-08--watch-strategy-spike) needs hardware. The README
-states the gap rather than papering over it.
+**Two decisions are open again**, both raised by the first consumer putting `0.1.0` behind
+HTTP: [D5](open-decisions.md#d5--a-version-token-for-optimistic-concurrency), whether a layer
+should have a version token smaller than its whole text, and
+[D6](open-decisions.md#d6--cannot-store-is-not-your-configuration-is-invalid), whether "cannot
+store" deserves its own exception. Both wait on the owner. One thing waits on hardware
+instead: the macOS half of
+[Task 0.8](phase-0-verification.md#task-08--watch-strategy-spike). The README states that gap
+rather than papering over it.
 
 **Configuration no longer has to be a file, and a layer the application owns can be written
 back** ([P19](post-v1.md#p19--configuration-sources-and-a-reload-the-application-can-ask-for),
@@ -176,3 +181,10 @@ text against the whole configuration, applies it, and only then stores it, so a 
 would not load is refused before it is saved rather than after. P20 built a fluent per-key
 edit API first and removed it — the library had an opinion about *what* to write, and only
 the ordering was ever worth owning.
+
+**The tutorial's step 7 printed output its own command cannot produce**
+([P26](post-v1.md#p26--two-documentation-gaps)). `mvn -q … exec:java` runs the example inside
+Maven's process, and `-q` sets the SLF4J level there to `error`, so the library's `WARN` for a
+rejected reload never reaches the terminal — while the page showed it. The `WARN` itself was
+real; it came from a run of a command the page does not print. Both halves of P26 were
+reproduced here before either was written down.

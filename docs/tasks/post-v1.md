@@ -2774,7 +2774,7 @@ with no diagnostic in it.
 
 ### P26 — Two documentation gaps
 
-**Status:** Not started
+**Status:** Done — both reproduced here; step 7 showed output its own command cannot produce
 
 Neither is a defect in the code; both cost time that the manual could have saved.
 
@@ -2798,3 +2798,66 @@ a rejected reload. **This has not been observed in this repository**, whose laun
 already differ, so the first task is to reproduce step 7 here as written and only then decide
 whether the tutorial or the launchers need to change. Recording it as a finding before that
 check would be recording something this repository has not found.
+
+#### What was found
+
+**Both gaps are real, and the second one is worse than the entry expected.** Everything below
+was run on this machine — Temurin 25.0.3, Maven 3.9.16, `exec-maven-plugin` 3.6.3, against the
+installed `0.1.0` — driving `ConsoleChat` through a fifo so the same script could type `1`,
+delete the `model-name` line, and type `/exit`.
+
+**Step 7 of the tutorial showed a `WARN` line that its own command cannot produce.** The
+command the tutorial gives is `mvn -q -pl modelrack4j-examples exec:java …`, and under it the
+terminal gets only the example's own bracketed `onReloadFailure` line. The library's
+`WARN` never appears. Four runs, same script, only the flags differing:
+
+| Command | Maven's own lines | the library's `WARN` |
+|---|---|---|
+| `mvn -q … exec:java` — what the tutorial prints | none | **absent** |
+| `mvn … exec:java` — no `-q` | fourteen `[INFO]` lines, eight before the example starts | present, with the exception's stack trace |
+| `-q -Dorg.slf4j.simpleLogger.defaultLogLevel=warn` | none | **absent** |
+| `-q -Dorg.slf4j.simpleLogger.log.io.github.maxtrezzi.modelrack4j.LlmRegistry=warn` | none | present, with the stack trace |
+
+A fifth run checked the page rather than the finding: the command the tutorial now prints,
+copied out of it flag for flag, gives the `WARN` and no `[INFO]` line at all.
+
+The mechanism is Maven's, and it is in Maven's own artifact rather than inferred from the
+behaviour: `org/apache/maven/cli/logging/impl/Slf4jSimpleConfiguration` in
+`maven-embedder-3.9.16.jar` carries the strings `org.slf4j.simpleLogger.defaultLogLevel` and
+`error`. `-q` makes Maven set that system property, `exec:java` runs the example inside the
+same JVM, and the examples' `slf4j-simple` reads the same property — so the application goes
+quiet with Maven. A `-D` for that property on the command line changes nothing, because
+Maven sets it after parsing the command line. A *per-logger* level is the way through: Maven
+never writes `org.slf4j.simpleLogger.log.<logger>`, so it survives, and `-q` still silences
+Maven.
+
+The `WARN` text in the tutorial is genuine `slf4j-simple` output, so it was seen — but under a
+command the page does not print, and with the stack trace dropped from the transcript. It was
+written in P3 (`65b8a4b`) and had stood since.
+
+**The trailing-newline trap reproduces exactly as the entry described.** Compiled against the
+examples' classpath and run outside Maven: a layer file of 171 bytes, `expected=$(cat
+layer.conf)` giving 170, `text()` ending in a newline and the capture not, and
+`storeIfUnchanged` throwing `StaleLayerException` with `current()` 171 characters against an
+`expected` of 170. The file was left untouched, which is the part that makes it look like a
+broken check rather than a refused write.
+
+#### What changed
+
+- **The tutorial's step 7** now prints what its own command prints — the listener line alone —
+  and then gives the command that shows the `WARN` as well, with the property named and
+  explained in one paragraph. The launchers keep `-q`: each example already reports a rejected
+  reload through its own listener, and the `WARN` brings a stack trace with it.
+- **The reference** gained a paragraph under [logging](../manual/part-2-reference.md#logging),
+  a sentence in the `storeIfUnchanged` section about the trailing newline, and two
+  troubleshooting rows — one per gap.
+- **`LlmRegistry.storeIfUnchanged`'s Javadoc** says the same thing about the newline, because
+  a consumer reads that before the manual.
+
+#### Verified
+
+- The four table rows above plus the fifth run of the page's own command — five full runs of
+  the tutorial's step 7, each driven through a fifo.
+- The newline trap, as a compiled reproduction against the installed `0.1.0`.
+- `build/check-docs.py`: clean across 46 ADRs and 61 tracked markdown files.
+- `mvn clean install`: green, 170 tests. The only code change is a Javadoc paragraph.

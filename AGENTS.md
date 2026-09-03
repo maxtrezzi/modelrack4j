@@ -420,7 +420,12 @@ in-flight requests may still hold them.
   reveals and the first run from another directory does. So when you write something that
   describes code elsewhere — a script's help, a README command, a manual's account of an
   example — open that code, and run the thing in the configuration your text claims to
-  support.
+  support. **P26 is the same rule one step further in: paste the output that command
+  produced, not output from a neighbouring one.** Step 7 of the tutorial showed the library's
+  `WARN` for a rejected reload above the `mvn -q … exec:java` command that suppresses it —
+  genuine output of some run, but not of the run the page prints. Nothing about the text
+  looked invented, which is why every documentation pass since P3 read past it; only running
+  the printed command and comparing the terminal to the page found it.
 - **User-facing prose has a register, and it is not this file's (ADR-0039).** The README,
   `docs/manual/`, public Javadoc, the commented `.conf` examples, `CONTRIBUTING.md` and the
   CHANGELOG are written for a technical reader at roughly B2 English who does not read it as

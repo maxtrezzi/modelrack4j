@@ -436,6 +436,11 @@ public final class LlmRegistry implements AutoCloseable {
      * the value of the check is that it sees every change, and a comment is a change a person
      * made on purpose.
      *
+     * <p>A trailing newline counts too. {@link ConfigSource#text()} gives the layer's content
+     * back as it is, final newline included, so anything that strips it — a shell
+     * {@code $(cat layer.conf)} does — produces an {@code expected} that no longer matches.
+     * Pass the text on as you received it.
+     *
      * <p>Everything else matches {@link #store(WritableConfigSource, String)} — validation
      * before anything is published, rollback if the write fails, and no reload event for your
      * own change.
