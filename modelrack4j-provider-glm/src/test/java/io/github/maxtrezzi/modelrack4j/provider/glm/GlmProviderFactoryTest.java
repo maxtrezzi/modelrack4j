@@ -134,7 +134,7 @@ class GlmProviderFactoryTest {
                 .isInstanceOf(ConfigValidationException.class)
                 .hasMessageContaining("llm.SL.api-key")
                 .hasMessageContaining("id.secret")
-                .hasMessageContaining("no '.'");
+                .hasMessageContaining("no secret part");
     }
 
     @Test
@@ -144,7 +144,20 @@ class GlmProviderFactoryTest {
         // "id.".split("\\.") is one element, so there is no second part to reach for.
         assertThatThrownBy(() -> factory.validate(withKey("e7c1a2b3.")))
                 .isInstanceOf(ConfigValidationException.class)
-                .hasMessageContaining("no '.'");
+                .hasMessageContaining("no secret part");
+    }
+
+    @Test
+    @DisplayName("a key of nothing but dots is rejected, and the message does not claim it "
+            + "has no dot")
+    void keyOfNothingButDotsIsRejected() {
+        // split() drops trailing empty parts, so "." and "..." come back as a zero-length
+        // array and land in the same branch as a key with no dot at all. The message has to
+        // be true of both.
+        assertThatThrownBy(() -> factory.validate(withKey("...")))
+                .isInstanceOf(ConfigValidationException.class)
+                .hasMessageContaining("no secret part")
+                .hasMessageNotContaining("no '.'");
     }
 
     @Test

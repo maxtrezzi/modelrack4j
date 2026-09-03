@@ -2845,6 +2845,39 @@ guessing about a credential rather than about a shape the provider's code needs.
   now, and corrected in this commit — the summary there carries the new boundary rather than
   the new code.
 
+#### Verification, and the defect it found
+
+Run after the pull request was already open, on the development machine — AMD Ryzen 7 7840HS,
+Temurin 25.0.3, Maven 3.8.7.
+
+**A review against the Java skill found one real defect, in a message.** The rejection for a
+key that does not split said *"it has no '.', so it has no secret part"*. `split("\\.")` drops
+trailing empty parts, so `api-key = "."` and `api-key = "..."` return a zero-length array and
+land in that same branch — and the message then tells the user their key has no dot when it is
+nothing but dots. Confirmed by building a registry for each shape and printing what came out,
+not by reading. The clause is now *"it has no secret part"*, which is true of every key that
+reaches it, and `keyOfNothingButDotsIsRejected` pins it, including asserting that the old
+wording is absent.
+
+Nothing else came out of the review. The method is stateless, holds no resource, dereferences
+only components `LlmConfig`'s compact constructor has already proven non-null and non-blank,
+and names its one constant. `split("\\.")` takes `String`'s two-character fast path and
+compiles no `Pattern`, so precompiling it would buy nothing.
+
+**Mutation testing on core: 199 mutants, 197 killed, 2 minutes 23 seconds.** The two that
+survive are the two `AGENTS.md` already describes, unchanged and needing nothing:
+`LlmRegistry.reload:339` `Optional.empty()` → `Optional.empty()`, equivalent by construction,
+and `WritableFileConfigSource.stage:139` `NO_COVERAGE` on the `discardStaged` call in the
+cleanup `finally`, which needs a filesystem that fails between `createTempFile` and
+`writeString`. **This says nothing about the code in this item.** `GlmProviderFactory` is in a
+provider module, and ADR-0041 forbids running PIT there because each provider module carries a
+paid `*IT.java`. The figure for comparison: ADR-0043 recorded 122 s over 153 mutants, and core
+has grown by P19, P20 and P29 since.
+
+**Both free examples run.** `./run-atomic.sh` and `./run-database.sh` — the two that send no
+request — completed with their expected output; the other three need keys, so only their
+`--help` was checked. `mvn clean install` is 188 tests green, and `build/check-docs.py` clean.
+
 ---
 
 ### P26 — Two documentation gaps

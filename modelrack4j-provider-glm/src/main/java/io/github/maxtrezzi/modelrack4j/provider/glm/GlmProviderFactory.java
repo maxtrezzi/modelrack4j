@@ -88,7 +88,10 @@ public final class GlmProviderFactory implements ProviderFactory {
         // into one ConfigValidationException at load time.
         String[] parts = config.apiKey().split("\\.");
         if (parts.length < 2) {
-            throw rejected(config, "it has no '.', so it has no secret part");
+            // Not "it has no '.'": split() drops trailing empty parts, so a key of nothing
+            // but dots also lands here and does have them. What is true of every key in
+            // this branch is that no second part came out.
+            throw rejected(config, "it has no secret part");
         }
         // Byte length, not character count: the provider signs with the UTF-8 bytes.
         int secretBytes = parts[1].getBytes(StandardCharsets.UTF_8).length;
