@@ -2876,7 +2876,7 @@ has grown by P19, P20 and P29 since.
 
 **Both free examples run.** `./run-atomic.sh` and `./run-database.sh` — the two that send no
 request — completed with their expected output; the other three need keys, so only their
-`--help` was checked. `mvn clean install` is 188 tests green, and `build/check-docs.py` clean.
+`--help` was checked. `mvn clean install` is 188 tests green on this branch, and 189 once main is merged in — P29 added one, and `build/check-docs.py` clean.
 
 ---
 
