@@ -21,9 +21,11 @@ import dev.langchain4j.model.TokenCountEstimator;
 import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.chat.StreamingChatModel;
 import dev.langchain4j.model.moderation.ModerationModel;
+import io.github.maxtrezzi.modelrack4j.ConfigValidationException;
 import io.github.maxtrezzi.modelrack4j.LlmConfig;
 import io.github.maxtrezzi.modelrack4j.spi.ProviderFactory;
 import io.github.maxtrezzi.modelrack4j.spi.TokenEstimation;
+import java.nio.charset.StandardCharsets;
 import java.util.Optional;
 
 /**
@@ -35,6 +37,11 @@ import java.util.Optional;
  * {@code TokenCountEstimator} of any kind, so token-window memory is unavailable here rather
  * than merely expensive.
  *
+ * <p>It is also the one provider with a rule about the {@code api-key} itself. A GLM key has
+ * the form {@code id.secret}, and the provider signs a token with the second part instead of
+ * sending the key. {@link #validate(LlmConfig)} therefore rejects a key of another shape when
+ * the configuration loads, rather than letting it fail on the first request.
+ *
  * @implNote Two shape differences from the other three modules are handled here rather than
  *     leaking into the configuration schema: the builder names the model {@code model}
  *     instead of {@code modelName}, and it has no single request timeout.
@@ -43,6 +50,12 @@ public final class GlmProviderFactory implements ProviderFactory {
 
     /** The value that selects this factory in a block's {@code provider} key. */
     public static final String PROVIDER_ID = "glm";
+
+    /**
+     * The shortest secret HS256 accepts, in bytes. RFC 7518 section 3.2 requires a key at
+     * least as long as the hash output, and the JWT library the provider uses enforces it.
+     */
+    private static final int MIN_SECRET_BYTES = 16;
 
     @Override
     public String providerId() {
@@ -67,9 +80,28 @@ public final class GlmProviderFactory implements ProviderFactory {
 
     @Override
     public void validate(LlmConfig config) {
-        // Nothing left to reject here: the one capability this provider lacks is reported
-        // by supportsModeration() and refused by core. The method stays, empty, so a future
-        // gap that core cannot see has an obvious home.
+        // The rule core cannot see (ADR-0048). This provider does not send the key: it
+        // splits it on '.' and signs a JWT with the second half, so a key of the wrong
+        // shape fails while the first request is assembled. Those failures are JDK and JWT
+        // exceptions, outside the LangChain4jException family applications are told to
+        // catch, and none of them names a key. Rejecting the shape here turns all three
+        // into one ConfigValidationException at load time.
+        String[] parts = config.apiKey().split("\\.");
+        if (parts.length < 2) {
+            // Not "it has no '.'": split() drops trailing empty parts, so a key of nothing
+            // but dots also lands here and does have them. What is true of every key in
+            // this branch is that no second part came out.
+            throw rejected(config, "it has no secret part");
+        }
+        // Byte length, not character count: the provider signs with the UTF-8 bytes.
+        int secretBytes = parts[1].getBytes(StandardCharsets.UTF_8).length;
+        if (secretBytes < MIN_SECRET_BYTES) {
+            // The length of a secret that is already invalid is safe to print, and it
+            // separates a truncated key from a placeholder. The key itself never is
+            // (ADR-0047).
+            throw rejected(config, "its secret part is " + secretBytes + " bytes, and HS256"
+                    + " signing needs at least " + MIN_SECRET_BYTES);
+        }
     }
 
     @Override
@@ -111,5 +143,17 @@ public final class GlmProviderFactory implements ProviderFactory {
         // Nothing to build. Core never calls this for an ABSENT provider, and returning
         // empty keeps that consistent if it is called directly.
         return Optional.empty();
+    }
+
+    /**
+     * Builds the one rejection message, so the two shape failures read alike and neither can
+     * drift. The message names the block and the requirement, never the key.
+     */
+    private static ConfigValidationException rejected(LlmConfig config, String because) {
+        return new ConfigValidationException("llm." + config.name()
+                + ".api-key is not shaped like a GLM key: " + because + ". A GLM key has the"
+                + " form id.secret, and provider 'glm' builds its authorisation token from"
+                + " both parts, so a key of another shape fails while a request is"
+                + " assembled, before any call is made.");
     }
 }

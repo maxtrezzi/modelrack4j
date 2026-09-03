@@ -521,6 +521,11 @@ touch the network, and beside `api-key = "k"` the string is plainly a stand-in r
 exemplary configuration. Changing them would be churn in tests whose point is that any string
 passes through.
 
+> **2026-09-03 (P25):** the `api-key = "k"` this paragraph points at is gone.
+> `GlmProviderFactory` now requires a GLM key to have the shape its own token builder needs,
+> so `GlmProviderFactoryTest` carries conforming keys. The argument about *model* names is
+> unaffected — those still pass through as any string.
+
 #### Still open
 
 **The ITs run four providers but assert only `isNotBlank()`** — correct, since model output is
@@ -2732,7 +2737,7 @@ already explains the exception.
 
 ### P25 — A malformed GLM key fails before the call, past the exception guarantee
 
-**Status:** Not started
+**Status:** Done — three failure modes, not the one the entry described; ADR-0049
 
 The manual's [exceptions](../manual/part-2-reference.md#exceptions) section tells an application
 to catch `dev.langchain4j.exception.LangChain4jException` and says its handling then survives
@@ -2769,6 +2774,109 @@ enums lag the providers, and there is a consistency argument that key shapes rot
 The counter-argument is that this shape is not a catalogue of live values but a format the
 provider's own code requires unconditionally, and that the current failure is a JDK exception
 with no diagnostic in it.
+
+The owner answered on 2026-09-03: **validate the shape**, on the argument above — a format the
+provider's code requires unconditionally is not a catalogue of live values. The upstream issue
+(item 3) was not taken.
+
+#### What was found
+
+**The entry described one failure mode and there are three.** All of them happen before any
+socket is opened, and none of them is a `LangChain4jException`. Measured by driving a
+`ZhipuAiChatModel` at `http://127.0.0.1:1/`, a port nothing listens on, so a key that gets as
+far as connecting fails differently from one that does not — `langchain4j-community-zhipu-ai`
+`1.19.0-beta29`, Temurin 25.0.3.
+
+| `api-key` | Thrown | From |
+|---|---|---|
+| `no-dot-in-here-at-all` | `ArrayIndexOutOfBoundsException: Index 1 out of bounds for length 1` | `AuthorizationUtils.generateToken:60` |
+| `id.` | the same — `split("\\.")` drops the empty tail | the same |
+| `id..s` | `IllegalArgumentException: Empty key` | `javax.crypto.spec.SecretKeySpec.<init>:108` |
+| `id.secret` | `io.jsonwebtoken.security.SignatureException` ← `WeakKeyException`, *48 bits … MUST have a size >= 128 bits* | the JWT library, inside `generateToken:72` |
+| `id.0123456789abcde` (15 bytes) | the same, *120 bits* | the same |
+| `id.0123456789abcdef` (16 bytes) | **`ConnectException`** | `ZhipuAiClient.chatCompletion:109` |
+| `.0123456789abcdef` | `ConnectException` | the same |
+
+**The boundary is exactly 16 bytes**, which is RFC 7518 section 3.2: an HS256 key must be at
+least as long as the hash output. The last two rows are what makes "before the call" a
+measurement instead of a claim: a key of an acceptable shape gets far enough to open a socket,
+so every row above it failed earlier than that.
+
+**The first probe proved nothing, and it took a second run to notice.** Its control case was
+`id.secret`, chosen as obviously well-formed. That key has a 6-byte secret, so it failed too —
+the run showed five failures and no contrast at all. The mistake is worth recording because the
+output looked like a clean result: every row threw, every row named the key handling, and
+nothing in it announced that the case which was supposed to succeed had not.
+
+**The most likely real mistake was the one the entry's fix would have missed.** A key with no
+dot is a typed-in placeholder. A key with a short secret is a truncated copy-and-paste, and it
+keeps its dot, so the check as P25 first described it — reject a key that is not `id.secret`
+shaped — would have let it through to the same undiagnosable failure. The owner was asked
+again with the measurements in hand, and chose to cover both.
+
+**An empty id half is deliberately left alone.** `.0123456789abcdef` signs and is sent, and the
+server answers it with a real `ZhipuAiException`. Refusing it here would be this library
+guessing about a credential rather than about a shape the provider's code needs.
+
+#### What changed
+
+- `GlmProviderFactory.validate()` rejects both shapes, in one message that names the block and
+  never the key. Byte length, not character count, because that is what the provider signs
+  with — a test pins the difference with an eight-character, sixteen-byte secret.
+- `ZhipuAiKeyHandlingTest`, a new class, characterises the upstream behaviour rather than this
+  library's. It exists so that a future module version that reports these properly makes the
+  check here visibly redundant, and ADR-0049 says not to delete it for looking like a test of
+  someone else's code.
+- Five `api-key` values in `GlmProviderFactoryTest` were `"k"` (three) or
+  `"test-key-not-used"` (two), none of which the provider could ever have built a token from.
+  They are conforming keys now. The moderation and token-window tests would have kept passing
+  either way, because
+  `validateCapabilities` runs before `factory.validate` — worth knowing, not worth relying on.
+- `GlmProviderIT` needed no change: it reads `ZHIPU_API_KEY` by mandatory substitution, so it
+  carries whatever key the environment holds. **Whether a real key satisfies the rule was not
+  checked here** — `ZHIPU_API_KEY` is not on a non-interactive shell's environment on this
+  machine, and `mvn -Pintegration verify` is what would settle it. The argument that no working
+  key is refused does not depend on knowing Zhipu's format: the check rejects only keys the
+  provider's own token builder cannot use, so anything it refuses could never have made a
+  call.
+- The manual gained the sentence item 2 asked for, in the exceptions section, plus a
+  troubleshooting row and a line in the GLM provider note.
+- `AGENTS.md` said P27 had left all four `validate()` bodies empty. True when written, false
+  now, and corrected in this commit — the summary there carries the new boundary rather than
+  the new code.
+
+#### Verification, and the defect it found
+
+Run after the pull request was already open, on the development machine — AMD Ryzen 7 7840HS,
+Temurin 25.0.3, Maven 3.8.7.
+
+**A review against the Java skill found one real defect, in a message.** The rejection for a
+key that does not split said *"it has no '.', so it has no secret part"*. `split("\\.")` drops
+trailing empty parts, so `api-key = "."` and `api-key = "..."` return a zero-length array and
+land in that same branch — and the message then tells the user their key has no dot when it is
+nothing but dots. Confirmed by building a registry for each shape and printing what came out,
+not by reading. The clause is now *"it has no secret part"*, which is true of every key that
+reaches it, and `keyOfNothingButDotsIsRejected` pins it, including asserting that the old
+wording is absent.
+
+Nothing else came out of the review. The method is stateless, holds no resource, dereferences
+only components `LlmConfig`'s compact constructor has already proven non-null and non-blank,
+and names its one constant. `split("\\.")` takes `String`'s two-character fast path and
+compiles no `Pattern`, so precompiling it would buy nothing.
+
+**Mutation testing on core: 199 mutants, 197 killed, 2 minutes 23 seconds.** The two that
+survive are the two `AGENTS.md` already describes, unchanged and needing nothing:
+`LlmRegistry.reload:339` `Optional.empty()` → `Optional.empty()`, equivalent by construction,
+and `WritableFileConfigSource.stage:139` `NO_COVERAGE` on the `discardStaged` call in the
+cleanup `finally`, which needs a filesystem that fails between `createTempFile` and
+`writeString`. **This says nothing about the code in this item.** `GlmProviderFactory` is in a
+provider module, and ADR-0041 forbids running PIT there because each provider module carries a
+paid `*IT.java`. The figure for comparison: ADR-0043 recorded 122 s over 153 mutants, and core
+has grown by P19, P20 and P29 since.
+
+**Both free examples run.** `./run-atomic.sh` and `./run-database.sh` — the two that send no
+request — completed with their expected output; the other three need keys, so only their
+`--help` was checked. `mvn clean install` is 188 tests green on this branch, and 189 once main is merged in — P29 added one, and `build/check-docs.py` clean.
 
 ---
 
