@@ -312,7 +312,38 @@ class LlmRegistryTest {
                 """))
                 .isInstanceOf(ConfigValidationException.class)
                 .hasMessageContaining("fake-incomplete")
-                .hasMessageContaining("supplied no token count estimator");
+                .hasMessageContaining("produced no token count estimator");
+    }
+
+    @Test
+    @DisplayName("a null Optional from any of the three optional capabilities is a config error")
+    void nullOptionalFromAnyCapabilityIsReportedAsAConfigError() {
+        // The SPI declares these three as Optional, so null breaks it. All three go through
+        // requireProduced, which checks for null before empty — the estimator did not, and a
+        // factory returning null there produced a NullPointerException naming
+        // Optional.orElseThrow instead of a message naming the block and the provider.
+        assertThatThrownBy(() -> registryOf("llm { SL { provider = fake-null-optional"
+                + ", api-key = \"k\", model-name = \"m\", streaming = true } }"))
+                .isInstanceOf(ConfigValidationException.class)
+                .hasMessageContaining("llm.SL")
+                .hasMessageContaining("fake-null-optional")
+                .hasMessageContaining("produced no streaming chat model");
+
+        assertThatThrownBy(() -> registryOf("llm { SL { provider = fake-null-optional"
+                + ", api-key = \"k\", model-name = \"m\", moderation { enabled = true } } }"))
+                .isInstanceOf(ConfigValidationException.class)
+                .hasMessageContaining("llm.SL")
+                .hasMessageContaining("fake-null-optional")
+                .hasMessageContaining("produced no moderation model");
+
+        assertThatThrownBy(() -> registryOf("""
+                llm { SL { provider = fake-null-optional, api-key = "k", model-name = "m"
+                           memory { type = token-window, max-tokens = 500 } } }
+                """))
+                .isInstanceOf(ConfigValidationException.class)
+                .hasMessageContaining("llm.SL")
+                .hasMessageContaining("fake-null-optional")
+                .hasMessageContaining("produced no token count estimator");
     }
 
     @Test

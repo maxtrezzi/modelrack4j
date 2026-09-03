@@ -589,7 +589,7 @@ discover at runtime.
 
 Implement `io.github.maxtrezzi.modelrack4j.spi.ProviderFactory` and register it in
 `META-INF/services/io.github.maxtrezzi.modelrack4j.spi.ProviderFactory`. The interface is
-seven methods, three of which return `Optional.empty()` when the capability does not exist.
+eight methods, three of which return `Optional.empty()` when the capability does not exist.
 The one that is not obvious is `tokenEstimation()`: it reports `ABSENT`, `LOCAL` or
 `REMOTE`, not a boolean, because availability is not what varies — cost is.
 
