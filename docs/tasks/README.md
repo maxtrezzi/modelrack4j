@@ -100,10 +100,15 @@ Phase 0 gates everything else; nothing below M0 should start before its blockers
 | [P21](post-v1.md#p21--what-the-library-leaves-available-said-out-loud) | What the library leaves available, said out loud | **Done** — *configuring* those from a file is what is out of scope; `ConsoleChat` gained `/tools`, and the example set stayed at five |
 | [P22](post-v1.md#p22--the-council-asks-your-question-and-mavens-warning-stops-landing-in-the-output) | `ThreeModelCouncil` asks the questions you type, and the launcher silences a warning that is not ours | **Done** — a question loop on standard input with no default and `/exit` to leave; `--sun-misc-unsafe-memory-access=allow`, probed rather than assumed |
 | [P23](post-v1.md#p23--housekeeping-key-shaped-files-cannot-be-committed-and-the-guidance-is-called-agentsmd) | Housekeeping: key-shaped files cannot be committed, and the guidance is called `AGENTS.md` | **Done** — 12 ignore patterns, tested in both directions; ADR-0046 |
+| [P24](post-v1.md#p24--watchtrue-cannot-see-file-backed-layers-given-through-sources) | `watch(true)` cannot see file-backed layers given through `sources(...)` | **Not started** — silent drift between two path lists |
+| [P25](post-v1.md#p25--a-malformed-glm-key-fails-before-the-call-past-the-exception-guarantee) | A malformed GLM key fails before the call, past the exception guarantee | **Not started** — `validate()` could catch it at load |
+| [P26](post-v1.md#p26--two-documentation-gaps) | Two documentation gaps | **Not started** — one of them needs checking here first |
 | [D1](open-decisions.md#d1--glm-route-if-no-maintained-module-exists) | GLM route if no maintained module | **Closed** — never became live |
 | [D2](open-decisions.md#d2--repository-visibility) | Repository visibility | **Settled** — public, not released; ADR-0034 |
 | [D3](open-decisions.md#d3--token-window-memory-on-a-remote-estimator) | Token-window memory on a remote estimator | **Settled** — opt-in flag |
 | [D4](open-decisions.md#d4--mutation-testing-in-ci) | Mutation testing in CI | **Settled** — never, in any form; ADR-0043 |
+| [D5](open-decisions.md#d5--a-version-token-for-optimistic-concurrency) | A version token for optimistic concurrency | **Needs decision** |
+| [D6](open-decisions.md#d6--cannot-store-is-not-your-configuration-is-invalid) | "Cannot store" is not "your configuration is invalid" | **Needs decision** |
 
 **Phase 0 is complete except for one measurement, and M0 is done — the build is green.** Tasks 0.1–0.7 are
 done; Task 0.8 is done on Linux and open only on the macOS latency figure, which qualifies

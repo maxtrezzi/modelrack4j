@@ -2686,3 +2686,115 @@ behaviour, it belongs here rather than in the ADR.
 - `build/check-docs.py`: clean across 46 ADRs and 61 tracked markdown files.
 - `mvn clean install`: green, 170 tests. Nothing here touches code, and that is the point of
   running it.
+
+---
+
+### P24 — `watch(true)` cannot see file-backed layers given through `sources(...)`
+
+**Status:** Not started
+
+An application that both writes a configuration layer and wants hand edits to keep working
+needs `store()` and hot reload at once. The two are configured through builder methods that
+exclude each other.
+
+`store()` requires the target layer to be a `WritableConfigSource`, which requires
+`sources(...)`. `sources(...)` then makes `watch(true)` throw *"watch(true) watches
+configuration files, and this registry has none"* — at the moment when every layer the caller
+passed **is** a file (`ConfigSource.ofFile` and `ConfigSource.ofWritableFile`, both
+`FileBacked`). The message is accurate about the mechanism and misleading about the situation.
+
+The documented way round is to build the notifier by hand:
+
+```java
+.sources(List.of(ConfigSource.ofFile(defaults), runtime))
+.notifier(FileChangeNotifier.of(List.of(defaults, runtimeFile), Duration.ofMillis(300)))
+```
+
+which works. The cost is that the same paths are now written twice in two shapes with nothing
+comparing them: **drop a path from the notifier list and that layer silently stops being
+watched.** No error, no log line, and the symptom is the one this library exists to prevent —
+edits to a file that never reach the application. The manual's troubleshooting table names the
+exception but not this consequence.
+
+**The work, if it is taken:** let `watch(true)` accept layers from `sources(...)`, watching the
+`FileBacked` ones and ignoring the rest, and keep the current exception only for the case it
+was written for — a registry whose layers are *all* unwatchable. `Builder.build()` already
+knows which sources are `FileBacked`, so nothing new has to be discovered.
+
+**The argument against**, which should be answered before any code moves: a registry mixing a
+database row with a file would then be "watched" in a way that covers only half its layers,
+and a caller who reads `watch(true)` as "changes reach me" would be half right — arguably worse
+than an exception that forces the question. If that argument wins, the item closes as a
+documentation change instead: a troubleshooting row for the silent drift, next to the row that
+already explains the exception.
+
+---
+
+### P25 — A malformed GLM key fails before the call, past the exception guarantee
+
+**Status:** Not started
+
+The manual's [exceptions](../manual/part-2-reference.md#exceptions) section tells an application
+to catch `dev.langchain4j.exception.LangChain4jException` and says its handling then survives
+any provider swap, because all four providers throw beneath it. That claim was checked and it
+holds for what a failing **call** throws: `javap` on
+`langchain4j-community-zhipu-ai:1.19.0-beta29` confirms `ZhipuAiException extends
+LangChain4jException`.
+
+The hole is a failure that happens **before** the call. GLM builds its authorisation token by
+splitting the API key on `.` and taking element `[1]`, so a key that is not `id.secret` shaped
+throws a bare `java.lang.ArrayIndexOutOfBoundsException` from
+`dev.langchain4j.community.model.zhipu.AuthorizationUtils.generateToken`, inside
+`ZhipuAiChatModel.doChat`, with nothing in the message about a key. It sails past the catch the
+manual recommends, so an application that maps the library's exceptions onto responses reports
+a bad credential as an internal fault.
+
+No live GLM call is needed to reproduce it and no funded account either: any key string without
+a `.` will do.
+
+**The work, if it is taken**, in the order they are worth doing:
+
+1. `GlmProviderFactory.validate()` rejects a key that is not `id.secret` shaped, at load time.
+   This is exactly what that hook is for — a capability check that fails fast, with a message
+   naming the block — and it converts an unhandleable runtime crash into the library's own
+   `ConfigValidationException`. It is also the only one of the three that this repository
+   controls end to end.
+2. A sentence in the manual's exceptions section: the `LangChain4jException` guarantee covers
+   what a failing call throws, not what a provider throws while assembling credentials.
+3. An issue upstream against `langchain4j-community-zhipu-ai`. Lowest leverage, longest loop.
+
+**Open question for the owner:** whether validating a key's *shape* is a capability check or a
+credential check. The schema deliberately does not validate `model-name` because upstream's
+enums lag the providers, and there is a consistency argument that key shapes rot the same way.
+The counter-argument is that this shape is not a catalogue of live values but a format the
+provider's own code requires unconditionally, and that the current failure is a JDK exception
+with no diagnostic in it.
+
+---
+
+### P26 — Two documentation gaps
+
+**Status:** Not started
+
+Neither is a defect in the code; both cost time that the manual could have saved.
+
+**`storeIfUnchanged` compares byte for byte, and a shell capture quietly changes the bytes.**
+The comparison being on the text rather than on its meaning is deliberate and right
+([ADR-0044](../adr/0044-store-a-layer-back-as-text-validated-before-it-is-stored.md)); the trap
+is that the obvious way to read a layer in a shell — `expected=$(cat layer.conf)`, or the same
+through a command substitution of any kind — strips the trailing newline, so a perfectly good
+edit built on it comes back as `StaleLayerException` and the caller concludes the check is
+broken. It takes a byte comparison to see it. A troubleshooting row would pay for itself:
+*symptom* — a valid edit is refused as stale; *cause* — the expected text lost a trailing
+newline in transit; *fix* — carry the layer's text without reshaping it.
+
+**Whether the tutorial's step 7 output reproduces under `mvn -q … exec:java` is unverified.**
+An application run through the exec plugin shares Maven's SLF4J binding, where `-q` can leave
+**no** application log line on the terminal — neither the reload messages nor the library's own
+`WARN` for a rejected reload.
+[Step 7](../manual/part-1-tutorial.md#7-break-the-file-on-purpose) shows that `WARN` arriving
+from exactly that command shape, and a reader who does not see it learns the wrong lesson about
+a rejected reload. **This has not been observed in this repository**, whose launchers may
+already differ, so the first task is to reproduce step 7 here as written and only then decide
+whether the tutorial or the launchers need to change. Recording it as a finding before that
+check would be recording something this repository has not found.
