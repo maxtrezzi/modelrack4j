@@ -468,6 +468,11 @@ The comparison is on the text, character for character, not on what it means. A 
 somebody reformatted or added a comment to is a layer that moved, and the store is refused.
 That is the point of the check: a comment is a change a person made on purpose.
 
+A trailing newline is one of those characters. `text()` gives the layer's content back as it is,
+final newline included, so anything that drops it produces an `expected` that no longer matches —
+a shell `expected=$(cat layer.conf)` drops it, and the refusal then looks like a bug in the check.
+Pass the text on as you received it.
+
 `StaleLayerException` carries two things: `current()`, the text the layer holds now, and
 `layerId()`, the `id()` of the layer that moved — useful when one retry loop serves more than
 one layer.
@@ -694,6 +699,13 @@ The unconditional `WARN` is deliberate. A typo in a config file does not delay o
 makes every later edit to that file fail identically, so without the log the only symptom is a
 model that quietly stops reflecting the file.
 
+**One case where it does not arrive: running an example through Maven.** `exec:java` runs
+inside Maven's own process, and `mvn -q` sets the system property
+`org.slf4j.simpleLogger.defaultLogLevel` to `error` there. The examples bind `slf4j-simple`,
+which reads that same property, so the library goes quiet with Maven. Setting the level for one
+logger — `-Dorg.slf4j.simpleLogger.log.io.github.maxtrezzi.modelrack4j.LlmRegistry=warn` — brings
+it back and leaves `-q` in place.
+
 ---
 
 ## Providers
@@ -862,6 +874,7 @@ Deliberate and permanent:
 |---|---|---|
 | Edits to the file change nothing, and no error appears | A bundle or model was cached in a field at startup | Call `registry.get(name)` per use. Inject the registry, not a `ChatModel`. |
 | Edits change nothing, and no log line either | `watch(true)` was never set, or no SLF4J binding is on the classpath | Enable watching; add a binding. |
+| A rejected reload logs nothing, running an example with `mvn -q … exec:java` or a `run-*.sh` script | `-q` makes Maven set the SLF4J level to `error` for its own process, and `exec:java` runs the example inside it. The launchers pass `-q` too | Add `-Dorg.slf4j.simpleLogger.log.io.github.maxtrezzi.modelrack4j.LlmRegistry=warn`, or drop `-q`. Your own application is not affected. |
 | `A mandatory substitution is unresolved` | `${VAR}` with the variable unset | Export it, or override the key in a higher layer. Do not switch to `${?VAR}`. |
 | `ships no moderation model` | `moderation.enabled = true` on Anthropic, Gemini or GLM | Only OpenAI has one. Route moderation through an OpenAI configuration. |
 | `counts tokens by calling its API` | `token-window` on a remote counter | Add `allow-remote-token-counting = true`, or use `message-window`. |
@@ -871,6 +884,7 @@ Deliberate and permanent:
 | `watch(true) watches configuration files, and this registry has none` | `watch(true)` with layers given through `sources(...)` | There is nothing to watch. Call `reload()` when the configuration changes, or pass a `ChangeNotifier`. |
 | `Configuration sources must have distinct ids` | Two layers with the same id — often one file listed twice | Remove the repeat. File ids are the absolute path, so two spellings of one file count as one. |
 | An `include` in a layer adds nothing, and nothing is logged | The layer is not a file, so the include is looked up on the classpath, and a HOCON include that finds nothing is not an error | Includes work in file layers. For a layer from a database, assemble the text before handing it over. |
+| `StaleLayerException` on an edit nobody else made | The `expected` text lost the layer's trailing newline on the way in — a shell `expected=$(cat layer.conf)` strips it, and the comparison is byte for byte | Carry the layer's text without reshaping it: start from `text()`, or read the file in a way that keeps the last byte. |
 | Reloads fire constantly | Something else writes into a watched directory | Only the configured filenames are matched, but a symlinked path matches any event in its directory by design. |
 | Half-written files are rejected as failures | The debounce is shorter than your writer takes | Raise `debounce(...)`. |
 | `NoSuchMethodError` running an example | A stale `modelrack4j-core` in `~/.m2` | `mvn install` from the checkout root. |

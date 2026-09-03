@@ -327,10 +327,7 @@ Start the console again, pick `SL`, and then — while it runs — delete the `m
 and save.
 
 ```
-you> [modelrack4j-config-watcher] WARN io.github.maxtrezzi.modelrack4j.LlmRegistry -
-modelrack4j reload rejected; the previous configuration stays live: llm.SL is not a valid
-configuration block: ... No configuration setting found for key 'model-name'
-
+you>
   [config rejected, still running the previous one: llm.SL is not a valid configuration
 block: ... No configuration setting found for key 'model-name']
 ```
@@ -342,11 +339,36 @@ from the file.
 live in full, and the application keeps working on the configuration it already had. Fix the
 file, save again, and the next reload succeeds.
 
-Both lines above matter and they come from different places. The `WARN` is the library
-logging through SLF4J, and it appears whether or not your code asked for it. The line in
-square brackets is the example's own `onReloadFailure` listener. If your application has no
-binding on the classpath, SLF4J discards the first one — see
-[logging](part-2-reference.md#logging) in Part 2.
+That line is the example's own `onReloadFailure` listener. The library reports the same
+rejection itself, at `WARN` through SLF4J, whether or not your code asked for it — and here
+you do not see it. The reason is Maven, not the library. `exec:java` runs the example inside
+Maven's own process, and `-q` makes Maven set the system property
+`org.slf4j.simpleLogger.defaultLogLevel` to `error`. The example's SLF4J binding reads that
+same property, so it goes quiet with Maven. Set the level for this one logger, which Maven
+never sets, and the `WARN` comes back while Maven stays quiet:
+
+```bash
+mvn -q -pl modelrack4j-examples exec:java \
+    -Dorg.slf4j.simpleLogger.log.io.github.maxtrezzi.modelrack4j.LlmRegistry=warn \
+    -Dexec.mainClass=io.github.maxtrezzi.modelrack4j.examples.ConsoleChat \
+    -Dexec.args=$HOME/modelrack4j-tutorial/llm.conf
+```
+
+```
+you> [modelrack4j-config-watcher] WARN io.github.maxtrezzi.modelrack4j.LlmRegistry -
+modelrack4j reload rejected; the previous configuration stays live: llm.SL is not a valid
+configuration block: ... No configuration setting found for key 'model-name'
+io.github.maxtrezzi.modelrack4j.ConfigValidationException: llm.SL is not a valid
+configuration block: ... No configuration setting found for key 'model-name'
+        ... the stack trace, which this binding prints with the message
+
+  [config rejected, still running the previous one: llm.SL is not a valid configuration
+block: ... No configuration setting found for key 'model-name']
+```
+
+**Your own application does not have this problem**, because it does not run inside Maven.
+Add any SLF4J binding and the `WARN` arrives; without one, SLF4J discards it and only your own
+listener speaks — see [logging](part-2-reference.md#logging) in Part 2.
 
 ---
 
