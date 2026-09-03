@@ -44,7 +44,7 @@ public final class FakeStrictProviderFactory extends FakeProviderFactory {
     }
 
     @Override
-    protected boolean supportsModeration() {
+    public boolean supportsModeration() {
         return true;
     }
 

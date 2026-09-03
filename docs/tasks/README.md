@@ -103,6 +103,8 @@ Phase 0 gates everything else; nothing below M0 should start before its blockers
 | [P24](post-v1.md#p24--watchtrue-cannot-see-file-backed-layers-given-through-sources) | `watch(true)` cannot see file-backed layers given through `sources(...)` | **Not started** — silent drift between two path lists |
 | [P25](post-v1.md#p25--a-malformed-glm-key-fails-before-the-call-past-the-exception-guarantee) | A malformed GLM key fails before the call, past the exception guarantee | **Not started** — `validate()` could catch it at load |
 | [P26](post-v1.md#p26--two-documentation-gaps) | Two documentation gaps | **Done** — both reproduced; the tutorial's step 7 printed a `WARN` its own `mvn -q` command suppresses |
+| [P27](post-v1.md#p27--a-review-of-all-seven-modules-the-examples-and-the-manual) | A review of all seven modules, the examples and the manual | **Done** — 8 findings, none critical; a credential in `LlmConfig.toString()`; ADR-0047 and ADR-0048 |
+| [P28](post-v1.md#p28--a-failing-model-ends-the-council-round) | A failing model ends the council round | **Done** — one dead key cost all three answers; the other two examples already caught it |
 | [D1](open-decisions.md#d1--glm-route-if-no-maintained-module-exists) | GLM route if no maintained module | **Closed** — never became live |
 | [D2](open-decisions.md#d2--repository-visibility) | Repository visibility | **Settled** — public, not released; ADR-0034 |
 | [D3](open-decisions.md#d3--token-window-memory-on-a-remote-estimator) | Token-window memory on a remote estimator | **Settled** — opt-in flag |

@@ -110,7 +110,7 @@ claim rather than the library in general.
 | `DatabaseSource` | [Configuration that is not a file](#configuration-that-is-not-a-file): a layer held in memory, standing in for a database row, driven entirely by the application. It shows all four answers `reload()` can give — a name added, a name updated, nothing changed, and a rejected reload that leaves the previous configuration live — and then the same rejected change offered through [`store()`](#storing-a-layer-back) instead, which refuses it before the row is written rather than after. | **nothing** — sends no request |
 | `ProviderSwap` | The provider as configuration: the same method, called twice around a file edit, answered by `AnthropicChatModel` and then `OpenAiChatModel`. The method names no provider and has no branch. | `ANTHROPIC_API_KEY` + `OPENAI_API_KEY`, two requests |
 | `ConsoleChat` | Everything interactively: a menu of configured models, streaming where configured, moderation on input where configured, memory across turns, and reload while you watch. `/tools` switches the answering path to an `AiServices` proxy with a `@Tool` method — see [What you still write yourself](#what-you-still-write-yourself) — built on the bundle that turn fetched. | `ANTHROPIC_API_KEY` + `OPENAI_API_KEY` with the shipped `examples.conf`, which configures both providers; a configuration of your own can need one |
-| `ThreeModelCouncil` | The multi-model scenario: three names, the questions you type, capabilities read from the bundle. | two provider keys, three requests per question |
+| `ThreeModelCouncil` | The multi-model scenario: three names, the questions you type, capabilities read from the bundle, all read from one `snapshot()` per round so the members answer under the same configuration. A model that fails does not end the round: its exception is printed beside the others — a different type per provider, as [Exceptions](#exceptions) describes — and the round says how many answered. | two provider keys, three requests per question |
 
 Run them with `exec:java` after `mvn install` — the plugin resolves `modelrack4j-core` from
 `~/.m2` rather than from the reactor, so a stale local install is the usual cause of a
@@ -550,6 +550,13 @@ record ReloadFailure(List<ConfigSource> sources, Exception cause) { }
 `MemoryConfig` is sealed with a record per variant rather than one record carrying unused
 fields — `max-messages` and `max-tokens` cannot both be set, because no type has both.
 
+**`LlmConfig.toString()` prints `apiKey=***`.** `apiKey()` holds the key after substitution —
+the real credential, not the `${VAR}` your file was written with — so the generated
+`toString()` of a record would put it in any log line that prints a config or a bundle. Only
+`toString()` is redacted: `equals` and `hashCode` still compare the key, because a rotated
+credential has to count as a changed configuration and trigger a reload. If you log
+configuration yourself, print the fields you want rather than the record.
+
 Value equality on `LlmConfig` is load-bearing: it is how a reload decides what changed. Every
 component participates, including `description`.
 
@@ -691,6 +698,8 @@ no-provider notice and everything below is discarded.
 | `io.github.maxtrezzi.modelrack4j.LlmRegistry` | `ERROR` | A listener threw. The reload itself is unaffected. |
 | `io.github.maxtrezzi.modelrack4j.ConfigWatcher` | `ERROR` | A reload callback threw. Watching continues. |
 | `io.github.maxtrezzi.modelrack4j.ConfigWatcher` | `DEBUG` | A watched directory cannot be re-registered yet; the watch service did not close cleanly. |
+| `io.github.maxtrezzi.modelrack4j.WritableFileConfigSource` | `WARN` | A store finished, but its temporary file could not be removed. The layer holds the right text; a `.modelrack4j-staged-*.conf` file is left beside it, which nothing reads. |
+| `io.github.maxtrezzi.modelrack4j.WritableFileConfigSource` | `DEBUG` | A layer's path could not be resolved to a real file; the permissions of the file being replaced could not be copied. |
 
 Successful reloads are **not** logged. If you want that, register `onReload` and log what it
 gives you.
@@ -756,7 +765,8 @@ Implement `io.github.maxtrezzi.modelrack4j.spi.ProviderFactory` and register it 
 public interface ProviderFactory {
     String providerId();                                              // matched against `provider =`
     TokenEstimation tokenEstimation();                                // ABSENT | LOCAL | REMOTE
-    void validate(LlmConfig config);                                  // capability checks, fail fast
+    default boolean supportsModeration() { return true; }             // can it build a ModerationModel?
+    void validate(LlmConfig config);                                  // anything core cannot see
     ChatModel createChatModel(LlmConfig config);
     Optional<StreamingChatModel> createStreamingChatModel(LlmConfig config);
     Optional<ModerationModel> createModerationModel(LlmConfig config);
@@ -764,13 +774,27 @@ public interface ProviderFactory {
 }
 ```
 
+**Report a capability; do not enforce it.** `tokenEstimation()` and `supportsModeration()`
+say what your provider can do, and core turns each into the rejection and the message. So
+every provider that cannot moderate refuses the same configuration in the same words, and a
+new rule is written once instead of once per module. Do not repeat these checks in
+`validate()`.
+
 `tokenEstimation()` is three-valued rather than boolean on purpose. Every provider except GLM
 ships an estimator, so a boolean would return true almost everywhere and accept every
 configuration — the check would exist and catch nothing. What varies is the *cost*.
 
-`validate()` is where capability mismatches are caught. Throw `ConfigValidationException` with
-a message naming the block and the way out; those messages are part of the contract, and the
-tests assert on them.
+`supportsModeration()` defaults to `true`, which is not a claim that most providers moderate.
+It is what keeps a factory written before this method existed working unchanged: it does not
+override the method, core lets the configuration through, and the missing model is still
+caught a moment later when `createModerationModel` returns empty. Override it and the user
+gets a better message, earlier.
+
+`validate()` is for what core cannot see — a rule specific to your provider. Throw
+`ConfigValidationException` with a message naming the block and the way out; those messages
+are part of the contract, and the tests assert on them. Three of the four factories in this
+repository now have an empty `validate()`, because the one thing they used to reject is
+reported through `supportsModeration()` instead.
 
 ---
 
@@ -790,6 +814,10 @@ tests assert on them.
   of `reload()`. Long work in a listener delays the next reload; hand it off to your own
   executor if it is not quick. A listener must not call `reload()`, because it is already
   running inside one.
+- **A store takes the same lock, and holds it across the layer's own write.** So
+  `store()` and `storeIfUnchanged()` are serialised against reloads and against each other,
+  and a slow `WritableConfigSource.write` — a database that is not answering — delays the
+  next reload for as long as it runs. Readers are unaffected: they never take that lock.
 - **Listeners may be registered at any time, from any thread.** The registration lists are
   copy-on-write, so adding one during a reload is safe and does not block it.
 - **Registering a listener does not replay anything.** It is called on the next reload, never

@@ -17,6 +17,7 @@ package io.github.maxtrezzi.modelrack4j.examples;
 
 import io.github.maxtrezzi.modelrack4j.LlmBundle;
 import io.github.maxtrezzi.modelrack4j.LlmRegistry;
+import io.github.maxtrezzi.modelrack4j.LlmSnapshot;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -46,10 +47,16 @@ import java.util.List;
  * printf '%s\n' "Name one risk of caching a bundle in a field." /exit | ./run-council.sh
  * }</pre>
  *
- * <p>Note what this demonstrates about the API: the registry is asked for a bundle at the
+ * <p>Note what this demonstrates about the API: the registry is asked for its models at the
  * point of use, never cached in a field. That is the habit the holder API exists to
  * encourage, and it is what makes hot reload reach this code: a bundle kept in a field
  * would keep working and would never reflect a later edit to the file.
+ *
+ * <p>It asks through a {@link LlmRegistry#snapshot()} taken once per question, rather than
+ * with one {@code get()} per model. Those are not opposites — a snapshot is dropped at the
+ * end of the round, so nothing is cached — and a council is exactly the case that needs one:
+ * every model in a round must answer under the same configuration, which separate lookups
+ * cannot promise.
  */
 public final class ThreeModelCouncil {
 
@@ -125,11 +132,25 @@ public final class ThreeModelCouncil {
         }
     }
 
-    /** Puts one question to every configured model, in turn. */
+    /**
+     * Puts one question to every configured model, in turn.
+     *
+     * <p>One model failing does not end the round. The others still answer, and the tally at
+     * the end says the round was incomplete — a council of three that quietly reports two
+     * answers is worse than one that says so.
+     */
     private static void askEveryModel(LlmRegistry registry, String question) {
-        for (String name : registry.names()) {
-            // Asked for on every use, deliberately. See the class javadoc.
-            LlmBundle bundle = registry.get(name);
+        // One snapshot per round, taken at the point of use and dropped at the end of it.
+        // A council is the case snapshot() exists for: asking registry.get() once per model
+        // would let a reload land mid-round and have one member answer under a configuration
+        // its partners never saw. Nothing watches this registry, so no reload can arrive
+        // here — but this is the loop people copy, and it should be the shape that stays
+        // correct when they do.
+        LlmSnapshot round = registry.snapshot();
+        int answered = 0;
+        int failed = 0;
+        for (String name : round.names()) {
+            LlmBundle bundle = round.get(name);
             System.out.println();
             System.out.println("=== " + name + " (" + bundle.config().provider()
                     + " / " + bundle.config().modelName() + ") ===");
@@ -141,7 +162,36 @@ public final class ThreeModelCouncil {
                     + bundle.moderationModel().isPresent());
             System.out.println("  memory configured: "
                     + bundle.chatMemoryProvider().isPresent());
-            System.out.println("  answer: " + bundle.chatModel().chat(question));
+            try {
+                System.out.println("  answer: " + bundle.chatModel().chat(question));
+                answered++;
+            } catch (RuntimeException e) {
+                // One member is down, the rest of the council is not. An expired key on one
+                // provider used to end the whole session and throw away the answers already
+                // printed above it.
+                //
+                // The exception type is printed, not just its message, because this is the
+                // one example where several providers answer the same question: the same real
+                // condition arrives here as a different type per provider, which is exactly
+                // what the reference says the swap guarantee does not cover.
+                System.out.println("  failed: " + e);
+                failed++;
+            }
+        }
+        if (failed > 0) {
+            // Said out loud rather than left to be inferred from a missing block. A council
+            // is a comparison, and a comparison quietly missing one of its terms is the kind
+            // of wrong answer that reads as a right one.
+            //
+            // Two wordings, because one cannot be right for both cases: "compare them" has
+            // nothing to refer to when every model failed, and naming how many are missing
+            // has to survive any number of them. The first draft said "one is missing" and a
+            // run with two dead keys printed it under "0 of 2".
+            System.out.println();
+            System.out.println(answered == 0
+                    ? "!! no answers: all " + failed + " models failed."
+                    : "!! incomplete round: " + answered + " of " + (answered + failed)
+                            + " models answered. Compare them knowing the rest are missing.");
         }
     }
 }

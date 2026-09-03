@@ -19,6 +19,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.PosixFilePermission;
@@ -117,14 +118,26 @@ record WritableFileConfigSource(Path file) implements WritableConfigSource, File
             throw new ConfigValidationException(
                     "Configuration file has no parent directory to write beside: " + file);
         }
+        Path staged = null;
         try {
-            Path staged = Files.createTempFile(directory, STAGE_PREFIX, ".conf");
+            staged = Files.createTempFile(directory, STAGE_PREFIX, ".conf");
             Files.writeString(staged, text, StandardCharsets.UTF_8);
             copyPermissions(destination, staged);
-            return new StagedFile(staged, destination);
+            StagedFile prepared = new StagedFile(staged, destination);
+            staged = null;   // handed over: the caller discards it from here on
+            return prepared;
         } catch (IOException e) {
             throw new ConfigValidationException(
                     "Cannot write the configuration beside " + file + ": " + e.getMessage(), e);
+        } finally {
+            // Reached only when the file was created and then not handed over — a failing
+            // write, most often a full disk. The caller never receives the path in that
+            // case, so nothing else could ever remove it and one hidden file would be left
+            // beside the configuration per failed store. A finally rather than a catch, so
+            // an Error cleans up too.
+            if (staged != null) {
+                discardStaged(new StagedFile(staged, destination));
+            }
         }
     }
 
@@ -179,10 +192,17 @@ record WritableFileConfigSource(Path file) implements WritableConfigSource, File
      */
     private Path destination() {
         try {
-            return Files.exists(file) ? file.toRealPath() : file.toAbsolutePath().normalize();
+            // NOFOLLOW_LINKS, so a link that resolves to nothing still counts as something
+            // being there. Plain Files.exists follows the link and answers false for a
+            // broken or looping one, which would send both cases down the branch below
+            // without ever entering this try — and the catch would then be unreachable.
+            return Files.exists(file, LinkOption.NOFOLLOW_LINKS)
+                    ? file.toRealPath()
+                    : file.toAbsolutePath().normalize();
         } catch (IOException cannotResolve) {
-            // The file is there but the link cannot be followed: a loop, or a directory on
-            // the way this process may not traverse. The unresolved path is the honest
+            // Something is at the path but it cannot be followed to a real file: a symbolic
+            // link that points at itself or around a cycle, or one whose target sits behind
+            // a directory this process may not traverse. The unresolved path is the honest
             // fallback — it is what a write with no link would have used, and the move then
             // fails naming the real problem rather than this one.
             log.debug("modelrack4j could not resolve {} to a real path: {}",

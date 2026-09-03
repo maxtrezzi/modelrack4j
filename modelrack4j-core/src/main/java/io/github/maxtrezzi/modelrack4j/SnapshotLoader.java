@@ -187,6 +187,13 @@ final class SnapshotLoader {
      * provider module has to restate them.
      */
     private static void validateCapabilities(LlmConfig config, ProviderFactory factory) {
+        if (config.moderationEnabled() && !factory.supportsModeration()) {
+            throw new ConfigValidationException(path(config)
+                    + " sets moderation.enabled = true, but provider '" + config.provider()
+                    + "' ships no moderation model. Remove the moderation block, or route"
+                    + " moderation through an OpenAI-family configuration.");
+        }
+
         Optional<MemoryConfig> configured = config.memory();
         if (configured.isEmpty()
                 || !(configured.get() instanceof MemoryConfig.TokenWindow window)) {

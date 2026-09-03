@@ -72,12 +72,23 @@ class AnthropicProviderFactoryTest {
     }
 
     @Test
-    @DisplayName("enabling moderation is rejected, and the message says where moderation lives")
+    @DisplayName("the factory reports that it cannot moderate")
+    void moderationIsNotSupported() {
+        // The module owns the capability; core owns the rule and the message. Asserting it
+        // here rather than on validate() is what keeps the two from drifting apart.
+        assertThat(factory.supportsModeration()).isFalse();
+    }
+
+    @Test
+    @DisplayName("enabling moderation is refused through the registry, and the message says "
+            + "where moderation lives")
     void moderationIsRejected() {
-        assertThatThrownBy(() -> factory.validate(config(Optional.empty(), true)))
+        assertThatThrownBy(() -> registryFrom("""
+                llm { SL { provider = anthropic, api-key = "k", model-name = "claude-sonnet-4-5"
+                           moderation { enabled = true } } }
+                """))
                 .isInstanceOf(ConfigValidationException.class)
-                .hasMessageContaining("no")
-                .hasMessageContaining("moderation")
+                .hasMessageContaining("ships no moderation model")
                 .hasMessageContaining("OpenAI");
     }
 

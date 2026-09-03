@@ -2861,3 +2861,234 @@ broken check rather than a refused write.
 - The newline trap, as a compiled reproduction against the installed `0.1.0`.
 - `build/check-docs.py`: clean across 46 ADRs and 61 tracked markdown files.
 - `mvn clean install`: green, 170 tests. The only code change is a Javadoc paragraph.
+
+---
+
+### P27 — A review of all seven modules, the examples and the manual
+
+**Status:** Done 2026-09-03 · **Branch:** `task/review-all-modules-and-the-council` ·
+**Produced:** [ADR-0047](../adr/0047-redact-the-credential-from-llmconfig-tostring.md),
+[ADR-0048](../adr/0048-providers-report-capabilities-core-enforces-them.md)
+
+**That branch carries [P28](#p28--a-failing-model-ends-the-council-round) as well**, and is
+named after the work rather than after either item, per the convention in
+[the README](README.md). P28 is the one behaviour change this review turned up: it was found
+by running the council during the verification below, and it changes the method this entry had
+just rewritten, so the two could not be reordered and there was nothing to gain by keeping
+them apart.
+
+A code review of every module's `src/main`, both manual parts and the README, run against the
+Java 17 profile, with a mutation run on core alongside it. Eight findings: four that would
+block a pull request, four smaller. None critical, and none in the concurrency core — which is
+the part that was most worth checking and the part that came out cleanest.
+
+**Branched from P26 rather than from `main`**, because P26 was unmerged and unpushed and two
+of the findings below land in `docs/manual/part-2-reference.md`, which P26 had just corrected.
+
+#### The mutation run
+
+`mvn -pl modelrack4j-core org.pitest:pitest-maven:mutationCoverage`, before any change:
+**194 mutants, 191 killed, 1 timed out, 1 survived, 1 uncovered.** The three that were not
+killed each needed a different answer, and only one of them was a defect:
+
+| Result | Where | Answer |
+|---|---|---|
+| `SURVIVED` | `LlmRegistry.reload` line 339 | **Equivalent mutant.** That line is `return Optional.empty()`, and `EmptyObjectReturnValsMutator` replaced `Optional.empty()` with `Optional.empty()`. No gap, nothing to do. This is the unkillable mutant [D4](open-decisions.md#d4--mutation-testing-in-ci) counted when it ruled PIT out of CI. |
+| `TIMED_OUT` | `LlmRegistry$Builder.chooseNotifier` line 760 | **Detected.** Returning `null` starts no notifier, so the watch tests wait out Awaitility's 10 s ceiling, which is longer than PIT's own timeout. Caught, just not as a failure. |
+| `NO_COVERAGE` | `WritableFileConfigSource.destination` line 190 | **A real finding, and not the one it looked like** — see the second half of finding 5. |
+
+After the work: **199 mutants, 196 killed, 1 timed out, 1 survived, 1 uncovered.** The
+survivor and the timeout are the same two. The uncovered line is a different one — the new
+cleanup branch in `stage()`, which needs a filesystem that fails mid-write and so is left
+untested deliberately rather than covered by a test that proves nothing.
+
+#### What was found
+
+**1. `LlmConfig.toString()` printed the API key.** The record's `apiKey` component holds the
+credential *after* substitution, and a record's generated `toString()` prints every component,
+so one `log.info("{}", bundle.config())` in an application would write a real key to a log.
+`LlmBundle` carries the config, so it leaked the same way. Nothing in this repository prints
+one — every log and print statement across the four modules and five examples was checked —
+so this was latent rather than observed. The project already guards the weaker case, telling
+implementers not to put a secret in `ConfigSource.id()` because the library prints it; the
+component actually holding the credential had no guard. ADR-0047, and `equals` deliberately
+left alone.
+
+**2. `ConsoleChat`'s menu could throw out of `main`.** `chooseConfiguration` took
+`registry.names()` and then called `registry.get(...)` once per row, each reading the live
+configuration. A save removing a name between the two throws `UnknownConfigurationException`
+out of the loop — and this is the example whose Javadoc says *"Leave it running and edit the
+file"*, on a registry built with `watch(true)`, so the gap is open by invitation. The same
+hazard was found and fixed in `chat()` by [P1](#p1--console-chat-example), which did not look
+at the menu drawing it. Now one `snapshot()` for the whole menu.
+
+**3. The reference's Logging table was missing a logger, including a `WARN`.** Core has three;
+the table listed two. `WritableFileConfigSource` logs *"could not remove the staged file"* at
+`WARN` — the level the section singles out as the one that matters — plus two `DEBUG` lines.
+The table was written in `65b8a4b` (P3) and was correct then, when core had two loggers.
+`8232bf3` (P20) added the third and edited that same file without touching the table.
+
+**4. The README's logging rationale was falsified by P19.** It said two things are reported
+*"through the log and nowhere else, because they happen on the watcher thread, where there is
+no caller to throw them to."* Since `reload()` became public, a rejection also happens on the
+caller's thread and *is* thrown to that caller; *"nowhere else"* was contradicted two lines
+below by the same section conceding that `onReloadFailure` listeners are told; and the staged-
+file `WARN` from finding 3 is a third thing that really is logged and nowhere else. Three
+errors in one sentence, all of them true when written.
+
+**5. A staged file leaked, and the comment explaining a nearby branch named two causes that
+cannot happen.** In `stage()`, `createTempFile` succeeded and a failing `writeString` threw
+past it, leaving a hidden `.modelrack4j-staged-*.conf` beside the configuration that no caller
+could ever remove — the `StagedFile` is never returned on that path. Now cleaned up in a
+`finally`.
+
+The second half is the more interesting one, and it is what PIT's `NO_COVERAGE` was really
+pointing at. `destination()` caught an `IOException` from `toRealPath()` and explained it as
+*"a loop, or a directory on the way this process may not traverse"*. Measured with a probe on
+this machine — Pop!\_OS 24.04 (kernel 7.0.11), Temurin 25.0.3:
+
+| Case | `Files.exists` | `toRealPath()` |
+|---|---|---|
+| self-referential symlink | `false` | throws `FileSystemException` |
+| two-link cycle | `false` | throws `FileSystemException` |
+| unsearchable parent directory | `false` | throws `AccessDeniedException` |
+
+`Files.exists` follows links, so in all three the guard returned `false` and the `try` was
+never entered: the catch was reachable only through a race, and both causes the comment named
+were exactly the ones it could not see. The guard now asks with `LinkOption.NOFOLLOW_LINKS`,
+under which a looping link answers `true` — measured, not assumed. The branch became reachable
+and has a test, and the comment is now true. **The fix was the guard and the comment, not a
+test**, which is not what an uncovered line usually means.
+
+**6. `ThreeModelCouncil` did not use `snapshot()`.** The reference says to take one *"per unit
+of work — per request, per council round"*, and the example named after the council round
+looped `registry.names()` with a `get()` per model. Not a live bug: that registry sets no
+`watch(true)` and never reloads, so nothing can land mid-round. But it is the loop people copy,
+and `AtomicSnapshot` exists to show that a torn council pair is a correctness bug. Fixed, with
+the class Javadoc rewritten to say why a snapshot per round is not the caching trap.
+
+**7. The moderation capability rule was restated in three provider modules.** Three identical
+`validate()` bodies differing only in a hardcoded provider name — one each class already held
+as an unused `PROVIDER_ID` — while core owned the equivalent token-estimation rule and the SPI
+Javadoc said capability rules "must not be restated here". ADR-0048: a provider reports,
+core enforces. `FakeProviderFactory` had already invented `supportsModeration()` for its own
+use, which is corroboration the shape was right rather than a preference.
+
+**8. The threading section never mentioned stores.** `LlmRegistry`'s own `@implNote` says a
+store takes the reload lock and holds it across the layer's write; the manual's *Threading and
+lifecycle* section covered reloads, listeners and `close()` and said nothing about it, so
+nobody implementing a slow database-backed `write` would learn from the manual that it blocks
+reloads.
+
+#### A miscount in the review itself
+
+The first write-up closed with *"nine findings … four 🟠, five 🟡"* and listed eight. Four plus
+four. The rule in `AGENTS.md` is to count the list you just wrote before naming its size, and
+it was broken in the sentence summarising a review whose own finding 4 is about a stale count.
+Recorded rather than quietly corrected, because [P14](#p14--a-coherence-pass-over-the-tracked-documentation)
+and [P15](#p15--a-second-coherence-pass-and-what-the-first-one-missed) are the same failure and
+this is a third instance.
+
+#### Not done, and why
+
+- **The `stage()` cleanup branch has no test.** Forcing `Files.writeString` to fail after
+  `createTempFile` has succeeded needs a filesystem that fails mid-write. PIT reports the line
+  as uncovered and that report is honest; a test that reached it by another route would be
+  testing something else.
+- **`ProviderSwap`, `ConsoleChat` and `ThreeModelCouncil` were not run.** All three spend real
+  money. The two free examples were run and matched the manual exactly.
+- **The exception-type question in [D6](open-decisions.md#d6--cannot-store-is-not-your-configuration-is-invalid)
+  was not touched**, although finding 5 sits in the code it is about.
+
+#### Verified
+
+- `mvn clean install`: green. **177 tests**, up from 170.
+- PIT on core, before and after, with every non-killed mutant accounted for above.
+- `build/check-docs.py`: clean across 48 ADRs and 63 tracked markdown files. It caught one
+  broken link in ADR-0047 on the way — a guessed filename for ADR-0006.
+- `./run-atomic.sh` and `./run-database.sh`, both matching what the manual says they print.
+  AtomicSnapshot reported one torn `get()` pair against zero torn snapshots in ~117 M samples.
+
+---
+
+### P28 — A failing model ends the council round
+
+**Status:** Done 2026-09-03 · **Branch:** `task/review-all-modules-and-the-council`, shared with
+[P27](#p27--a-review-of-all-seven-modules-the-examples-and-the-manual)
+
+Found by running `ThreeModelCouncil` during P27's verification, with deliberately invalid keys.
+**It is a separate entry but not separate work.** It is none of P27's eight findings — P27
+reviewed, this changes behaviour — which is why it is recorded here under its own number rather
+than appended to that list. It shares P27's branch because it rewrites the method P27 had just
+rewritten: two branches touching one method would have conflicted on whichever merged second,
+for no benefit.
+
+`askEveryModel` called `bundle.chatModel().chat(question)` with nothing around it, so the first
+model whose request failed threw out of the loop, out of `main`, and ended the session. The
+answers already printed above it went with the session. An expired key on one of three
+providers therefore cost all three answers, and the question had already been paid for on
+whichever models answered before the failure.
+
+**The other two examples already did the right thing**, which is what made this an
+inconsistency rather than a choice: `ConsoleChat` catches `RuntimeException` on both answering
+paths and `ProviderSwap` catches it in `ask()`, each reporting the failure and carrying on.
+The council — the one example where a single failure costs the most, because the other members
+have already been billed — was the one that did not.
+
+#### Built
+
+A `try`/`catch` around the request only, so a failure is reported against the model that
+produced it and the loop moves to the next member.
+
+**The exception type is printed, not just its message.** This is the one example where several
+providers answer the same question, and the reference's
+[Exceptions](../manual/part-2-reference.md#exceptions) section records that the same real
+condition arrives as a different type per provider. The council now shows that rather than
+asserting it — the run below has `AuthenticationException` from both providers carrying
+completely different payloads.
+
+**A partial round says so.** Catching the failure introduced a worse hazard than the crash: a
+council is a comparison, and a comparison quietly missing one of its terms reads like a
+complete answer. A tally after the loop names how many of the members answered.
+
+#### What the run found in the fix itself
+
+The tally had two wordings' worth of work in it and the first draft only wrote one. With two
+dead keys it printed:
+
+```
+!! incomplete round: 0 of 2 models answered. Compare them knowing one is missing.
+```
+
+Two things wrong in one line — *one* is missing when two were, and *compare them* refers to
+nothing when nothing answered. Neither is visible by reading the code, because the sentence is
+correct for the case its author had in mind. There are two cases and they need two sentences:
+
+```
+!! no answers: all 2 models failed.
+```
+
+#### Verified
+
+- Driven with two invalid keys, both before and after the wording fix. Both providers failed,
+  both failures printed with their type, the loop continued to the next member and then to the
+  next question, and `/exit` left cleanly. A 401 is refused before billing, so this cost
+  nothing.
+- **The partial case — some members answering, some failing — was not run**, because it needs
+  at least one working key and a real request. The all-failed branch and the tally's
+  `answered == 0` split were exercised; the other branch of that ternary was read, not run.
+- `mvn clean install`: green, 177 tests. No test covers this: the examples module has no test
+  scope and no offline provider to fail on demand.
+- `build/check-docs.py`: clean across 48 ADRs and 63 tracked markdown files.
+
+**Carried with P27 in one commit, and replanted once P26 landed.** P26 merged as `fb22b4c`
+(#46) and this branch was rebased with `git rebase --onto origin/main 8bea5f1` — the recipe
+P27 had verified against a simulated squash rather than assumed, used twice for real.
+
+**The first attempt to merge P26 conflicted, and the reason is worth keeping.** A local `main`
+that had not been fetched was two commits behind: `b131db2` was already on the remote as the
+squash `5ae070a` (#45), so the P26 branch was re-proposing work `main` already had and GitHub
+answered `CONFLICTING`. The same `--onto` form fixed it — dropping the commit whose content had
+landed under another SHA. Under a squash-merge workflow a branch is stale the moment its parent
+merges, and the local ref does not say so. **Fetch before reading `main`'s position**, and treat
+a conflict on a branch that never diverged as the signal that this has happened.
