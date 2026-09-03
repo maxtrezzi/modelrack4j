@@ -153,7 +153,7 @@ llm {
 |---|---|---|---|
 | `description` | string | *none* | Human-readable. Nothing in the library reads it. Blank is rejected; `null` in a higher layer clears a description set in a lower layer. |
 | `provider` | string | *required* | Must match a `ProviderFactory` on the classpath. An unknown value is an error that lists the providers actually available. |
-| `api-key` | string | *required* | Use `${VAR}`. Never blank. |
+| `api-key` | string | *required* | Use `${VAR}`. Never blank. On GLM it must have the form `id.secret` — see [Providers](#providers). |
 | `model-name` | string | *required* | The provider's own identifier. **Not validated** — see below. |
 | `temperature` | number | *provider's own* | 0.0–2.0. Omitted means "do not set it", which is different from setting a default. Some models reject a non-default value — see [Providers](#providers). |
 | `timeout` | duration | `60s` | HOCON durations: `30s`, `2m`, `500ms`. Must be positive. |
@@ -595,6 +595,15 @@ handling survives any swap; all four providers throw beneath it. Catching anythi
 specific is provider-specific code, which is fine as long as it is deliberate — after a swap
 it does not fail loudly, the catch block simply stops matching.
 
+**The guarantee covers a failing call, not a failed attempt to make one.** A provider may use
+your API key before it sends anything. GLM does: it splits the key on `.` and signs a token
+with the two halves, so a key of another shape fails while the request is being assembled, and
+throws a plain JDK or JWT exception that is not a `LangChain4jException` at all. This library
+refuses such a key when the configuration loads, as a `ConfigValidationException`
+([ADR-0049](../adr/0049-validate-a-credentials-shape-when-the-provider-requires-it.md)), so
+you meet it at startup instead of at the first request. A provider module this library does
+not ship can still surprise you in the same way.
+
 The library does not translate these, and
 [ADR-0033](../adr/0033-provider-exceptions-pass-through-untranslated.md) records why:
 translating means proxying every model call, which would stop the registry handing back
@@ -746,7 +755,10 @@ which is released on the community cycle, separately from the stable modules.
 - **GLM** — has no whole-call timeout. Its client's `callTimeout` and `writeTimeout` are
   deprecated and marked for removal upstream, so `timeout` maps to connect and read only. Its
   `ChatModel.provider()` returns `OTHER`, so an application routing on that cannot tell GLM
-  from any other community model — the registry name is the reliable discriminator.
+  from any other community model — the registry name is the reliable discriminator. Its
+  `api-key` is the one credential in this library with a required shape: `id.secret`, with a
+  secret of at least 16 bytes. The provider signs a token with the two halves rather than
+  sending the key, so any other shape is refused when the configuration loads.
 - **All providers except OpenAI** — moderation is unavailable, and enabling it is a
   configuration error.
 
@@ -907,6 +919,7 @@ Deliberate and permanent:
 | `ships no moderation model` | `moderation.enabled = true` on Anthropic, Gemini or GLM | Only OpenAI has one. Route moderation through an OpenAI configuration. |
 | `counts tokens by calling its API` | `token-window` on a remote counter | Add `allow-remote-token-counting = true`, or use `message-window`. |
 | `no token count estimator` | `token-window` on GLM | Use `message-window`. No flag helps. |
+| `is not shaped like a GLM key` | `api-key` on GLM is not `id.secret`, or its secret half is under 16 bytes | GLM signs a token with the two halves instead of sending the key, so a wrong shape fails before any call. Copy the key again in full. |
 | `` `temperature` is deprecated for this model `` | A non-default `temperature` on a model that rejects one, such as `claude-sonnet-5` | Remove the key. The model then uses its own sampling settings. |
 | `UnknownConfigurationException` at runtime | The name was removed from the configuration while running | Catch it and re-read `names()`, or keep the block. The exception's `configurationName()` gives the name that was asked for. |
 | `watch(true) watches configuration files, and this registry has none` | `watch(true)` with layers given through `sources(...)` | There is nothing to watch. Call `reload()` when the configuration changes, or pass a `ChangeNotifier`. |

@@ -40,6 +40,15 @@ will not be held back for a major bump until the API settles at `1.0.0`.
   *"has no moderation model"* to *"ships no moderation model"*. Only code asserting on that
   exact string is affected.
 
+- **A GLM `api-key` must have the form `id.secret`, and its secret half must be at least 16
+  bytes.** The check runs when the configuration loads and throws `ConfigValidationException`
+  naming the block. The reason it is worth a rule: GLM does not send your key, it splits the
+  key on `.` and signs a token with the two halves, so a key of another shape failed while the
+  first request was assembled — as an `ArrayIndexOutOfBoundsException` or a JWT signing error,
+  neither of them a `LangChain4jException`, and neither mentioning a key. Both limits are read
+  off the provider's own code, so a key this check refuses could never have completed a call
+  ([ADR-0049](docs/adr/0049-validate-a-credentials-shape-when-the-provider-requires-it.md)).
+
 ### Fixed
 
 - A store that failed while writing its temporary file left that file behind, beside the

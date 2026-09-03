@@ -46,6 +46,12 @@ class GlmProviderFactoryTest {
     /** From the module's own {@code ChatCompletionModel} enum, not from recollection. */
     private static final String MODEL = "glm-4.6";
 
+    /**
+     * A key of the shape the provider requires: an id, a dot, and a secret of at least 16
+     * bytes. Not a credential — it never leaves the process, because no test here calls out.
+     */
+    private static final String KEY = "e7c1a2b3.0123456789abcdef0123456789abcdef";
+
     @TempDir
     Path dir;
 
@@ -99,7 +105,8 @@ class GlmProviderFactoryTest {
             + "where moderation lives")
     void moderationIsRejected() {
         assertThatThrownBy(() -> registryFrom("""
-                llm { SL { provider = glm, api-key = "k", model-name = "glm-4.6"
+                llm { SL { provider = glm, model-name = "glm-4.6"
+                           api-key = "e7c1a2b3.0123456789abcdef0123456789abcdef"
                            moderation { enabled = true } } }
                 """))
                 .isInstanceOf(ConfigValidationException.class)
@@ -111,6 +118,84 @@ class GlmProviderFactoryTest {
     @DisplayName("a configuration without moderation passes validation")
     void ordinaryConfigurationValidates() {
         factory.validate(config(Optional.of(0.2), false));
+    }
+
+    @Test
+    @DisplayName("a key with no '.' is rejected when the configuration loads, not on the "
+            + "first call")
+    void keyWithoutASecretIsRejectedAtLoad() {
+        // Through the registry rather than through validate(), because the point of the
+        // check is when it fires: building the registry is the last moment before an
+        // application would hand the bundle to a caller.
+        assertThatThrownBy(() -> registryFrom("""
+                llm { SL { provider = glm, model-name = "glm-4.6"
+                           api-key = "no-dot-in-here-at-all" } }
+                """))
+                .isInstanceOf(ConfigValidationException.class)
+                .hasMessageContaining("llm.SL.api-key")
+                .hasMessageContaining("id.secret")
+                .hasMessageContaining("no '.'");
+    }
+
+    @Test
+    @DisplayName("a key ending in '.' is rejected too, because split() drops the empty tail")
+    void keyEndingInADotIsRejected() {
+        // Not the same case as a key with no dot at all, though it fails identically:
+        // "id.".split("\\.") is one element, so there is no second part to reach for.
+        assertThatThrownBy(() -> factory.validate(withKey("e7c1a2b3.")))
+                .isInstanceOf(ConfigValidationException.class)
+                .hasMessageContaining("no '.'");
+    }
+
+    @Test
+    @DisplayName("a secret shorter than 16 bytes is rejected, and the message gives its size")
+    void shortSecretIsRejected() {
+        assertThatThrownBy(() -> factory.validate(withKey("e7c1a2b3.short")))
+                .isInstanceOf(ConfigValidationException.class)
+                .hasMessageContaining("secret part is 5 bytes")
+                .hasMessageContaining("at least 16");
+    }
+
+    @Test
+    @DisplayName("16 bytes is the boundary: 15 is refused, 16 passes")
+    void sixteenBytesIsTheBoundary() {
+        // Measured against the provider, not chosen: at 15 bytes its JWT library refuses to
+        // sign, at 16 the request reaches the network. RFC 7518 section 3.2 fixes it at the
+        // HS256 hash output size.
+        assertThatThrownBy(() -> factory.validate(withKey("e7c1a2b3.0123456789abcde")))
+                .isInstanceOf(ConfigValidationException.class)
+                .hasMessageContaining("secret part is 15 bytes");
+
+        factory.validate(withKey("e7c1a2b3.0123456789abcdef"));
+    }
+
+    @Test
+    @DisplayName("the 16 are bytes, not characters, so a short non-ASCII secret still passes")
+    void theLimitCountsBytesRatherThanCharacters() {
+        // Eight two-byte characters: 16 bytes, and a check written on String.length() would
+        // reject this key even though the provider signs with it happily.
+        factory.validate(withKey("e7c1a2b3.\u00fb\u00fb\u00fb\u00fb\u00fb\u00fb\u00fb\u00fb"));
+    }
+
+    @Test
+    @DisplayName("an empty id half is left to the provider, which answers it over the network")
+    void anEmptyIdIsNotRejectedHere() {
+        // Deliberate boundary. A key like ".<secret>" signs and sends fine, and the server
+        // rejects it as a real ZhipuAiException. Refusing it here would be this library
+        // guessing about credentials rather than about a shape the provider's code needs.
+        factory.validate(withKey(".0123456789abcdef"));
+    }
+
+    @Test
+    @DisplayName("the rejection message never contains the key")
+    void theMessageDoesNotLeakTheKey() {
+        // ADR-0047: the component holds the credential after substitution. A message quoting
+        // the key would put it wherever the application logs its configuration errors.
+        String secret = "0123456789abcde";
+        assertThatThrownBy(() -> factory.validate(withKey("e7c1a2b3." + secret)))
+                .isInstanceOf(ConfigValidationException.class)
+                .hasMessageNotContaining(secret)
+                .hasMessageNotContaining("e7c1a2b3");
     }
 
     @Test
@@ -129,7 +214,8 @@ class GlmProviderFactoryTest {
         // The opt-in flag from ADR-0027 covers a cost, not an absence. Setting it here must
         // not smuggle a configuration through that has no estimator to run.
         assertThatThrownBy(() -> registryFrom("""
-                llm { SL { provider = glm, api-key = "k", model-name = "glm-4.6"
+                llm { SL { provider = glm, model-name = "glm-4.6"
+                           api-key = "e7c1a2b3.0123456789abcdef0123456789abcdef"
                            memory { type = token-window, max-tokens = 500
                                     allow-remote-token-counting = true } } }
                 """))
@@ -142,7 +228,8 @@ class GlmProviderFactoryTest {
     @DisplayName("message-window memory, the documented alternative, does build")
     void messageWindowMemoryIsAvailable() throws IOException {
         try (var registry = registryFrom("""
-                llm { SL { provider = glm, api-key = "k", model-name = "glm-4.6"
+                llm { SL { provider = glm, model-name = "glm-4.6"
+                           api-key = "e7c1a2b3.0123456789abcdef0123456789abcdef"
                            memory { type = message-window, max-messages = 20 } } }
                 """)) {
             assertThat(registry.get("SL").chatMemoryProvider()).isPresent();
@@ -156,7 +243,7 @@ class GlmProviderFactoryTest {
                 llm {
                   SL {
                     provider    = glm
-                    api-key     = "test-key-not-used"
+                    api-key     = "e7c1a2b3.0123456789abcdef0123456789abcdef"
                     model-name  = "glm-4.6"
                     temperature = 0.2
                     streaming   = true
@@ -178,8 +265,13 @@ class GlmProviderFactoryTest {
         return LlmRegistry.builder().configFiles(List.of(file)).build();
     }
 
+    private static LlmConfig withKey(String apiKey) {
+        return new LlmConfig("SL", Optional.empty(), "glm", apiKey, MODEL, Optional.empty(),
+                Duration.ofSeconds(60), false, false, false, Optional.empty(), false);
+    }
+
     private static LlmConfig config(Optional<Double> temperature, boolean moderation) {
-        return new LlmConfig("SL", Optional.empty(), "glm", "test-key-not-used", MODEL,
+        return new LlmConfig("SL", Optional.empty(), "glm", KEY, MODEL,
                 temperature, Duration.ofSeconds(60), false, false, false, Optional.empty(), moderation);
     }
 }

@@ -291,8 +291,14 @@ Gemini), because a remote estimator puts a billed network call inside memory evi
 (ADR-0048).** `tokenEstimation()` and `supportsModeration()` say what the provider can do,
 and `SnapshotLoader.validateCapabilities` owns both the rule and the message, so every
 provider refuses the same configuration in the same words. Do not restate either check in a
-provider's `validate()` — that is now only for a rule core cannot see, and P27 emptied the
-three bodies that had been doing it, leaving all four empty. `supportsModeration()` defaults
+provider's `validate()` — that is now only for a rule core cannot see. P27 emptied the three
+bodies that had been doing it; P25 then gave one of them real work, so **three of the four are
+empty and GLM's is not** (ADR-0049). Its rule is the boundary to copy from rather than the
+code: a provider may check the *shape* of a credential when its own code requires that shape
+before it makes any call — GLM parses the key and signs a token with it, so `id.secret` with a
+secret of at least 16 bytes is a property of code on the classpath. It may never check a
+credential's content, or a catalogue of values a vendor controls, which is why `model-name`
+is still unvalidated. `supportsModeration()` defaults
 to `true` for compatibility rather than for truth, which is why `requireProduced` still
 catches a missing model afterwards: that fallback is what makes the permissive default safe,
 and it is not redundant.
