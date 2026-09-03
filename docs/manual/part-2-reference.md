@@ -698,7 +698,7 @@ no-provider notice and everything below is discarded.
 | `io.github.maxtrezzi.modelrack4j.LlmRegistry` | `ERROR` | A listener threw. The reload itself is unaffected. |
 | `io.github.maxtrezzi.modelrack4j.ConfigWatcher` | `ERROR` | A reload callback threw. Watching continues. |
 | `io.github.maxtrezzi.modelrack4j.ConfigWatcher` | `DEBUG` | A watched directory cannot be re-registered yet; the watch service did not close cleanly. |
-| `io.github.maxtrezzi.modelrack4j.WritableFileConfigSource` | `WARN` | A store finished, but its temporary file could not be removed. The layer holds the right text; a `.modelrack4j-staged-*.conf` file is left beside it, which nothing reads. |
+| `io.github.maxtrezzi.modelrack4j.WritableFileConfigSource` | `WARN` | A store ended — applied or rejected — and its temporary file could not be removed. A `.modelrack4j-staged-*.conf` file is left beside the layer, which nothing reads. Whether the layer changed is what the store itself returned or threw, not what this line says. |
 | `io.github.maxtrezzi.modelrack4j.WritableFileConfigSource` | `DEBUG` | A layer's path could not be resolved to a real file; the permissions of the file being replaced could not be copied. |
 
 Successful reloads are **not** logged. If you want that, register `onReload` and log what it
@@ -792,9 +792,10 @@ gets a better message, earlier.
 
 `validate()` is for what core cannot see — a rule specific to your provider. Throw
 `ConfigValidationException` with a message naming the block and the way out; those messages
-are part of the contract, and the tests assert on them. Three of the four factories in this
-repository now have an empty `validate()`, because the one thing they used to reject is
-reported through `supportsModeration()` instead.
+are part of the contract, and the tests assert on them. All four factories in this repository
+now have an empty `validate()`: three of them used to reject moderation here, and that is
+reported through `supportsModeration()` instead, while OpenAI never had anything to reject.
+An empty body is the normal case, not a sign of an unfinished provider.
 
 ---
 

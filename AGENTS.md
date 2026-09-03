@@ -187,13 +187,18 @@ the tests rather than a defect. P17 is the worked example — four defects in th
 the code, and the most useful one was a test whose *name* described a contract its assertion
 never checked. **Read `NO_COVERAGE` and `SURVIVED` as different questions, and answer both by
 running something.** P27's single survivor was `Optional.empty()` mutated to
-`Optional.empty()` — an equivalent mutant, no gap, nothing to do — while its one uncovered
-line turned out to be uncoverable: `WritableFileConfigSource.destination()` guarded a catch
-with `Files.exists`, which follows links, so both causes the comment named were filtered out
-before the `try` and the branch was reachable only by a race. A throwaway probe established
-that, and the fix was the guard and the comment, not a test. Neither answer was visible from
-the report alone. Mutants are deterministic syntactic edits, so none of this bears on the
-concurrency guarantee in ADR-0038; do not read a high score as evidence for it.
+`Optional.empty()` — an equivalent mutant, no gap, nothing to do — while its uncovered line
+was the opposite: `WritableFileConfigSource.destination()` guarded a catch with `Files.exists`,
+which follows links, so both causes the comment named were filtered out before the `try`. A
+throwaway probe established that; the fix was `NOFOLLOW_LINKS`, a corrected comment **and** a
+test, and that test is what covers the branch now. Neither answer was visible from the report
+alone. **The `NO_COVERAGE` you will see today is a different line** — the cleanup branch in
+`stage()`, which needs a filesystem that fails between `createTempFile` and `writeString` and
+is left untested on purpose. Take the current report from `target/pit-reports/`, not from this
+paragraph: what is uncovered moves as the code does, and P29 found this description already
+pointing at the wrong method. `docs/tasks/post-v1.md` carries the per-run tables. Mutants are
+deterministic syntactic edits, so none of this bears on the concurrency guarantee in ADR-0038;
+do not read a high score as evidence for it.
 
 **Model identifiers rot, and only a live run catches it.** Two of the four are now outside
 upstream's enums, so `mvn -Pintegration verify` is the only check that a configured model
@@ -457,9 +462,12 @@ in-flight requests may still hold them.
   not length. **`docs/adr/`, `docs/tasks/` and this file are deliberately exempt**: their
   readers already hold the context, and an accepted ADR's body cannot be edited anyway. Do
   not "fix" their register, and do not let a user-facing paragraph drift back toward it.
-- **`docs/tasks/open-decisions.md` needs the owner.** Ask; do not decide unilaterally.
-  D1–D4 are all settled, so the file is currently a record rather than a queue — a new
-  entry there is a question for the owner, not work to pick up.
+- **`docs/tasks/open-decisions.md` needs the owner.** Ask; do not decide unilaterally. A new
+  entry there is a question for the owner, not work to pick up, and an entry marked
+  `Needs decision` blocks the code that depends on it rather than inviting a guess. D1–D4 are
+  settled; **D5 and D6 are open** and have been since `5ae070a`. Read the file for the current
+  list rather than trusting this sentence — it said "all settled" for a day after two entries
+  had been added (P29).
 - The §2 decision table in `brainstorm/PLAN.md` is closed: do not reopen those choices
   without asking. The ADRs carry the same decisions with their reasoning.
 - Milestones run M0 → M6 in `docs/tasks/milestones.md`; v1 was done at M5, and M6 gained its

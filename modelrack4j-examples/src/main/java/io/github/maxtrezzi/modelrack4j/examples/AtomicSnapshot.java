@@ -48,7 +48,8 @@ import java.util.concurrent.TimeUnit;
  *   <li><strong>Two {@code registry.get(...)} calls.</strong> Each reads the live
  *       configuration, so a reload landing between them yields a mixed pair. Rare — one save
  *       here, so usually zero — but structurally possible, and reproducible at roughly two
- *       per million pairs when reloads land every few milliseconds.
+ *       per million pairs when reloads land every few milliseconds, on an AMD Ryzen 7 7840HS
+ *       running Temurin 25.
  *   <li><strong>One {@link LlmRegistry#snapshot()}, then two lookups on it.</strong> One read
  *       of the published generation, so the pair cannot be mixed. This column is zero, and
  *       it is zero by construction rather than by luck.
@@ -68,7 +69,8 @@ import java.util.concurrent.TimeUnit;
  *
  * @implNote <strong>No API key, and no cost.</strong> This reads configuration only — it
  *     never sends a request, so the credentials in the generated file are literals rather
- *     than substitutions. It is the one example that runs anywhere, at no cost.
+ *     than substitutions. It and {@link DatabaseSource} are the two examples that run
+ *     anywhere, at no cost; the other three call a paid API.
  */
 public final class AtomicSnapshot {
 
