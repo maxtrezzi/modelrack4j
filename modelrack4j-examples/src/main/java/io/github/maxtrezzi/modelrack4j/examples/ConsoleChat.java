@@ -26,6 +26,7 @@ import dev.langchain4j.service.AiServices;
 import dev.langchain4j.service.SystemMessage;
 import io.github.maxtrezzi.modelrack4j.LlmBundle;
 import io.github.maxtrezzi.modelrack4j.LlmRegistry;
+import io.github.maxtrezzi.modelrack4j.LlmSnapshot;
 import io.github.maxtrezzi.modelrack4j.UnknownConfigurationException;
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -162,12 +163,20 @@ public final class ConsoleChat {
         while (true) {
             // Re-read on every pass rather than once: a name may have appeared or
             // disappeared while the previous chat was running.
-            List<String> names = List.copyOf(registry.names());
+            //
+            // One snapshot for the whole menu, not a lookup per row. names() and get() each
+            // read the live configuration, so a save that removes a name between them throws
+            // UnknownConfigurationException out of this loop — and this example asks the user
+            // to edit the file while it runs, so that gap is open by invitation. A snapshot
+            // is one generation held still, which is what a list of names and their bundles
+            // has to be to agree with itself.
+            LlmSnapshot generation = registry.snapshot();
+            List<String> names = List.copyOf(generation.names());
 
             System.out.println();
             System.out.println("configured models");
             for (int i = 0; i < names.size(); i++) {
-                LlmBundle bundle = registry.get(names.get(i));
+                LlmBundle bundle = generation.get(names.get(i));
                 System.out.printf("  %d  %-12s %s / %s%s%n",
                         i + 1,
                         names.get(i),

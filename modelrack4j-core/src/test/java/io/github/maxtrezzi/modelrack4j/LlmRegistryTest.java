@@ -135,19 +135,38 @@ class LlmRegistryTest {
     }
 
     @Test
+    @DisplayName("a factory that never heard of supportsModeration still refuses moderation, "
+            + "from the build step")
+    void moderationOnALegacyFactoryIsCaughtDownstream() {
+        // ADR-0048's compatibility claim, which is the whole reason the SPI default is `true`
+        // rather than `false`. FakeLegacyProviderFactory does not override the method, so core
+        // lets the configuration past the capability check — and the missing model is caught a
+        // moment later instead. "produced no", not "ships no": the two messages name different
+        // failures, and this is the one a factory written before the method existed produces.
+        assertThatThrownBy(() -> registryOf("""
+                llm { SL { provider = fake-legacy, api-key = "k", model-name = "m"
+                           moderation { enabled = true } } }
+                """))
+                .isInstanceOf(ConfigValidationException.class)
+                .hasMessageContaining("produced no moderation model");
+    }
+
+    @Test
     @DisplayName("a provider without moderation rejects a config that enables it")
     void moderationRejectedByProvider() {
-        // The assertion names the factory's own wording rather than just "moderation". The
-        // looser version passed either way: when the config reaches the build step anyway,
-        // the missing model is reported downstream as "produced no moderation model", which
-        // also contains the word, so the test could not tell the two failures apart.
+        // "ships no" rather than just "moderation". The looser version passed either way:
+        // when the config reaches the build step anyway, the missing model is reported
+        // downstream as "produced no moderation model", which also contains the word, so the
+        // test could not tell the two failures apart. Those two words are the whole
+        // difference between the capability check refusing this up front and the build step
+        // catching it afterwards, and only the first is what this test is about.
         assertThatThrownBy(() -> registryOf("""
                 llm { SL { provider = fake-remote, api-key = "k", model-name = "m"
                            moderation { enabled = true } } }
                 """))
                 .isInstanceOf(ConfigValidationException.class)
                 .hasMessageContaining("fake-remote")
-                .hasMessageContaining("has no moderation model");
+                .hasMessageContaining("ships no moderation model");
     }
 
     @Test

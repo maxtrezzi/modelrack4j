@@ -53,11 +53,32 @@ public interface ProviderFactory {
     TokenEstimation tokenEstimation();
 
     /**
+     * Returns whether this provider can build a {@code ModerationModel}, which decides
+     * whether a block may set {@code moderation.enabled = true}.
+     *
+     * <p>Of the four providers in v1, only OpenAI can. Reporting it here rather than
+     * rejecting it in {@link #validate(LlmConfig)} keeps the rule and its message in core,
+     * beside the {@link #tokenEstimation()} rules, so every provider refuses the same
+     * configuration in the same words.
+     *
+     * @return {@code true} if {@link #createModerationModel(LlmConfig)} can produce a model
+     * @implSpec The default is {@code true}, which is not a claim that most providers
+     *     moderate — it is what keeps a factory written against an earlier version working
+     *     unchanged. Such a factory does not override this, so core lets the configuration
+     *     through and the missing model is still caught a moment later, when
+     *     {@link #createModerationModel(LlmConfig)} returns empty. Overriding it changes
+     *     only which of the two messages the user sees, and how early.
+     */
+    default boolean supportsModeration() {
+        return true;
+    }
+
+    /**
      * Checks anything this provider cannot support, beyond what the config record already
      * validates — most often a capability the configuration asks for and the provider lacks.
      *
-     * <p>Capability rules that depend only on {@link #tokenEstimation()} are applied by core
-     * and must not be restated here.
+     * <p>Capability rules that depend only on {@link #tokenEstimation()} or
+     * {@link #supportsModeration()} are applied by core and must not be restated here.
      *
      * @param config the validated configuration naming this provider
      * @throws ConfigValidationException if this provider cannot honour the configuration

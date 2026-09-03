@@ -105,6 +105,37 @@ public record LlmConfig(
     }
 
     /**
+     * Returns every component except the credential, which is replaced by {@code ***}.
+     *
+     * @return a description safe to log
+     * @implNote The generated {@code toString()} of a record prints every component, and
+     *     {@link #apiKey()} holds the credential after substitution — the real key, not the
+     *     {@code ${VAR}} the file was written with. This record is public and reachable as
+     *     {@code registry.get(name).config()}, so one {@code log.info("{}", config)} in an
+     *     application would put the key in a log file. The same reasoning already applies to
+     *     {@link ConfigSource#id()}, which the library itself prints.
+     *     <p>Only {@code toString()} changes. {@code equals} and {@code hashCode} stay as the
+     *     record generates them, because the per-name reload diff is record equality on this
+     *     type (ADR-0006) and it has to keep seeing a changed key as a changed configuration.
+     */
+    @Override
+    public String toString() {
+        return "LlmConfig[name=" + name
+                + ", description=" + description
+                + ", provider=" + provider
+                + ", apiKey=***"
+                + ", modelName=" + modelName
+                + ", temperature=" + temperature
+                + ", timeout=" + timeout
+                + ", logRequests=" + logRequests
+                + ", logResponses=" + logResponses
+                + ", streaming=" + streaming
+                + ", memory=" + memory
+                + ", moderationEnabled=" + moderationEnabled
+                + ']';
+    }
+
+    /**
      * Parses one named block. The block is expected to already carry the library's defaults
      * as a fallback layer, so every optional key is present by the time this reads it.
      *

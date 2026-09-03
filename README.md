@@ -493,15 +493,20 @@ Core logs through **`slf4j-api`** and ships no binding — add your own (Logback
 whatever you already use), or SLF4J prints its no-provider notice and everything below is
 discarded.
 
-Two things are reported through the log and nowhere else, because they happen on the watcher
-thread, where there is no caller to throw them to:
+These are logged on whichever thread caused them — the watcher's, or your own call to
+`reload()` or `store()`:
 
 - **A rejected reload**, at `WARN` from `io.github.maxtrezzi.modelrack4j.LlmRegistry`, with
-  the cause. This is logged whether or not you registered `onReloadFailure`, which matters
-  more than it sounds: a typo in a config file does not delay one reload, it makes *every*
-  later edit to that file fail the same way, and without the log the only symptom is models
-  that quietly stop reflecting the file.
-- **A listener that threw**, at `ERROR`. The reload itself is unaffected.
+  the cause. Your `onReloadFailure` listeners are told as well, and a rejection that came
+  from your own `reload()` reaches you as an exception too — but it is logged whether or not
+  either of those applies, which matters more than it sounds: a typo in a config file does
+  not delay one reload, it makes *every* later edit to that file fail the same way, and when
+  the watcher thread is the one that found it, the log is the only place it appears.
+- **A listener that threw**, at `ERROR`. The reload itself is unaffected. Nothing else
+  reports this: the exception is caught so that one bad listener cannot stop the others.
+
+The reference has [the full table](docs/manual/part-2-reference.md#logging), including what
+writing a layer back logs.
 
 Successful reloads are not logged. If you want that, register `onReload` and log what it
 gives you.

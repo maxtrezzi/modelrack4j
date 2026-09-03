@@ -9,6 +9,50 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 release. Breaking changes will be called out under **Changed** with the migration, but they
 will not be held back for a major bump until the API settles at `1.0.0`.
 
+## [Unreleased]
+
+### Security
+
+- **`LlmConfig.toString()` no longer prints the API key.** It renders `apiKey=***` and keeps
+  every other component. The value in that field is the credential after substitution — the
+  real key, not the `${VAR}` your file was written with — so the `toString()` a record
+  generates would put it in any log line that printed a config or a bundle. `equals` and
+  `hashCode` are unchanged and still compare the key, so rotating a credential is still a
+  configuration change that triggers a reload. If you need the value in your own logs, print
+  the fields you want rather than the record
+  ([ADR-0047](docs/adr/0047-redact-the-credential-from-llmconfig-tostring.md)).
+
+### Added
+
+- **`ProviderFactory.supportsModeration()`**, a `default` method returning `true`. A provider
+  reports whether it can build a `ModerationModel`, and core turns that into the rejection
+  and its message. Your own factory keeps working unchanged: it does not override the method,
+  core lets the configuration through, and a missing model is still caught when
+  `createModerationModel` returns empty. Override it to `false` and your users get a clearer
+  message, sooner
+  ([ADR-0048](docs/adr/0048-providers-report-capabilities-core-enforces-them.md)).
+
+### Changed
+
+- Enabling `moderation.enabled = true` on Anthropic, Gemini or GLM is now refused by core
+  rather than by each provider. The failure and the type are the same
+  (`ConfigValidationException`, before any model is built); the wording changed from
+  *"has no moderation model"* to *"ships no moderation model"*. Only code asserting on that
+  exact string is affected.
+
+### Fixed
+
+- A store that failed while writing its temporary file left that file behind, beside the
+  configuration, with nothing able to remove it. It is now deleted on every failure path.
+- `WritableFileConfigSource` tested for the layer's presence in a way that followed symbolic
+  links, so a link pointing at itself or around a cycle was treated as a file that is not
+  there instead of one that cannot be resolved. The check no longer follows the final link.
+- In the `ThreeModelCouncil` example, one model failing to answer ended the whole session and
+  discarded the answers already printed — so an expired key on one provider cost every answer
+  in the round, including the ones already paid for. The failure is now reported against the
+  model that produced it, the remaining models still answer, and a round that lost a member
+  says so.
+
 ## [0.1.0] — 2026-09-02
 
 The first release. Everything below is new, so it is grouped by what it gives you rather

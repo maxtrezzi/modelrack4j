@@ -185,7 +185,14 @@ on a tree that has stopped moving. `mutationThreshold` is `0` on purpose: the de
 the survivor list in `target/pit-reports/`, not the score, and a survivor is a question about
 the tests rather than a defect. P17 is the worked example — four defects in the suite, none in
 the code, and the most useful one was a test whose *name* described a contract its assertion
-never checked. Mutants are deterministic syntactic edits, so none of this bears on the
+never checked. **Read `NO_COVERAGE` and `SURVIVED` as different questions, and answer both by
+running something.** P27's single survivor was `Optional.empty()` mutated to
+`Optional.empty()` — an equivalent mutant, no gap, nothing to do — while its one uncovered
+line turned out to be uncoverable: `WritableFileConfigSource.destination()` guarded a catch
+with `Files.exists`, which follows links, so both causes the comment named were filtered out
+before the `try` and the branch was reachable only by a race. A throwaway probe established
+that, and the fix was the guard and the comment, not a test. Neither answer was visible from
+the report alone. Mutants are deterministic syntactic edits, so none of this bears on the
 concurrency guarantee in ADR-0038; do not read a high score as evidence for it.
 
 **Model identifiers rot, and only a live run catches it.** Two of the four are now outside
@@ -280,8 +287,15 @@ SPI, discovered via `java.util.ServiceLoader` (`META-INF/services/...spi.Provide
 Providers differ in *capabilities* — moderation is OpenAI-only, and token estimation is
 three-valued rather than a boolean: `ABSENT` (GLM), `LOCAL` (OpenAI), `REMOTE` (Anthropic,
 Gemini), because a remote estimator puts a billed network call inside memory eviction
-(ADR-0021, opt-in per ADR-0027). `validate()` per factory is where capability checks fail
-fast.
+(ADR-0021, opt-in per ADR-0027). **A factory *reports* a capability; core enforces it
+(ADR-0048).** `tokenEstimation()` and `supportsModeration()` say what the provider can do,
+and `SnapshotLoader.validateCapabilities` owns both the rule and the message, so every
+provider refuses the same configuration in the same words. Do not restate either check in a
+provider's `validate()` — that is now only for a rule core cannot see, and P27 emptied the
+three bodies that had been doing it, leaving all four empty. `supportsModeration()` defaults
+to `true` for compatibility rather than for truth, which is why `requireProduced` still
+catches a missing model afterwards: that fallback is what makes the permissive default safe,
+and it is not redundant.
 `ChatMemoryProvider` is built in core (provider-independent), except the
 `TokenCountEstimator` needed by token-window memory, which comes from the factory.
 
@@ -289,6 +303,14 @@ fast.
 a provider and differ only in parameters. Change detection is per-name diff by *record
 equality* on the parsed config, so `LlmConfig` must be an immutable record with validation
 in its constructor/loader — invalid configs unrepresentable.
+
+**`LlmConfig.toString()` is overridden to hide `apiKey`, and `equals` is deliberately not
+(ADR-0047).** The component holds the credential *after* substitution, so the generated
+`toString()` a record gives you puts a real key into any log line that prints a config or a
+bundle — and `LlmBundle` carries the config, so it leaks the same way. Only `toString()` is
+redacted: moving the redaction into `equals` would make a rotated key a configuration change
+that never reloads, which is why one test asserts both halves at once. The same reasoning
+already guards `ConfigSource.id()`, which the library itself prints.
 
 **Holder API is primary (ADR-0009).** `registry.get(name)` always returns the current bundle;
 listeners are optional and secondary. The classic trap — callers caching a bundle at

@@ -138,6 +138,38 @@ class LlmConfigTest {
     }
 
     @Test
+    @DisplayName("toString hides the credential but keeps every other component")
+    void toStringRedactsTheApiKey() {
+        LlmConfig config = config()
+                .withApiKey("sk-not-a-real-key-12345")
+                .withModelName("gpt-5.1")
+                .build();
+
+        String described = config.toString();
+
+        assertThat(described).doesNotContain("sk-not-a-real-key-12345");
+        assertThat(described).contains("apiKey=***");
+        // The rest must survive: a description with the useful half removed is not a fix,
+        // it is a second problem. These are the components a reader actually needs.
+        assertThat(described).contains("name=SL", "provider=fake-local", "modelName=gpt-5.1");
+    }
+
+    @Test
+    @DisplayName("redacting toString leaves the reload diff able to see a changed key")
+    void redactionDoesNotWeakenEquality() {
+        // ADR-0006 diffs configurations by record equality, so two blocks differing only in
+        // their key must stay different. Overriding toString must not have reached equals:
+        // if it had, a rotated credential would be a configuration that never reloaded.
+        LlmConfig first = config().withApiKey("first-key").build();
+        LlmConfig second = config().withApiKey("second-key").build();
+
+        assertThat(first).isNotEqualTo(second);
+        assertThat(first).isEqualTo(config().withApiKey("first-key").build());
+        assertThat(first).hasSameHashCodeAs(config().withApiKey("first-key").build());
+        assertThat(first.toString()).isEqualTo(second.toString());
+    }
+
+    @Test
     @DisplayName("memory variants are distinguished by value, not identity")
     void memoryVariantsCompareByValue() {
         assertThat(new MemoryConfig.MessageWindow(10))

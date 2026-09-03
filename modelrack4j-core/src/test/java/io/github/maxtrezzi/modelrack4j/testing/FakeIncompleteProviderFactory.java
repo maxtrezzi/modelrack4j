@@ -42,8 +42,10 @@ public final class FakeIncompleteProviderFactory extends FakeProviderFactory {
     }
 
     @Override
-    protected boolean supportsModeration() {
-        return true; // claims support, so validate() raises nothing
+    public boolean supportsModeration() {
+        // Claims it can moderate, so core lets the configuration through the capability
+        // check and the empty Optional below is what catches it.
+        return true;
     }
 
     @Override

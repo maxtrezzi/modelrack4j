@@ -68,16 +68,20 @@ public abstract class FakeProviderFactory implements ProviderFactory {
         }
     }
 
-    /** @return whether this fake claims to support moderation */
-    protected abstract boolean supportsModeration();
+    /**
+     * {@inheritDoc}
+     *
+     * @implNote Abstract rather than defaulted here, so every fake has to state its
+     *     moderation capability and none of them inherits the SPI's compatibility default
+     *     by accident.
+     */
+    @Override
+    public abstract boolean supportsModeration();
 
     @Override
     public void validate(LlmConfig config) {
-        if (config.moderationEnabled() && !supportsModeration()) {
-            throw new ConfigValidationException("llm." + config.name()
-                    + " enables moderation, but provider '" + config.provider()
-                    + "' has no moderation model");
-        }
+        // Nothing to reject: core applies the moderation rule from supportsModeration()
+        // above, and these fakes exist to exercise exactly that path.
     }
 
     @Override

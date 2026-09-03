@@ -23,6 +23,7 @@ import static org.assertj.core.api.Assertions.catchThrowableOfType;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFileAttributeView;
 import java.nio.file.attribute.PosixFilePermissions;
@@ -1023,6 +1024,34 @@ class ConfigStoreTest {
                     .isInstanceOf(ConfigValidationException.class)
                     .hasMessageContaining("Cannot replace");
 
+            assertThat(stagedFilesUnder(dir)).isEmpty();
+        }
+
+        @Test
+        @DisplayName("a link that cannot be followed falls back to the configured path")
+        void write_throughALinkThatCannotBeResolved_writesThePathItself() throws IOException {
+            // The layer's path is a symbolic link pointing at itself, so it can be seen but
+            // never followed to a real file. Resolving the destination has to give up and use
+            // the configured path, which is the only thing left that names anything.
+            //
+            // Files.exists follows links and answers false for this, so the fallback is
+            // reached only because the check asks with NOFOLLOW_LINKS. Without that, this
+            // test would pass through a different branch and prove nothing.
+            Path loop = dir.resolve("loop.conf");
+            Files.createSymbolicLink(loop, loop);
+            assertThat(Files.exists(loop)).as("a looping link is not there, followed").isFalse();
+            assertThat(Files.exists(loop, LinkOption.NOFOLLOW_LINKS))
+                    .as("but something is at the path").isTrue();
+
+            WritableConfigSource target = ConfigSource.ofWritableFile(loop);
+
+            target.write(LAYER);
+
+            // The broken link is replaced by a real file: there was no target to keep it
+            // pointing at, so this is the only outcome that leaves the layer readable.
+            assertThat(Files.isSymbolicLink(loop)).isFalse();
+            assertThat(read(loop)).isEqualTo(LAYER);
+            assertThat(target.text()).isEqualTo(LAYER);
             assertThat(stagedFilesUnder(dir)).isEmpty();
         }
 

@@ -22,7 +22,6 @@ import dev.langchain4j.model.anthropic.AnthropicTokenCountEstimator;
 import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.chat.StreamingChatModel;
 import dev.langchain4j.model.moderation.ModerationModel;
-import io.github.maxtrezzi.modelrack4j.ConfigValidationException;
 import io.github.maxtrezzi.modelrack4j.LlmConfig;
 import io.github.maxtrezzi.modelrack4j.spi.ProviderFactory;
 import io.github.maxtrezzi.modelrack4j.spi.TokenEstimation;
@@ -53,13 +52,18 @@ public final class AnthropicProviderFactory implements ProviderFactory {
     }
 
     @Override
+    public boolean supportsModeration() {
+        // Read from the artifact, not assumed: the module ships no ModerationModel. Core
+        // turns this into the rejection, so the message is the same for every provider that
+        // cannot moderate.
+        return false;
+    }
+
+    @Override
     public void validate(LlmConfig config) {
-        if (config.moderationEnabled()) {
-            throw new ConfigValidationException("llm." + config.name()
-                    + " sets moderation.enabled = true, but provider 'anthropic' ships no"
-                    + " moderation model. Remove the moderation block, or route moderation"
-                    + " through an OpenAI-family configuration.");
-        }
+        // Nothing left to reject here: the one capability this provider lacks is reported
+        // by supportsModeration() and refused by core. The method stays, empty, so a future
+        // gap that core cannot see has an obvious home.
     }
 
     @Override

@@ -31,7 +31,7 @@ public final class FakeLocalProviderFactory extends FakeProviderFactory {
     }
 
     @Override
-    protected boolean supportsModeration() {
+    public boolean supportsModeration() {
         return true;
     }
 }

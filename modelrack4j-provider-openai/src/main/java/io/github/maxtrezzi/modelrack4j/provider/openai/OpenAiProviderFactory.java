@@ -53,6 +53,14 @@ public final class OpenAiProviderFactory implements ProviderFactory {
     }
 
     @Override
+    public boolean supportsModeration() {
+        // Stated rather than left to the default. The default is true because that is what
+        // keeps an older third-party factory working, not because it asserts anything; this
+        // one is the provider that genuinely moderates, and it should say so.
+        return true;
+    }
+
+    @Override
     public void validate(LlmConfig config) {
         // Nothing to reject: OpenAI supplies every capability the schema can request. The
         // method is deliberately empty rather than absent, so a future capability gap has an
