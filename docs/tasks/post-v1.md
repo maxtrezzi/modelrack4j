@@ -3092,3 +3092,166 @@ answered `CONFLICTING`. The same `--onto` form fixed it — dropping the commit 
 landed under another SHA. Under a squash-merge workflow a branch is stale the moment its parent
 merges, and the local ref does not say so. **Fetch before reading `main`'s position**, and treat
 a conflict on a branch that never diverged as the signal that this has happened.
+
+---
+
+### P29 — A global check, and the eight things it found
+
+**Status:** Done — 1 defect in core, 7 stale or wrong sentences; no ADR
+
+The owner asked for a full pass over a tree that three sessions had just moved: build, tests,
+mutation testing, a Java review and a re-verification of the documents and the examples.
+Everything mechanical was already green — 177 tests, `check-docs.py` clean across 48 ADRs and
+63 markdown files, and PIT returning [P27](#p27--a-review-of-all-seven-modules-the-examples-and-the-manual)'s
+survivor and uncovered line and no others. What the pass was actually for is below.
+
+No ADR. Nothing here settles a new question: finding 1 applies an existing rule to the one
+call site that had escaped it, and the other seven are sentences that stopped being true.
+
+#### The starting state, measured rather than assumed
+
+| Check | Result |
+|---|---|
+| `mvn clean install` | green, 8 modules |
+| Tests | 177, no failures, no errors, none skipped |
+| `build/check-docs.py` | clean, 48 ADRs and 63 tracked markdown files |
+| PIT on core | 199 mutants, 1 `SURVIVED`, 1 `NO_COVERAGE` — the same two P27 signed off |
+| `./run-atomic.sh` | 1 torn pair through `get()`, 0 through `snapshot()` |
+| `./run-database.sh` | all six steps as documented |
+| Tutorial step 7 | the printed command run, its output compared line by line |
+| Council, two dead keys | round survives, tally correct |
+
+The PIT run is worth a note. It reports `SURVIVED` 1 and `NO_COVERAGE` 1, as P27 recorded —
+but the split between `KILLED`, `TIMED_OUT` and `RUN_ERROR` moved between the two runs
+(P27: 196 killed, 1 timed out; here: 176 killed, 19 run errors, 2 timed out, which PIT totals
+as 197 killed). Those three categories all mean *detected*, and which one a mutant lands in
+depends on timing. **Compare the survivor and uncovered lists between runs, not the killed
+count** — the count is not stable on a machine doing anything else.
+
+#### What was found
+
+**1. A `null` where the SPI says `Optional` was an NPE, at one call site of three.**
+`SnapshotLoader.requireProduced` checks `produced == null` before `isEmpty()`, and
+`createStreamingChatModel` and `createModerationModel` both go through it.
+`createTokenCountEstimator` did not — it had its own `orElseThrow`, so a factory returning
+`null` there failed with:
+
+```
+java.lang.NullPointerException: Cannot invoke "java.util.Optional.orElseThrow(...)" because
+the return value of "ProviderFactory.createTokenCountEstimator(LlmConfig)" is null
+```
+
+Established with a throwaway probe before anything was changed, then re-established as a
+failing test. This is the rule the suite already states out loud: `FakeNullProviderFactory`'s
+own Javadoc says a misbehaving factory "must surface as a configuration error naming the
+provider, not as a bare `NullPointerException`". One call site did not honour it.
+
+The four providers in this repository all return an `Optional`, so nothing here could reach
+it — the SPI is a public extension point, which is what makes a third-party factory the
+realistic case rather than a hypothetical one. Routed through `requireProduced`, which also
+retires a bespoke message: *"supplied no token count estimator"* becomes *"produced no token
+count estimator"*, matching the other two. `FakeNullOptionalProviderFactory` is new, and
+returns `null` from all three optional methods — `FakeNullProviderFactory` could not cover
+them, because its `null` chat model fails first.
+
+**2. `README.md` said `ProviderFactory` is "seven methods". It is eight.** P27 added
+`supportsModeration()` and did not move the count. Counted with `javap` on the built
+artifact, not by eye. The "three of which return `Optional.empty()`" half was and stays
+correct.
+
+This one has a record in this file already: [P16](#p16--a-third-coherence-pass-and-the-surface-the-first-two-searched-past)
+re-verified that exact sentence on 2026-08-28 and wrote "7 and 3" in its clean table. That
+entry is not wrong — it is dated, which is what the convention asks for, and the dating is
+what makes it readable now as *true then*. **A dated audit records a measurement; it does not
+protect the sentence afterwards.**
+
+**3. The reference said three of the four factories have an empty `validate()`. All four do.**
+Read all four bodies. Three were emptied by P27 and OpenAI's was already empty, which is how
+"three were emptied" turned into "three are empty" — a sentence that sends a reader looking
+for the fourth provider's surviving rule. `AGENTS.md` had it right ("leaving all four empty")
+while the user-facing document did not.
+
+**4. `AGENTS.md`'s own mutation-testing paragraph contradicted the entry it summarises.**
+Two errors in the passage P27 added:
+
+- *"the fix was the guard and the comment, not a test"* — a test was added in that same
+  commit, `ConfigStoreTest.write_throughALinkThatCannotBeResolved_writesThePathItself`, and it
+  is what covers the branch. P27's commit message says so ("fixed with `NOFOLLOW_LINKS` and a
+  test"); only the summary in `AGENTS.md` says otherwise.
+- It points whoever runs PIT next at `WritableFileConfigSource.destination()`. P27 *fixed*
+  that line. Today's `NO_COVERAGE` is `stage()`, a different method — as P27's own table in
+  this file states correctly.
+
+So a session reading the guidance would have gone looking for an uncovered line that is
+covered, and taken the wrong lesson about what closed it. **`docs/tasks/` wins on what was
+found, and this is the shape of the failure the split exists to prevent**: the durable record
+stayed right and the summary of it drifted, in the same commit that wrote both. The paragraph
+now sends the reader to `target/pit-reports/` for what is uncovered *today*.
+
+**5. Two `.java` files quote the two-per-million figure with no machine.**
+`LlmSnapshot`'s class Javadoc and `AtomicSnapshot`'s. ADR-0038, `README.md` and the reference
+all name the machine, after the owner ruled on 2026-09-01 that a figure's conditions may be
+completed in place. The rule is that a hardware-dependent number without its hardware is not
+worth quoting, and it does not stop at markdown.
+
+This is [P16](#p16--a-third-coherence-pass-and-the-surface-the-first-two-searched-past)'s
+lesson arriving a second time by the same route: a pass scoped to *documentation* does not
+open `src/main`, and the class the ADR is about is exactly where the claim gets restated.
+
+**6. The reference's logging table said the WARN means a store finished.** It can also fire on
+a store that was *rejected*. `discardStaged` has three call sites, and two are failure paths
+only: `write()`'s `finally` when the commit fails, and `stage()`'s `finally` when the staged
+file is never handed over. The third, `StagedFileWrite.discard()`, is reached from
+`LlmRegistry`'s own `finally` and runs whether the store was applied or refused — which is the
+one the WARN most often comes from. The row now says the store *ended*, and that what changed
+is what the store returned or threw.
+
+**7. `AtomicSnapshot` claimed to be "the one example that runs anywhere, at no cost". There are
+two.** [P19](#p19--configuration-sources-and-a-reload-the-application-can-ask-for) added
+`DatabaseSource`, which sends no request and uses literal keys, and
+[P18](#p18--the-distance-between-arriving-and-running-something)'s launcher was updated to say
+so — `run-example.sh` names both. The Javadoc of the example itself was not.
+
+**Found only by reading the whole file after editing it** for finding 5. The two sit in the
+same class Javadoc, twenty-one lines apart — the machine attribution at line 51, this claim at
+line 72 — so a diff of the first shows nothing of the second. This is the P19 rule doing its
+job: the sentence a change makes stale is never in that change's diff. The first draft of this
+paragraph said "four lines above it", which is what an unmeasured number is worth.
+
+**8. `AGENTS.md` said the open-decisions file "is currently a record rather than a queue".**
+It has been a queue since `5ae070a` (#45) added
+[D5](open-decisions.md#d5--a-version-token-for-optimistic-concurrency) and
+[D6](open-decisions.md#d6--cannot-store-is-not-your-configuration-is-invalid), both
+`Needs decision` and both still open. A session that trusted the sentence would have taken
+"D1–D4 are all settled" as the whole list and never opened the file — and the two questions
+waiting there are about the public API of `store()`, which is exactly the kind of thing a
+session should not answer on its own.
+
+Found while writing the board row for this entry, not by any check. It is the second finding
+in `AGENTS.md` in one pass, and the two have the same shape: a summary of a tracked file,
+written correct, left behind when the file moved. Both now tell the reader to go and read the
+file instead of trusting the summary, which is the only version of that sentence that cannot
+go stale.
+
+#### Verified
+
+- `mvn clean install`: green, **178 tests**, up from 177 — one new method in `LlmRegistryTest`
+  covering all three optional capabilities, plus the new fake. The first draft of this line
+  said 181, counting the three assertions inside that method as three tests; the count came
+  from `mvn`, and the sentence had been written before it.
+- The new test was **run against the unfixed code first** and failed with the NPE above, so it
+  tests the fix rather than accompanying it.
+- PIT re-run on core after the change: **198 mutants, 195 killed, 1 timed out, 1 survived,
+  1 uncovered.** One fewer mutant than before, because the bespoke `orElseThrow` lambda is
+  gone and `requireProduced` was already covered. The survivor and the uncovered line are the
+  same two P27 signed off — `LlmRegistry.reload` line 339 and `WritableFileConfigSource.stage`
+  line 139. No new gap.
+- `build/check-docs.py`: clean, 48 ADRs and 63 tracked markdown files.
+- `./run-atomic.sh` and `./run-database.sh` re-run after the edits.
+- Tutorial step 7 driven end to end: config written, `model-name` deleted mid-run, the `WARN`
+  arrived through the flag the page prints, and `/menu` still showed the deleted model name.
+  The page matches what the command produces.
+- `ThreeModelCouncil` and `ConsoleChat` driven with dummy keys, which a 401 refuses before
+  billing. The council's **partial** round still needs a working key and was not run — the same
+  gap P28 recorded.
+

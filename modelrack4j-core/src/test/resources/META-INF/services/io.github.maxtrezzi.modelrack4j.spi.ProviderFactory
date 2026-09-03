@@ -5,3 +5,4 @@ io.github.maxtrezzi.modelrack4j.testing.FakeIncompleteProviderFactory
 io.github.maxtrezzi.modelrack4j.testing.FakeNullProviderFactory
 io.github.maxtrezzi.modelrack4j.testing.FakeStrictProviderFactory
 io.github.maxtrezzi.modelrack4j.testing.FakeLegacyProviderFactory
+io.github.maxtrezzi.modelrack4j.testing.FakeNullOptionalProviderFactory

@@ -239,10 +239,16 @@ final class SnapshotLoader {
         }
         if (memory instanceof MemoryConfig.TokenWindow window) {
             int maxTokens = window.maxTokens();
-            TokenCountEstimator estimator = factory.createTokenCountEstimator(config)
-                    .orElseThrow(() -> new ConfigValidationException(path(config)
-                            + " uses memory.type = token-window, but provider '"
-                            + config.provider() + "' supplied no token count estimator"));
+            // Through requireProduced like the other two capabilities, rather than a bespoke
+            // orElseThrow. A factory that returns null instead of an empty Optional breaks
+            // the SPI the same way for all three, and this was the one call site that turned
+            // it into a bare NullPointerException instead of naming the provider.
+            //
+            // get() is safe here and nowhere else: requireProduced throws on both null and
+            // empty, so what it returns is always present.
+            TokenCountEstimator estimator = requireProduced(
+                    factory.createTokenCountEstimator(config), config,
+                    "memory.type = token-window", "token count estimator").get();
             return Optional.of(memoryId -> TokenWindowChatMemory.builder()
                     .id(memoryId)
                     .maxTokens(maxTokens, estimator)

@@ -39,9 +39,18 @@ will not be held back for a major bump until the API settles at `1.0.0`.
   (`ConfigValidationException`, before any model is built); the wording changed from
   *"has no moderation model"* to *"ships no moderation model"*. Only code asserting on that
   exact string is affected.
+- A provider that reports token counting and then supplies no estimator is now refused with
+  the same wording as the other two capabilities: *"produced no token count estimator"*
+  instead of *"supplied no token count estimator"*. The failure and the type are unchanged.
+  Only code asserting on that exact string is affected.
 
 ### Fixed
 
+- A `ProviderFactory` returning `null` where the SPI declares `Optional` failed with a bare
+  `NullPointerException` instead of a configuration error, for
+  `createTokenCountEstimator` only — `createStreamingChatModel` and `createModerationModel`
+  were already checked. All three now report the block and the provider. This affects
+  factories outside this repository; the four shipped here all return an `Optional`.
 - A store that failed while writing its temporary file left that file behind, beside the
   configuration, with nothing able to remove it. It is now deleted on every failure path.
 - `WritableFileConfigSource` tested for the layer's presence in a way that followed symbolic

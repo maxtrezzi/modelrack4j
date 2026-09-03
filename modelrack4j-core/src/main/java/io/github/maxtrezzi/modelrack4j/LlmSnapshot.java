@@ -38,8 +38,9 @@ import java.util.Set;
  * }</pre>
  *
  * <p>That window is small — measured at roughly two occurrences per million read pairs under
- * a reload every few milliseconds — but it is not zero, and "rare" is the worst kind of
- * concurrency bug. Take a snapshot when several models have to agree:
+ * a reload every few milliseconds, on an AMD Ryzen 7 7840HS running Temurin 25 — but it is
+ * not zero, and "rare" is the worst kind of concurrency bug. Take a snapshot when several
+ * models have to agree:
  *
  * <pre>{@code
  * LlmSnapshot models = registry.snapshot();
