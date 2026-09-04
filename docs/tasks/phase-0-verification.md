@@ -15,8 +15,8 @@ has to be repeated.
 
 ### Task 0.1 — Pin the LangChain4j version
 
-**Status:** Done — pinned `1.19.0`; first checked 2026-07-28, re-verified and re-pinned
-2026-08-20, both against Maven Central
+**Status:** Done — pinned `1.20.0`; first checked 2026-07-28, re-pinned 2026-08-20 and again
+2026-09-04, all against Maven Central
 
 Find the current stable LangChain4j release on Maven Central and pin it in the root POM as
 `<langchain4j.version>`.
@@ -58,8 +58,8 @@ artifacts across both lines and keeps the two in step on every bump. Recorded as
 
 - **[Task 0.2](#task-02--verify-the-java-baseline), [0.5](#task-05--confirm-interface-names),
   [0.6](#task-06--provider-capability-matrix)** — unblocked; the version they each asked
-  "for which version?" about is `1.19.0` since the re-pin below, which changed none of
-  their answers.
+  "for which version?" about is `1.20.0` since the re-pins below, neither of which changed
+  any of their answers.
 - **[Task 0.4](#task-04--which-gemini-module)** — a heavy input, but not the answer:
   `-google-ai-gemini` is stable while the newer `-google-genai` is still beta after 28
   betas. 0.4 asks what upstream *recommends*, which this does not establish.
@@ -104,12 +104,24 @@ and neither gates M0 — but they are gaps in this re-verification, not silence.
 **Re-check this on every bump.** Task 0.2's "Hands to other tasks" already says so; this
 entry is what that looks like when done.
 
+#### Re-pinned to 1.20.0 — 2026-09-04
+
+**The pin is now `1.20.0`**, published **2026-09-04**, with the community train at
+`1.20.0-beta30`. The two-line structure is unchanged, and everything the pin gates was
+re-checked against the `1.20.0` artifacts: the Java baseline, the interface names and the
+capability matrix all read exactly as they did at `1.19.0`. The full tables, and the two
+things that did move, are in
+[P34](post-v1.md#p34--langchain4j-1200-and-the-jar-the-aggregate-started-bringing) — the
+aggregate started bringing a jar of its own, and the pin needed a `jspecify` pin beside it
+to keep dependency convergence green.
+
 ---
 
 ### Task 0.2 — Verify the Java baseline
 
 **Status:** Done — checked 2026-08-03 against the artifacts, upstream POM and upstream docs;
 re-verified at `1.19.0` on 2026-08-20 ([Task 0.1](#re-verified-and-re-pinned--2026-08-20))
+and at `1.20.0` on 2026-09-04 ([P34](post-v1.md#p34--langchain4j-1200-and-the-jar-the-aggregate-started-bringing))
 
 Determine the Java version required by the pinned LangChain4j release — from its POM or
 release notes, not from assumption — and set `maven.compiler.release` to match.
@@ -301,6 +313,7 @@ credentials and a project — not the API-key-shaped config this library express
 
 **Status:** Done — checked 2026-08-03 against the `1.18.0` artifacts; one mismatch found and
 corrected; re-verified at `1.19.0` on 2026-08-20 ([Task 0.1](#re-verified-and-re-pinned--2026-08-20))
+and at `1.20.0` on 2026-09-04 ([P34](post-v1.md#p34--langchain4j-1200-and-the-jar-the-aggregate-started-bringing))
 
 Against the pinned version, confirm the exact names and packages of every type the public
 API touches: `ChatModel`, `StreamingChatModel`, `ModerationModel`
@@ -367,8 +380,8 @@ Also confirmed, since the SPI touches them: the request/response types are
 ### Task 0.6 — Provider capability matrix
 
 **Status:** Done — checked 2026-08-03 against the `1.18.0` artifacts; token-estimation
-expectation refuted; re-verified at `1.19.0` on 2026-08-20 ([Task 0.1](#re-verified-and-re-pinned--2026-08-20));
-GLM row added at M4 on 2026-08-23
+expectation refuted; re-verified at `1.19.0` on 2026-08-20 ([Task 0.1](#re-verified-and-re-pinned--2026-08-20))
+and at `1.20.0` on 2026-09-04 ([P34](post-v1.md#p34--langchain4j-1200-and-the-jar-the-aggregate-started-bringing)); GLM row added at M4 on 2026-08-23
 
 For the pinned version, determine which providers actually ship a `ModerationModel`
 (expected: the OpenAI family only) and which ship a `TokenCountEstimator` (expected:

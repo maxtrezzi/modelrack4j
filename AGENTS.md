@@ -330,8 +330,17 @@ load-bearing:
 `com.typesafe:config`, `org.slf4j:slf4j-api` — for the watcher, whose thread has no caller
 to throw at (ADR-0028) — and, for `ChatMemoryProvider` alone, which is *not* in
 `langchain4j-core`, the `dev.langchain4j:langchain4j` aggregate with `opennlp-tools`
-excluded. The aggregate costs one jar and adds no transitive dependency; the measurement is
-in M0's verification block. **No provider artifact, ever.** Each provider lives in its own module
+excluded. The aggregate cost one jar and no transitive dependency until 1.19.0; at 1.20.0
+it also brings `io.smallrye.reactive:mutiny-zero` (58 KB), which the reactive `AiServices`
+path added in that release needs. **Do not exclude that one.** The opennlp exclusion is safe
+because `DocumentBySentenceSplitter` is out-of-scope RAG splitting (ADR-0003), while
+mutiny-zero backs a way of *using* `AiServices`, which was never out of scope and which P21
+said out loud. The measurement is in M0's verification block, re-run in P34 — **re-run it
+yourself on every bump**, because an upstream dependency lands there silently — one did at
+`1.20.0`, and the release notes did not mention it. A bump has a second trap in the same
+place: neither BOM manages `jspecify`, guava brings an older one through the GLM module, and
+the parent POM pins it to keep `DependencyConvergence` green. **No provider artifact, ever.**
+Each provider lives in its own module
 (`modelrack4j-provider-openai|anthropic|gemini|glm`) implementing the `ProviderFactory`
 SPI, discovered via `java.util.ServiceLoader` (`META-INF/services/...spi.ProviderFactory`).
 Providers differ in *capabilities* — moderation is OpenAI-only, and token estimation is

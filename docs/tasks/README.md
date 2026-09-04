@@ -62,7 +62,7 @@ Phase 0 gates everything else; nothing below M0 should start before its blockers
 
 | Item | What | Status |
 |---|---|---|
-| [Task 0.1](phase-0-verification.md#task-01--pin-the-langchain4j-version) | Pin the LangChain4j version | **Done** — `1.19.0` |
+| [Task 0.1](phase-0-verification.md#task-01--pin-the-langchain4j-version) | Pin the LangChain4j version | **Done** — `1.20.0`, re-pinned twice |
 | [Task 0.2](phase-0-verification.md#task-02--verify-the-java-baseline) | Verify the Java baseline | **Done** — `release` 17 |
 | [Task 0.3](phase-0-verification.md#task-03--glm-module-status) | GLM module status | **Done** — module is maintained |
 | [Task 0.4](phase-0-verification.md#task-04--which-gemini-module) | Which Gemini module | **Done** — the stable one |
@@ -110,6 +110,7 @@ Phase 0 gates everything else; nothing below M0 should start before its blockers
 | [P31](post-v1.md#p31--a-layer-answers-for-itself-instead-of-being-recognised) | A layer answers for itself, instead of being recognised | **Done** — an internal `sealed Layer` built once at the boundary; the public SPI is untouched, and the marker idea was the one ADR-0042 refused twice; ADR-0051 |
 | [P32](post-v1.md#p32--the-recipe-d5s-argument-rests-on) | The recipe D5's argument rests on | **Done** — the conditional-write recipe for a remote writer; the `catch` is not a repeat of the `if`, and a probe shows why |
 | [P33](post-v1.md#p33--the-messages-d6-leaves-a-user-and-where-they-are-looked-up) | The messages D6 leaves a user, and where they are looked up | **Done** — the table had no row for an unreadable layer; a write failure named a temporary file and no cause |
+| [P34](post-v1.md#p34--langchain4j-1200-and-the-jar-the-aggregate-started-bringing) | LangChain4j `1.20.0`, and the jar the aggregate started bringing | **Done** — the aggregate stopped being free (`mutiny-zero`, kept on purpose) and the bump needs a `jspecify` pin to build |
 | [P35](post-v1.md#p35--four-corrections-from-a-java-review) | Four corrections from a Java review | **Done** — a renumbered ADR left four javadoc citations pointing at the wrong accepted ADR; a discarded `Future` hid a reader failure in `AtomicSnapshot`; `ConsoleChat` closed `System.in` |
 | [D1](open-decisions.md#d1--glm-route-if-no-maintained-module-exists) | GLM route if no maintained module | **Closed** — never became live |
 | [D2](open-decisions.md#d2--repository-visibility) | Repository visibility | **Settled** — public, not released; ADR-0034 |
@@ -122,7 +123,7 @@ Phase 0 gates everything else; nothing below M0 should start before its blockers
 done; Task 0.8 is done on Linux and open only on the macOS latency figure, which qualifies
 documentation rather than changing code and so gates neither M0 nor M3.
 
-What the phase settled: the pin at `1.19.0` and the two-BOM import it later needed, `release`
+What the phase settled: the pin (`1.19.0` then, `1.20.0` now) and the two-BOM import it later needed, `release`
 17 as the compile target, the type names and the one mismatch ADR-0020 resolves, the
 capability matrix, GLM on the maintained community module, Gemini on the stable one, the
 coordinates `io.github.maxtrezzi:modelrack4j-*`, and — from the spike — the symlink watch

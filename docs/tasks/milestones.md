@@ -66,6 +66,18 @@ So the exception ADR-0020 argues for costs one jar. Re-run the command on every 
 bump: this is a fact about `1.19.0`, and a dependency added upstream would land here
 silently.
 
+> **Re-measured 2026-09-04 by [P34](post-v1.md#p34--langchain4j-1200-and-the-jar-the-aggregate-started-bringing),
+> and the silent landing happened.** At `1.20.0` the aggregate declares **seven**
+> dependencies rather than six, and the new one — `io.smallrye.reactive:mutiny-zero` 1.3.1,
+> 58 KB — is not already present, so core's compile scope is **nine artifacts** rather than
+> eight and the aggregate now costs two jars. Its own jar grew from 317 KB to 389 KB.
+> mutiny-zero's only compile dependency is `jspecify`, which `langchain4j-core` already
+> brings, so the tree gains one node and no subtree. The exclusion question was asked and
+> answered no: opennlp backs a splitter ADR-0003 puts out of scope, mutiny-zero backs the
+> reactive `AiServices` path, and using `AiServices` is something this library leaves
+> available on purpose. Nothing about ADR-0020's argument changes; the number it rests on
+> does.
+
 One wording note while re-reading the row: "and nothing else" was accurate at M0 and reads
 as of M0. `slf4j-api` became a *declared* dependency at M1
 ([ADR-0028](../adr/0028-core-logs-through-slf4j-api.md)) — it was already present
