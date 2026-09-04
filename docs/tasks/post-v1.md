@@ -3418,7 +3418,6 @@ go stale.
   billing. The council's **partial** round still needs a working key and was not run — the same
   gap P28 recorded.
 
-\n
 ---
 
 ### P31 — A layer answers for itself, instead of being recognised
