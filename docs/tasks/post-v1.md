@@ -3991,3 +3991,106 @@ printed its menu and `bye.` with no request sent.
 
 No public API changed and no behaviour changed, so there is no CHANGELOG entry — three of the
 four are comments and a test, and the fourth is example code.
+
+---
+
+### P36 — Housekeeping: a test that raced its own listener, and the first read of five merged branches
+
+**Status:** In progress — one defect found and fixed in `ReloadTest`; the combined
+documentation read found nothing to correct ·
+**Raised by:** the owner, who asked for one branch to carry small work instead of one branch
+each
+
+This entry is a batch on purpose. Five items in a row (P26, P29, P32, P33, P35) were each a
+branch, a task entry, a pull request and five checks for a fix measured in minutes, and the
+verification was then repeated from the start for the next one. Small findings now collect
+here until there are enough of them to be worth a branch.
+
+#### `ReloadTest` waited on the registry and then read a counter the listener writes
+
+`rapidWritesCollapseIntoOneReload` ended:
+
+```java
+awaitModel("SL", "v5");
+assertThat(reloads).hasValue(1);
+```
+
+`awaitModel` polls `registry.get(name).config().modelName()`. `LlmRegistry.reload()` publishes
+first and announces afterwards:
+
+```java
+bundles = staged;   // THE swap: one write, whole snapshot, nothing torn
+notify(reloadListeners, change, "reload");
+```
+
+So the model a reader sees through `get()` can arrive *before* the callback that announces it,
+and the assertion above reads a counter that the listener has not written yet. The window is
+the width of one `notify` call, which is why no run has ever lost the race.
+
+A probe made it visible rather than arguing about it. A first listener that sleeps 500 ms
+widens the window; a second one counts. Inside the sleep:
+
+    PROBE: get() reports model-name=v1 while the reload count is still 0
+
+**Six of the twenty-one tests in the class stood on that ordering**, not one — the other five
+read `changes.get(0)` the same way, which fails as an index error rather than as a wrong count.
+Proved by widening the window in `LlmRegistry` itself, by 300 ms between the swap and the
+notify, and running the suite unchanged: 4 failures and 2 errors, and the two errors were
+`ArrayIndexOutOfBounds: Index 0 out of bounds for length 0` from `addedNameBecomesAvailable`
+and `removedNameThrows`.
+
+The fix is one helper, used at six call sites:
+
+```java
+private void awaitReloads(int expected) {
+    await().pollDelay(Duration.ZERO).atMost(TIMEOUT).until(() -> reloads.get() >= expected);
+    assertThat(reloads).hasValue(expected);
+}
+```
+
+It waits on the callback and then pins the count, so it asserts exactly what the old line
+asserted and nothing more. `pollDelay(Duration.ZERO)` keeps the cost at nothing: the condition
+is already true by the time it is asked.
+
+With the widened window still in place the fixed class is green, which is what says the helper
+is not vacuous. `LlmRegistry` was then restored from `git` and the whole build re-run.
+
+#### The debounce itself was not the fragile part
+
+The suspicion worth ruling out was the other one: five writes into a 60 ms trailing-edge
+debounce, where one stall longer than the debounce would split the burst into two reloads. A
+probe ran the burst 60 times and measured the gap between consecutive writes. **Worst gap
+3.43 ms against 60 ms**, and no run saw a reload count other than 1. Measured on the project's
+usual machine — AMD Ryzen 7 7840HS, ext4 on NVMe, Pop!_OS 24.04 (kernel 7.0.11), Temurin
+25.0.3 — which is one machine and not a benchmark; a loaded CI runner has less room. The
+margin is about seventeen-fold, so the debounce constant is left alone.
+
+#### The combined read of five merged branches
+
+`#50` to `#54` merged on 2026-09-04 within four hours, and each was verified against its own
+code only. Four documents had been touched by two or three of them and had never been read as
+one text: `AGENTS.md`, `docs/tasks/README.md`, `docs/tasks/post-v1.md` and
+`docs/manual/part-2-reference.md`.
+
+Nothing needed correcting. Recorded because a check that finds nothing is only worth its cost
+if the next session can see it ran:
+
+- Both counted lists in `AGENTS.md` still match their bullets — "Four consequences" over four,
+  and P20's "Five things" over five, that last one having gained its fifth bullet from D6.
+- The `open-decisions.md` claim in `AGENTS.md`, D1–D6 all settled, matches the file: six
+  entries, six `Settled` or `Closed` statuses.
+- In `part-2-reference.md` the `build()` row carries both branches' clauses, and Troubleshooting
+  has P24's rewritten `watch(true)` row followed by D6's three, in that order.
+- `build/check-docs.py`: 53 ADRs, 68 tracked markdown files, no problems.
+
+One thing looked like a defect and was not. Every message the Troubleshooting table quotes was
+grepped for in `src/main`; `watch(true) watches configuration files, and none of these layers
+is one` returned nothing. The string is split across two source lines between `is` and `one`,
+so the table is right and the grep was wrong. A quoted message has to be matched against the
+concatenated literal, not against the file.
+
+#### Verification
+
+`mvn clean install` green across all seven modules; core is 148 tests. `ReloadTest` is 21 tests
+in 6.75 s, against 6.77 s before the change — the helper adds no measurable time. No production
+code and no public API changed, so there is no CHANGELOG entry.

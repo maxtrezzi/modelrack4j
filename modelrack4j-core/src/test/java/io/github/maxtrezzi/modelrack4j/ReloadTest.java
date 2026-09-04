@@ -82,6 +82,7 @@ class ReloadTest {
         write("app.conf", block("SL", "second"));
 
         awaitModel("SL", "second");
+        awaitReloads(1);
         assertThat(changes).hasSize(1);
         assertThat(changes.get(0).updated()).containsExactly("SL");
         assertThat(changes.get(0).added()).isEmpty();
@@ -101,7 +102,7 @@ class ReloadTest {
         awaitModel("SL", "v5");
         // The point of the debounce. Without it this is five reloads, four of which rebuild
         // a model object nobody ever sees.
-        assertThat(reloads).hasValue(1);
+        awaitReloads(1);
     }
 
     @Test
@@ -117,7 +118,7 @@ class ReloadTest {
                 StandardCopyOption.REPLACE_EXISTING);
 
         awaitModel("SL", "after");
-        assertThat(reloads).hasValue(1);
+        awaitReloads(1);
     }
 
     @Test
@@ -157,6 +158,7 @@ class ReloadTest {
         write("app.conf", block("SL", "m") + "\n" + block("SH", "m"));
 
         await().atMost(TIMEOUT).until(() -> registry.names().contains("SH"));
+        awaitReloads(1);
         assertThat(registry.get("SH").chatModel()).isNotNull();
         assertThat(changes.get(0).added()).containsExactly("SH");
         assertThat(changes.get(0).updated()).isEmpty();
@@ -171,6 +173,7 @@ class ReloadTest {
         write("app.conf", block("SL", "m"));
 
         await().atMost(TIMEOUT).until(() -> !registry.names().contains("SH"));
+        awaitReloads(1);
         assertThatThrownBy(() -> registry.get("SH"))
                 .isInstanceOf(UnknownConfigurationException.class);
         assertThat(changes.get(0).removed()).containsExactly("SH");
@@ -301,7 +304,7 @@ class ReloadTest {
 
         write("app.conf", block("SL", "three"));
         awaitModel("SL", "three");
-        assertThat(reloads).hasValue(2);
+        awaitReloads(2);
     }
 
     @Test
@@ -472,6 +475,21 @@ class ReloadTest {
         await().atMost(TIMEOUT)
                 .until(() -> registry.names().contains(name)
                         && registry.get(name).config().modelName().equals(modelName));
+    }
+
+    /**
+     * Waits for {@code expected} reload callbacks, then pins the count at that number.
+     *
+     * <p>A reload publishes the new snapshot <em>before</em> it calls the listeners, so a
+     * model read through {@code get()} can arrive before the callback announcing it. Waiting
+     * on the registry and then reading a counter the listener writes is therefore a race,
+     * however wide the gap between the two looks. A probe with a listener that sleeps shows
+     * the window directly: {@code get()} reports the new model name while the count is still
+     * zero.
+     */
+    private void awaitReloads(int expected) {
+        await().pollDelay(Duration.ZERO).atMost(TIMEOUT).until(() -> reloads.get() >= expected);
+        assertThat(reloads).hasValue(expected);
     }
 
     /** Asserts that no callback of either kind arrives, and keeps not arriving. */

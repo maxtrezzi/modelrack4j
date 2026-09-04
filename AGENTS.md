@@ -237,6 +237,13 @@ independently — two callbacks would let an application observe new-SL with old
 is a correctness hazard for multi-model councils. The staging step is load-bearing:
 builders throw for reasons `validate()` cannot predict.
 
+**The swap comes before the callbacks, and that ordering is a trap for tests.** `reload()`
+assigns the new snapshot and only then calls the listeners, so a bundle read through `get()`
+can arrive before the `onReload` announcing it. A test that waits on the registry and then
+reads something a listener wrote — a counter, a captured `ReloadChange` — is racing, however
+wide the gap looks. Wait for the callback instead. Six of `ReloadTest`'s twenty-one tests did
+it the racing way until P36; widening the window by 300 ms inside `reload()` failed all six.
+
 **How much of that atomicity a caller gets is a separate question, and ADR-0038 answers it.**
 `get()` reads the live snapshot on every call, so two consecutive calls can straddle a swap
 and return bundles from different generations — measured at about two per million pairs, on
