@@ -4197,6 +4197,45 @@ council" beside `run-atomic.sh`, which is four of the five scripts in the reposi
 `--help` and the line now names all five. The P14 rule — count the list you just wrote before
 naming its size — reaches a list whose size is only implied by it.
 
+#### Mutation testing, which found the one thing the review had left wrong
+
+**PIT on core: 205 mutants, 202 killed, 1 timed out, 1 survived, 1 uncovered.** That is the
+same profile P33 recorded, on the same three lines, which is the expected answer for a batch
+that changed no production code. The report was checked for `Layer`, `FileLayer`, `TextLayer`,
+`StagedWrite` and `StaleLayerException` before being read — P31's lesson, that
+`mutationCoverage` mutates whatever `target/classes` already holds and never says which tree
+that was.
+
+- **`LlmRegistry.reload:341`, survived.** `EmptyObjectReturnValsMutator` replacing
+  `return Optional.empty()` with `Optional.empty()`. The same equivalent mutant P27 found:
+  no gap, nothing to write.
+- **`WritableFileConfigSource.stage:142`, no coverage.** The `discardStaged` call in the
+  `finally`, which needs a filesystem that fails between `createTempFile` and `writeString`.
+  Left untested deliberately, as `AGENTS.md` says.
+- **`LlmRegistry$Builder.chooseNotifier:798`, timed out.** Pre-existing, and PIT counts a
+  timeout as killed.
+
+**The first run had a second timeout, and it was this batch's own doing.**
+`LlmRegistry.reload:345`, "removed call to `notify`", had been `KILLED` in P33's run and came
+back `TIMED_OUT`: 201 killed and 2 timed out instead of 202 and 1. The cause is
+`awaitReloads`, which had been given `TIMEOUT` — the ten-second bound that exists because a
+loaded CI runner is slow at the *filesystem*. A reload callback is not a filesystem event: by
+the time the registry shows the new model, the listeners are one method call away on the
+thread that just published. With the callback removed by hand, the class took **76.40 s
+against 6.59 s**, seven tests each sitting out the full ten seconds where the old assertion on
+a counter had failed at once.
+
+`awaitReloads` now uses its own `CALLBACK_TIMEOUT` of two seconds. The same hand-applied
+mutant then costs 28.25 s instead of 76.40 s, still killing it, and the re-run puts the mutant
+back to `KILLED` — 202, 1, 1, 1 again. The suite itself is unchanged at 6.77 s, because the
+condition is true the first time it is asked.
+
+Worth keeping as the general shape: **a wait inherits the reason for its bound, not just its
+number.** The two waits in this class look alike and are not — one waits for an event to cross
+the filesystem, the other for a call already in flight — and giving both the generous bound
+turned a fast failure into a slow one. The run took 2 min 50 s; `AGENTS.md`'s "122 s" comes
+from ADR-0043 over 153 mutants and is not comparable.
+
 #### Verification
 
 `mvn clean install` green across all seven modules; core is 148 tests, unchanged — every

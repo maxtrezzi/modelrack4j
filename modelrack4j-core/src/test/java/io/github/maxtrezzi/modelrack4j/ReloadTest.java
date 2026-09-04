@@ -61,6 +61,15 @@ class ReloadTest {
     /** Long enough for a reload that should not happen to have happened. */
     private static final Duration QUIET = Duration.ofMillis(400);
 
+    /**
+     * Bound for a reload callback, which is much tighter than {@link #TIMEOUT} on purpose: by
+     * the time the registry shows the new model the listeners are one method call away on the
+     * thread that just published, not a filesystem event away. Keeping the generous bound here
+     * turns a callback that never comes into a ten-second wait per test instead of a fast
+     * failure — measured at 76 s for this class against 6.6 s, with the call removed.
+     */
+    private static final Duration CALLBACK_TIMEOUT = Duration.ofSeconds(2);
+
     @TempDir
     Path dir;
 
@@ -499,7 +508,8 @@ class ReloadTest {
      * zero.
      */
     private void awaitReloads(int expected) {
-        await().pollDelay(Duration.ZERO).atMost(TIMEOUT).until(() -> reloads.get() >= expected);
+        await().pollDelay(Duration.ZERO).atMost(CALLBACK_TIMEOUT)
+                .until(() -> reloads.get() >= expected);
         assertThat(reloads).hasValue(expected);
     }
 
