@@ -4269,6 +4269,65 @@ command, the configuration path and the startup output, not an answer.
   in another. `exec:java` runs with the reactor root as its working directory, so the line is
   correct as printed.
 
+#### The version was still the published one, and every build overwrote it
+
+Found by running the examples: `exec:java` resolved
+`~/.m2/.../modelrack4j-core/0.1.0/modelrack4j-core-0.1.0.jar` with today's timestamp. The POM
+had stayed at `0.1.0` after M6 published it, so **every `mvn install` since has written an
+unpublished build over the cached copy of a released artifact.** Anything else on the machine
+depending on `io.github.maxtrezzi:modelrack4j-core:0.1.0` silently got P24 to P35 instead of
+what Central serves. No document recorded a decision either way; the version simply never
+moved.
+
+**Now `0.2.0-SNAPSHOT`, set with `versions:set` across all eight POMs.** Two choices inside
+that, both deliberate:
+
+- **`0.2.0`, not `0.1.1`.** `[Unreleased]` carries a change marked *Breaking*:
+  `ConfigAccessException` is not a subclass of `ConfigValidationException`, so an existing
+  `catch` stops catching. The CHANGELOG's own policy makes that a minor.
+- **`-SNAPSHOT`, not the bare release number.** This branch is the *base* for the 0.2.0
+  release, not the release: ADR-0045 puts the tag after the publish, so the commit that drops
+  the suffix and dates the CHANGELOG belongs to the release itself, on `main`. Setting `0.2.0`
+  here would date the CHANGELOG on the day of the bump rather than the day of the publish —
+  the same shape of defect this entry just fixed. A snapshot is also inert against an
+  accidental publish: ADR-0045 established that the plugin branches on the version and that
+  snapshot publishing for `io.github.maxtrezzi` answers **403**.
+
+**What was deliberately left at `0.1.0`.** The `<version>` in the README's and the manual's
+dependency snippets is not this project's version — it is the instruction to a reader about
+what to put in their own POM, and `0.2.0` is not on Central. Changing it now would send
+readers to an artifact that does not exist. The README's "Status: `0.1.0`, the first release,
+on Maven Central" and the reference's "On Maven Central since `0.1.0`" are true as written.
+One README line did change: the build comment said `mvn clean install` "installs 0.1.0 to
+~/.m2", which is this project's version and was wrong the moment the bump landed. It now says
+"the current version", so it cannot go stale again.
+
+**Checklist for the 0.2.0 release**, since M6 recorded what it did rather than what to do:
+
+1. `mvn versions:set -DnewVersion=0.2.0 -DgenerateBackupPoms=false`. **Then check
+   `project.build.outputTimestamp` in the parent POM**: `versions:set` rewrites it to the
+   moment the command ran. It must be the release's own date at midnight — `2026-09-02T00:00:00Z`
+   is what M6 published and verified inside the jars — not a build instant. This bump had to
+   put it back by hand for exactly that reason.
+2. Close the CHANGELOG: `## [0.2.0] — <the day it is published>`, and its link at the bottom.
+3. Bump the four dependency snippets to `0.2.0` — README (three, plus the BOM block),
+   `part-1-tutorial.md` and `part-2-reference.md` — **and only once it is on Central**.
+4. Update "Status: `0.1.0`, the first release" in the README and "On Maven Central since
+   `0.1.0`" in the reference.
+5. Then ADR-0045's own steps: `mvn -Prelease clean deploy`, `autoPublish=false` stops at
+   `VALIDATED`, a human presses Publish, verify from an empty local repository, and only then
+   tag `v0.2.0` on `main` after the merge.
+
+**`versions:set` has a side effect worth knowing about.** It rewrote
+`project.build.outputTimestamp` from `2026-09-02T00:00:00Z` to the second the command ran.
+That property is the reproducible-build stamp every published jar carries, and the comment
+above it says to bump it at each release to that release's date. A snapshot bump is not a
+release, so it was put back.
+
+**The `0.1.0` in `~/.m2` on this machine is still the overwritten one** and is not repaired by
+the bump. Deleting `~/.m2/repository/io/github/maxtrezzi/` makes the next resolution fetch the
+real artifacts from Central.
+
 #### Verification
 
 `mvn clean install` green across all seven modules; core is 148 tests, unchanged — every
