@@ -28,7 +28,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -42,6 +44,9 @@ class LlmRegistryTest {
 
     @TempDir
     Path dir;
+
+    /** Every registry a test built, so none is left open when it ends. */
+    private final List<LlmRegistry> built = new ArrayList<>();
 
     @Test
     @DisplayName("omitted keys take the documented defaults")
@@ -457,6 +462,13 @@ class LlmRegistryTest {
         // collision between two cases in one test would silently reuse a file.
         Path file = dir.resolve("test-" + (++fileCounter) + ".conf");
         Files.writeString(file, hocon, StandardCharsets.UTF_8);
-        return LlmRegistry.builder().configFiles(List.of(file)).build();
+        LlmRegistry registry = LlmRegistry.builder().configFiles(List.of(file)).build();
+        built.add(registry);
+        return registry;
+    }
+
+    @AfterEach
+    void closeRegistries() {
+        built.forEach(LlmRegistry::close);
     }
 }

@@ -3996,8 +3996,9 @@ four are comments and a test, and the fourth is example code.
 
 ### P36 — Housekeeping: a test that raced its own listener, and the first read of five merged branches
 
-**Status:** In progress — one defect found and fixed in `ReloadTest`; the combined
-documentation read found nothing to correct ·
+**Status:** Done — two defects in `ReloadTest`, one of them a concurrency test that stayed
+green when it detected the thing it exists to detect; the combined documentation read found
+nothing to correct ·
 **Raised by:** the owner, who asked for one branch to carry small work instead of one branch
 each
 
@@ -4089,8 +4090,69 @@ is one` returned nothing. The string is split across two source lines between `i
 so the table is right and the grep was wrong. A quoted message has to be matched against the
 concatenated literal, not against the file.
 
+#### A Java review of the test tree, which had never had one
+
+P35 read the whole of `src/main` and stopped there. The defect above came from `src/test`, so
+the batch went back over all 3,806 lines of core's tests against the project's Java-17
+guidance. Five findings, all in the tests, none in the library.
+
+**A concurrency test that could not fail for the reason it existed.** `getIsSafeDuringReload`
+is what defends ADR-0038: four reader threads assert that a bundle and the config it reports
+belong together, while ten reloads run underneath. It discarded all four `Future`s, so a
+reader that *found* a torn bundle threw its `AssertionError` into a `Future` nobody read, and
+died quietly while the other three carried on. The only net was `reads > 0` at the end, which
+catches just the case where every reader dies at once.
+
+Measured rather than argued. Failing one reader once, after 5,000 reads — the shape of a rare
+torn read — left the suite green:
+
+```java
+if (reads.incrementAndGet() == 5_000) {
+    throw new AssertionError("a torn bundle, deliberately");
+}
+```
+
+    Tests run: 1, Failures: 0, Errors: 0 — BUILD SUCCESS
+
+The `Future`s are now kept and re-raised, and the same sabotage fails the test naming its
+cause: `ExecutionException: AssertionError: a torn bundle, deliberately`. **The project had
+already written this rule down twice** — `ConfigSourceTest` keeps its futures with a comment
+saying an exception "lands in its Future and nowhere else", and P35 fixed the same thing in
+`AtomicSnapshot`. This was the site both passes missed, which is the P16 lesson again: a rule
+recorded in one file does not check the file next to it.
+
+**An assertion inside `finally` can replace the failure it was meant to report.** Four sites
+asserted `pool.awaitTermination(...)` in a `finally`; when the body fails *and* the shutdown
+times out, JUnit reports the shutdown and the real cause is gone. Three now fall back to
+`shutdownNow()` — which the Java-17 profile asks for anyway, and which none of them did, so
+the threads outlived the test — and the fourth moved to after the `try`, where it still
+asserts a clean shutdown without competing.
+
+**A fixed `Thread.sleep(600)` became an Awaitility window.** `store_leavesAWakingWatcherNothingToPublish`
+slept, then looked once. It now requires the reload count to stay at zero for 300 ms, six
+times the 50 ms debounce — a stronger claim, and faster: **0.417 s against 0.608 s**, taking
+the class from 0.874 s to 0.666 s. It had been the slowest test in it by a factor of nine.
+
+**A POSIX guard present in one test and missing in its neighbour.**
+`store_keepsTheFilesPermissions` skipped itself where POSIX permissions do not exist;
+`store_ontoAReadOnlyDirectory_failsAsAccessNotValidation` set them unguarded, which is an
+`UnsupportedOperationException` there. Both now also skip under `root`, which ignores the
+permissions the test depends on and would have failed it for a reason that says nothing about
+the code.
+
+**Registries built and never closed.** `LlmRegistryTest` left 12 open and
+`LayeredResolutionTest` 5. Harmless today — `close()` is a no-op with no notifier, which was
+checked rather than assumed — but the tests were silently relying on that. Both classes now
+track what they build and close it in `@AfterEach`, the shape `ReloadTest` already used.
+
+Two things looked like findings and were not, both checked before being written down: the two
+`.formatted(...)` calls in the examples take only `%s` with `String` arguments, so `Locale.ROOT`
+would change nothing, and `ConfigSourceTest:490` asserts a shutdown inside its `try`, which is
+the correct place.
+
 #### Verification
 
-`mvn clean install` green across all seven modules; core is 148 tests. `ReloadTest` is 21 tests
-in 6.75 s, against 6.77 s before the change — the helper adds no measurable time. No production
-code and no public API changed, so there is no CHANGELOG entry.
+`mvn clean install` green across all seven modules; core is 148 tests, unchanged — every
+finding was an assertion that did not hold, not a case that was missing. `ReloadTest` is 21
+tests in 6.59 s. No production code and no public API changed, so there is no CHANGELOG
+entry.

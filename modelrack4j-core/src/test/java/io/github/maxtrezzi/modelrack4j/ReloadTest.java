@@ -16,6 +16,7 @@
 package io.github.maxtrezzi.modelrack4j;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.awaitility.Awaitility.await;
 
@@ -25,11 +26,13 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -342,9 +345,10 @@ class ReloadTest {
         CountDownLatch stop = new CountDownLatch(1);
         AtomicInteger reads = new AtomicInteger();
         ExecutorService pool = Executors.newFixedThreadPool(readers);
+        List<Future<?>> reading = new ArrayList<>(readers);
         try {
             for (int i = 0; i < readers; i++) {
-                pool.submit(() -> {
+                reading.add(pool.submit(() -> {
                     ready.countDown();
                     while (stop.getCount() > 0) {
                         LlmBundle bundle = registry.get("SL");
@@ -356,7 +360,7 @@ class ReloadTest {
                         reads.incrementAndGet();
                     }
                     return null;
-                });
+                }));
             }
             assertThat(ready.await(TIMEOUT.toMillis(), TimeUnit.MILLISECONDS)).isTrue();
             for (int i = 1; i <= 10; i++) {
@@ -366,8 +370,15 @@ class ReloadTest {
         } finally {
             stop.countDown();
             pool.shutdown();
-            assertThat(pool.awaitTermination(TIMEOUT.toMillis(), TimeUnit.MILLISECONDS))
-                    .isTrue();
+            if (!pool.awaitTermination(TIMEOUT.toMillis(), TimeUnit.MILLISECONDS)) {
+                pool.shutdownNow();
+            }
+        }
+        // A reader that saw a torn bundle threw into its Future and nowhere else: three of
+        // the four would carry on, `reads` would still be large, and the test would pass
+        // having detected exactly what it exists to detect. The Futures are the assertion.
+        for (Future<?> reader : reading) {
+            assertThatCode(reader::get).doesNotThrowAnyException();
         }
         assertThat(reads).hasValueGreaterThan(0);
     }

@@ -643,8 +643,11 @@ class ConfigSourceTest {
             }
         } finally {
             pool.shutdownNow();
-            assertThat(pool.awaitTermination(30, TimeUnit.SECONDS)).isTrue();
         }
+
+        // Asserted after the try, not inside the finally: a shutdown that timed out there
+        // would replace whatever the rounds above were failing for.
+        assertThat(pool.awaitTermination(30, TimeUnit.SECONDS)).isTrue();
     }
 
     /** Counts how often the registry closed it. */

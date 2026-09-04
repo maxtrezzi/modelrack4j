@@ -529,6 +529,17 @@ in-flight requests may still hold them.
   not length. **`docs/adr/`, `docs/tasks/` and this file are deliberately exempt**: their
   readers already hold the context, and an accepted ADR's body cannot be edited anyway. Do
   not "fix" their register, and do not let a user-facing paragraph drift back toward it.
+- **A task's exception lands in its `Future` and nowhere else, and a test that drops the
+  `Future` cannot fail.** `pool.submit(...)` swallows an `AssertionError` from the task
+  itself: the thread dies, its siblings carry on, and a suite asserting only an aggregate
+  counter stays green. Keep every `Future` and end with
+  `assertThatCode(f::get).doesNotThrowAnyException()`. **The project has now met this three
+  times** — `ConfigSourceTest` wrote the rule in a comment, P35 fixed it in `AtomicSnapshot`,
+  and P36 found `ReloadTest.getIsSafeDuringReload` — the test defending ADR-0038 — still
+  doing it, green while a reader detected a torn bundle. Neither earlier pass looked at the
+  file next door. Related: never assert inside a `finally` that follows work which can fail,
+  because the assertion replaces the failure; `pool.shutdown()` there takes an
+  `if (!awaitTermination(...)) shutdownNow();`, and the check belongs after the `try`.
 - **`docs/tasks/open-decisions.md` needs the owner.** Ask; do not decide unilaterally. A new
   entry there is a question for the owner, not work to pick up, and an entry marked
   `Needs decision` blocks the code that depends on it rather than inviting a guess. **D1–D6
