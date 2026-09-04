@@ -194,7 +194,11 @@ throwaway probe established that; the fix was `NOFOLLOW_LINKS`, a corrected comm
 test, and that test is what covers the branch now. Neither answer was visible from the report
 alone. **The `NO_COVERAGE` you will see today is a different line** — the cleanup branch in
 `stage()`, which needs a filesystem that fails between `createTempFile` and `writeString` and
-is left untested on purpose. Take the current report from `target/pit-reports/`, not from this
+is left untested on purpose. **`mutationCoverage` does not compile anything**: it mutates
+whatever `target/classes` already holds, and its output never says which source tree that was.
+Build first, and check the report contains a class you know you just wrote — P31 ran it on
+another branch's classes and got a plausible, wrong report (198 mutants instead of 205, and no
+`Layer` in it). Take the current report from `target/pit-reports/`, not from this
 paragraph: what is uncovered moves as the code does, and P29 found this description already
 pointing at the wrong method. `docs/tasks/post-v1.md` carries the per-run tables. Mutants are
 deterministic syntactic edits, so none of this bears on the concurrency guarantee in ADR-0038;

@@ -3474,8 +3474,21 @@ the new types.
 
 PIT on core: **205 mutants, 202 killed**, one survived and one `NO_COVERAGE`. Both are the two
 already known — the equivalent `Optional.empty()` in `LlmRegistry.reload` and the deliberate
-cleanup branch in `WritableFileConfigSource.stage`. The five new mutants come from `Layer`,
-`FileLayer` and `TextLayer`, and all five were killed, so the new code arrived covered.
+cleanup branch in `WritableFileConfigSource.stage`. `Layer`, `FileLayer` and `TextLayer`
+contribute **9 mutants, all killed**, so the new code arrived covered by the existing suite.
+
+The total moved from 200 to 205, which is **not** the number the new types added: the refactor
+also deleted mutable code where the two `instanceof` used to be. An earlier draft of this
+paragraph took the difference of the totals for the count of new mutants and said five. It is
+nine, counted per class in `mutations.xml`.
+
+**A mistake worth recording, because it cost a wrong report first.**
+`org.pitest:pitest-maven:mutationCoverage` does **not** compile: it mutates whatever
+`target/classes` already holds. The first run on this branch was made after checking out two
+other branches and running `mvn test` on one of them, so it silently measured *that* branch's
+code — 198 mutants, no `Layer` at all, and a `ConfigAccessException.class` from a branch this
+one does not contain. Nothing in PIT's output says which source tree it read. Build first, then
+run it, and check that a class you expect is in the report.
 
 **The count, measured rather than asserted.** `grep -rn instanceof --include=*.java */src/main`,
 with comment lines dropped, gives **nine** expressions in production code. Two of them are the
