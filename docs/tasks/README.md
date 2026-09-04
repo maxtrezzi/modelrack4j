@@ -107,11 +107,12 @@ Phase 0 gates everything else; nothing below M0 should start before its blockers
 | [P28](post-v1.md#p28--a-failing-model-ends-the-council-round) | A failing model ends the council round | **Done** — one dead key cost all three answers; the other two examples already caught it |
 | [P29](post-v1.md#p29--a-global-check-and-the-eight-things-it-found) | A global check over a tree three sessions had just moved | **Done** — 8 findings: a `null` `Optional` that was an NPE at one call site of three, and seven sentences that had stopped being true, two of them in `AGENTS.md`'s own guidance |
 | [P31](post-v1.md#p31--a-layer-answers-for-itself-instead-of-being-recognised) | A layer answers for itself, instead of being recognised | **Done** — an internal `sealed Layer` built once at the boundary; the public SPI is untouched, and the marker idea was the one ADR-0042 refused twice; ADR-0051 |
+| [P32](post-v1.md#p32--the-recipe-d5s-argument-rests-on) | The recipe D5's argument rests on | **Done** — the conditional-write recipe for a remote writer; the `catch` is not a repeat of the `if`, and a probe shows why |
 | [D1](open-decisions.md#d1--glm-route-if-no-maintained-module-exists) | GLM route if no maintained module | **Closed** — never became live |
 | [D2](open-decisions.md#d2--repository-visibility) | Repository visibility | **Settled** — public, not released; ADR-0034 |
 | [D3](open-decisions.md#d3--token-window-memory-on-a-remote-estimator) | Token-window memory on a remote estimator | **Settled** — opt-in flag |
 | [D4](open-decisions.md#d4--mutation-testing-in-ci) | Mutation testing in CI | **Settled** — never, in any form; ADR-0043 |
-| [D5](open-decisions.md#d5--a-version-token-for-optimistic-concurrency) | A version token for optimistic concurrency | **Needs decision** |
+| [D5](open-decisions.md#d5--a-version-token-for-optimistic-concurrency) | A version token for optimistic concurrency | **Settled** — no token; the `ETag` pattern already works on the current signature; ADR-0052 |
 | [D6](open-decisions.md#d6--cannot-store-is-not-your-configuration-is-invalid) | "Cannot store" is not "your configuration is invalid" | **Needs decision** |
 
 **Phase 0 is complete except for one measurement, and M0 is done — the build is green.** Tasks 0.1–0.7 are
@@ -165,12 +166,15 @@ two were wrong about the code and wrong in the project's favour, two forced deci
 [ADR-0036](../adr/0036-claude-md-is-local-only.md), because hiding a file does not stop it
 drifting), and the rest were documentation the code had already outgrown.
 
-**Two decisions are open again**, both raised by the first consumer putting `0.1.0` behind
-HTTP: [D5](open-decisions.md#d5--a-version-token-for-optimistic-concurrency), whether a layer
-should have a version token smaller than its whole text, and
-[D6](open-decisions.md#d6--cannot-store-is-not-your-configuration-is-invalid), whether "cannot
-store" deserves its own exception. Both wait on the owner. One thing waits on hardware
-instead: the macOS half of
+**One of the two decisions raised by the first consumer putting `0.1.0` behind HTTP is
+still open.** [D5](open-decisions.md#d5--a-version-token-for-optimistic-concurrency), whether
+a layer should have a version token smaller than its whole text, was settled on 2026-09-03: it
+should not, because the `ETag` pattern it was raised for already works on the current
+signature. [D6](open-decisions.md#d6--cannot-store-is-not-your-configuration-is-invalid),
+whether "cannot store" deserves its own exception, is still marked `Needs decision` and is the
+next item.
+
+One thing waits on hardware rather than on a decision: the macOS half of
 [Task 0.8](phase-0-verification.md#task-08--watch-strategy-spike). The README states that gap
 rather than papering over it.
 

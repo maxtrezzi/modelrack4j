@@ -495,6 +495,44 @@ Pass the text on as you received it.
 `layerId()`, the `id()` of the layer that moved — useful when one retry loop serves more than
 one layer.
 
+**When the other writer is not in your process.** Behind an HTTP `PUT` the two writers are two
+clients, and the condition arrives as a header. The library needs nothing new for this: the
+server that answers the request has already read the layer, so it can build the token itself.
+
+```java
+// GET: hand the client the text, and a token over that text
+String text = userLayer.text();
+response.header("ETag", etagOf(text));       // any stable digest of those exact bytes
+response.body(text);
+
+// PUT: apply the change only if the layer still holds what that client was given
+String current = userLayer.text();
+if (!etagOf(current).equals(request.header("If-Match"))) {
+    return status(412);                      // somebody else wrote it first
+}
+try {
+    registry.storeIfUnchanged(userLayer, current, request.body());
+    return status(204);
+} catch (StaleLayerException stale) {
+    return status(412);                      // it moved between the check above and the write
+}
+```
+
+The client sends a short token; the document itself never travels in a header. The `request`,
+`response` and `status` calls stand for whatever your web framework provides — the two library
+calls are `text()` and `storeIfUnchanged`.
+
+**The `catch` is not a repeat of the `if`.** The header check compares against a read that is
+already in the past. `storeIfUnchanged` reads the layer again inside the registry's lock and
+compares it there, so it closes the gap between your check and your write — which no header
+comparison can close. A store from another writer placed between those two lines passes the
+`if` and is still refused.
+
+`etagOf` is yours, and the library never sees it. Any stable function of the exact bytes will
+do. Use the same string for the token and for `expected`: if you strip the trailing newline
+before hashing but pass the original text to `storeIfUnchanged`, the two stop describing the
+same layer.
+
 #### Two limits
 
 **`include` in a layer you store.** It keeps working: the include is resolved during

@@ -3418,7 +3418,6 @@ go stale.
   billing. The council's **partial** round still needs a working key and was not run — the same
   gap P28 recorded.
 
-\n
 ---
 
 ### P31 — A layer answers for itself, instead of being recognised
@@ -3498,3 +3497,61 @@ The other seven are unrelated and untouched: two in `MemoryConfig`, four in `Sna
 (one `ConfigObject` cast and three over `MemoryConfig`'s sealed variants), and one in
 `ConfigWatcher` over a `WatchEvent` context. So the number that moved is three to two, and the
 difference that matters is that neither survivor sits at a use site.
+
+---
+
+### P32 — The recipe D5's argument rests on
+
+**Status:** Done — the reference now carries the conditional-write recipe ·
+**Raised by:** [D5](open-decisions.md#d5--a-version-token-for-optimistic-concurrency)
+
+D5 decided that the library gains no version token, and the argument for that was that an
+application behind an HTTP `PUT` can build one itself in a few lines. That argument obliges the
+project to write those lines somewhere a user reads. It was only in
+[ADR-0052](../adr/0052-no-version-token-the-expected-text-is-the-token.md), which is not
+user-facing documentation (ADR-0039).
+
+#### What was missing
+
+Checked before writing anything, and all three were about writers inside one process:
+
+- `docs/manual/part-2-reference.md`, *More than one writer* — the retry loop over
+  `text()` / `storeIfUnchanged` / `StaleLayerException.current()`, plus the trailing-newline
+  trap. Correct, and written for two threads.
+- `README.md` — one sentence, that `storeIfUnchanged` refuses rather than erasing somebody
+  else's change.
+- The javadoc of `storeIfUnchanged` — the re-read under the lock and its I/O cost, with no
+  mention of a token or of a remote caller.
+
+So nothing told a reader how to join `If-Match` to `expected`, which is the bridge the decision
+stands on. ADR-0052's Consequences recorded no follow-up either, so the obligation was written
+down nowhere.
+
+#### What was added
+
+A subsection in *More than one writer*: the `GET` that serves an `ETag` over `text()`, the
+`PUT` that compares it and answers `412`, and the `storeIfUnchanged` that follows. Plus a
+sentence in the javadoc of `storeIfUnchanged` saying why there is no token and pointing at the
+manual.
+
+**The paragraph that carries the teaching is about the `catch`, not the `if`.** A reader who
+sees both a header comparison and a `StaleLayerException` handler will take one of them for
+redundancy and delete it. The header compares against a read that is already in the past;
+`storeIfUnchanged` re-reads inside the lock. Only the second closes the gap between the check
+and the write.
+
+#### Verification
+
+The recipe was run before it was printed, not sketched — the P18 rule. A probe built a registry
+over `ofFile` plus `ofWritableFile`, served an `ETag`, and then took both paths: the `PUT` whose
+header matches and stores, and the `PUT` whose header **also** matches and is still refused,
+because another writer stored between the two lines. Output:
+
+    PUT  header check: true   (passes: nothing has changed yet)
+         StaleLayerException on layer user.conf -> answer 412
+         current() holds the winner: SH=o3-mini
+         registry still holds SH=o3-mini
+
+That second case is the one the paragraph describes, and it is the reason the `catch` stays.
+
+No code changed beyond the javadoc, so there is no CHANGELOG entry.
