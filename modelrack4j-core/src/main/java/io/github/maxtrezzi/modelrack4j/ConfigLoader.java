@@ -110,7 +110,7 @@ final class ConfigLoader {
      *
      * @implNote How a layer is parsed is the layer's own answer, not a question asked here:
      *     a file must be parsed through the file so that {@code include "sibling.conf"}
-     *     resolves beside it (ADR-0042, ADR-0053). All this method contributes is the origin
+     *     resolves beside it (ADR-0042, ADR-0051). All this method contributes is the origin
      *     description, which is what puts the source's id into a parse error.
      */
     private static Config parse(Layer layer) {

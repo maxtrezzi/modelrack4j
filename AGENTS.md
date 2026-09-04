@@ -101,6 +101,18 @@ after either. This has already happened once (P13). `CONTRIBUTING.md` carries th
 contributor-facing version of this rule, because an outside contributor never reads this
 file.
 
+**A renumber is a tree-wide `grep`, not a rename**, and P35 is what happens when it is not.
+P31 deliberately took 0051 so that D5 and D6 could renumber to 0052 and 0053, and moved the
+ADR file, the index and the commit message — but four javadoc comments in
+`modelrack4j-core/src/main` still cited 0053, which by then was a real and *different*
+accepted ADR, so the reference resolved to the wrong document rather than to none. Nothing
+caught it on the way in or afterwards: `build/check-docs.py` only walks tracked `.md` files
+and never opens a `.java` one, `AGENTS.md` and
+`docs/tasks/` used the number correctly throughout, and a pass scoped to *documentation* does
+not open `src/main` — P16's lesson, arriving a second time by a second route. So after
+changing an ADR's number, `grep -rn "ADR-00NN"` the whole tree, source included, and check
+what each hit is claiming rather than only that a hit exists.
+
 Content moves from the discussion log to the ADR by **rewriting**, never copying — the log
 is private material, the ADR is the distilled public result. Accepted ADRs are immutable **in
 their substance**: to change a decision, write a new ADR and mark the old one

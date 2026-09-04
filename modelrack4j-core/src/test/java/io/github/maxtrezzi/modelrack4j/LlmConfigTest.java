@@ -19,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertAll;
 
+import java.lang.reflect.RecordComponent;
 import java.time.Duration;
 import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
@@ -152,6 +153,15 @@ class LlmConfigTest {
         // The rest must survive: a description with the useful half removed is not a fix,
         // it is a second problem. These are the components a reader actually needs.
         assertThat(described).contains("name=SL", "provider=fake-local", "modelName=gpt-5.1");
+
+        // Every component, asked of the record rather than listed here. toString() is
+        // hand-written to redact the key, so a component added to LlmConfig would compile,
+        // print nowhere, and be caught by nothing. This fails on that day instead.
+        for (RecordComponent component : LlmConfig.class.getRecordComponents()) {
+            assertThat(described)
+                    .as("toString() omits the component '%s'", component.getName())
+                    .contains(component.getName() + "=");
+        }
     }
 
     @Test
