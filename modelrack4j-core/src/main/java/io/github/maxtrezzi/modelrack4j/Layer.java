@@ -31,7 +31,7 @@ import java.util.Optional;
  * <p>A {@code ConfigSource} deliberately names no file (ADR-0042), so those answers are not
  * on it. They used to be recovered with {@code instanceof FileBacked}, once in the loader and
  * once in the builder; this type asks that question once, in {@link #of(ConfigSource)}, and
- * every use site calls a method instead (ADR-0053).
+ * every use site calls a method instead (ADR-0051).
  *
  * @implNote Package-private and sealed, so the set of layer kinds is closed and internal. It
  *     is not the place to add a public capability: making a layer's file part of the API is

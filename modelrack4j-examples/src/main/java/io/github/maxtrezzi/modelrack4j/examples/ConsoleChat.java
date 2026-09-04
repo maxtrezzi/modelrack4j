@@ -116,12 +116,15 @@ public final class ConsoleChat {
 
         List<Path> layers = Arrays.stream(args).map(Path::of).toList();
 
+        // Not closed on purpose, and so not in the try-with-resources below: closing this
+        // reader would close System.in with it. ThreeModelCouncil does the same.
+        BufferedReader console =
+                new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
+
         try (LlmRegistry registry = LlmRegistry.builder()
-                        .configFiles(layers)
-                        .watch(true)
-                        .build();
-                BufferedReader console =
-                        new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8))) {
+                .configFiles(layers)
+                .watch(true)
+                .build()) {
 
             registry.onReload(change -> System.out.println(System.lineSeparator()
                     + "  [config reloaded: updated=" + change.updated()

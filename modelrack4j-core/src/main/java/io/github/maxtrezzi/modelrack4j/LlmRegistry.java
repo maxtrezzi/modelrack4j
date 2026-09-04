@@ -769,7 +769,7 @@ public final class LlmRegistry implements AutoCloseable {
          *     {@code configFiles(...)} filled, which is what made a registry whose every
          *     layer was a file refuse to be watched (ADR-0050). Each layer answers for
          *     itself through {@link Layer#watchTarget()} rather than being recognised here
-         *     (ADR-0053), and what it answers is the configured path, not the one it
+         *     (ADR-0051), and what it answers is the configured path, not the one it
          *     resolves to, so the watcher still registers on the directory of a symlink
          *     rather than of its target (ADR-0024).
          */

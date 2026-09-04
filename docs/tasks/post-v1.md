@@ -3746,3 +3746,132 @@ trimming an upstream prefix is a decision rather than a fix.
 own"* — four are. `java.io.UncheckedIOException` is the JDK's, and it has been in that table
 since before this branch, which raised the count from four to five and carried the wording
 with it. Corrected here: the sentence now says the library throws five and owns four.
+
+---
+
+### P35 — Four corrections from a Java review
+
+**Status:** Done — a renumbered ADR left four wrong citations in `src/main`, and the examples
+had a swallowed reader failure and a closed `System.in` ·
+**Raised by:** a review of the whole tree against the project's Java-17 guidance
+
+A review read the whole of `src/main` — core, the four providers, the examples — with the five
+questions and the Java 17 profile. It was run against D6's branch before that branch merged,
+where `src/main` was 5,826 lines; `main` was 5,767 at the time and is 5,865 now that D6 has
+landed, so that figure names the tree that was read rather than a count anybody can reproduce
+today. It found nothing unsafe in the library's runtime path. It found four other things, and
+the first is the one worth remembering.
+
+#### The ADR renumbering did not reach the javadoc
+
+Four javadoc comments cited **ADR-0053** for the decision that a layer answers for itself. That
+is [ADR-0051](../adr/0051-layer-answers-for-itself-adapted-at-the-boundary.md). ADR-0053 is the
+`ConfigAccessException` split — a real, accepted, *different* decision, so a reader who followed
+the reference arrived at the wrong document rather than at no document, which is the worse
+failure of the two.
+
+| File | What it said |
+|---|---|
+| `Layer.java` | "every use site calls a method instead (ADR-0053)" |
+| `ConfigLoader.java` | "resolves beside it (ADR-0042, ADR-0053)" |
+| `LlmRegistry.java` | "rather than being recognised here (ADR-0053)" |
+| `FileBacked.java` | "an application's own source cannot join them (ADR-0053)" |
+
+`ADR-0051` was cited in **zero** Java files; all four sites were on `main`, merged in `23d882b`.
+
+P31's own commit message is where the cause is written down: *"It takes 0051 rather than the
+next free number because this branch merges first: D5 and D6 hold 0051 and 0052 on unpushed
+branches and must renumber to 0052 and 0053."* The renumber ran over the ADR filename, the index
+in `docs/adr/README.md` and the commit message. It did not run over the javadoc that had been
+written against the pre-renumber number, and nothing else would ever re-read those four lines.
+
+`AGENTS.md` and `docs/tasks/` had 0053 pointing at the right decision throughout, so the
+documentation pass gave no signal. This is P16's lesson arriving a second time by a second
+route: `modelrack4j-core/src/main` is not filed under "documentation", so a check scoped to
+documents does not reach it. The counting rule in `AGENTS.md` now says a renumber is a
+tree-wide `grep`, not a rename.
+
+Verified afterwards: no `ADR-0053` remains anywhere under `modelrack4j-*/src`. `src/main` holds
+28 ADR citations in all; the four above were wrong, and the other 24 were checked one by one
+against `docs/adr/` and are correct.
+
+#### `AtomicSnapshot` hid a reader failure and could report mid-flight
+
+Two defects in the harness that *measures* the atomicity guarantee, which is what makes them
+worth more than their size.
+
+The `Future` from `pool.submit(reader)` was discarded. A reader that threw would have parked its
+exception in a `Future` nobody read: that thread stops counting, and the run prints a smaller,
+entirely plausible number with nothing to say a thread had died. An example whose whole output
+is a measurement cannot swallow the failure of one of its four measuring threads.
+
+And `report(readers)` could run while the readers were still writing. On the branch where
+`awaitTermination` returns `false`, the code called `shutdownNow()` and fell straight through to
+`report`, which iterates `Reader.observed` — a plain `LinkedHashMap` — and reads two plain
+`long` counters that live threads may still be incrementing. Unlikely to fire, since
+`stop.countDown()` precedes the `finally`; it is on the path that exists for when things go
+wrong, which is the path that gets no other testing.
+
+One change closes both. The futures are kept and drained through `awaitReaders`, which unwraps
+`ExecutionException` so the reader's own failure is what surfaces, and cancels on a timeout.
+`Future.get()` is also the *documented* happens-before edge for the counters `report` then
+reads; `awaitTermination` alone only supplies one through `ThreadPoolExecutor`'s internal lock,
+and supplies none at all on the branch where it times out.
+
+The `finally` block keeps `shutdown()` / `awaitTermination` unchanged, including its comment
+that `ExecutorService` is not `AutoCloseable` on Java 17 — that part was already right.
+
+#### `ConsoleChat` closed `System.in`; `ThreeModelCouncil` documents that as wrong
+
+`ConsoleChat` had its console reader inside the try-with-resources, so leaving the chat closed
+`System.in`. `ThreeModelCouncil` keeps its reader outside and carries the comment saying why.
+Neither was broken — `ConsoleChat` closes it as the last act of `main`, so nothing observes the
+closed stream — but two shipped examples took opposite positions on one question, and these are
+files people copy. `ConsoleChat` now matches, with the same one-line comment and a pointer to
+its twin.
+
+#### The `toString` redaction had no guard against drift
+
+`LlmConfig.toString()` is hand-written to hide `apiKey` (ADR-0047), and it was complete: all
+twelve components printed. Nothing kept it that way. A thirteenth component would compile, print
+nowhere, and be missing from every log line, and `toStringRedactsTheApiKey` asserted only four
+component names — `name`, `provider`, `modelName`, `apiKey=***` — so it would not have noticed.
+
+The test now asks the record for its components instead of listing them:
+
+```java
+for (RecordComponent component : LlmConfig.class.getRecordComponents()) {
+    assertThat(described)
+            .as("toString() omits the component '%s'", component.getName())
+            .contains(component.getName() + "=");
+}
+```
+
+`redactionDoesNotWeakenEquality` is untouched: it already pins the other half, that `equals` was
+*not* redacted, which is what keeps a rotated key a configuration change.
+
+#### Verification
+
+The guard was proved by making it fail, not by watching it pass. A throwaway probe deleted the
+`streaming` component from `toString()`; the four original assertions still passed and the new
+loop failed, naming it:
+
+    [toString() omits the component 'streaming']
+    Expecting actual:
+      "LlmConfig[name=SL, ..., logResponses=false, memory=Optional.empty, moderationEnabled=false]"
+    to contain:
+      "streaming="
+
+That also settles what the old test would have done on that day: nothing. `LlmConfig.java` was
+restored from a copy taken before the probe and `git diff` confirms it is byte-identical.
+
+Both changed examples were run rather than reasoned about (the P18 rule). `./run-atomic.sh`
+completed with 178,157,354 samples across four readers, `updated=[SH, SL]` from the single save,
+and both torn counters at zero — the readers all finished and reported, so `awaitReaders`
+returned cleanly. `ConsoleChat` was driven with a piped `/exit` over a literal-key config and
+printed its menu and `bye.` with no request sent.
+
+`mvn clean install` is green: the full suite, all seven modules.
+
+No public API changed and no behaviour changed, so there is no CHANGELOG entry — three of the
+four are comments and a test, and the fourth is example code.

@@ -27,9 +27,12 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * Shows the guarantee that is hardest to see and easiest to lose: a reload swaps
@@ -78,6 +81,7 @@ public final class AtomicSnapshot {
     private static final Duration SAMPLE_BEFORE_EDIT = Duration.ofSeconds(1);
     private static final Duration SAMPLE_AFTER_EDIT = Duration.ofSeconds(2);
     private static final Duration DEBOUNCE = Duration.ofMillis(100);
+    private static final long READER_STOP_TIMEOUT_SECONDS = 10;
 
     private AtomicSnapshot() {
     }
@@ -109,12 +113,17 @@ public final class AtomicSnapshot {
 
             CountDownLatch stop = new CountDownLatch(1);
             List<Reader> readers = new ArrayList<>();
+            List<Future<?>> running = new ArrayList<>();
             ExecutorService pool = Executors.newFixedThreadPool(READER_THREADS);
             try {
                 for (int i = 0; i < READER_THREADS; i++) {
                     Reader reader = new Reader(registry, stop);
                     readers.add(reader);
-                    pool.submit(reader);
+                    // The Future is kept, not discarded. A reader that threw would otherwise
+                    // park its exception in a Future nobody reads: that thread would stop
+                    // counting and the run would print a smaller, entirely plausible number
+                    // with nothing to say a thread had died.
+                    running.add(pool.submit(reader));
                 }
 
                 System.out.println("sampling SL and SH together on "
@@ -126,6 +135,7 @@ public final class AtomicSnapshot {
 
                 Thread.sleep(SAMPLE_AFTER_EDIT.toMillis());
                 stop.countDown();
+                awaitReaders(running);
             } finally {
                 // ExecutorService is not AutoCloseable on Java 17.
                 pool.shutdown();
@@ -135,6 +145,32 @@ public final class AtomicSnapshot {
             }
 
             report(readers);
+        }
+    }
+
+    /**
+     * Waits for every reader to finish, and surfaces any failure one of them hid.
+     *
+     * @implNote This is what lets {@link #report(List)} read the readers' counters from
+     *     another thread. {@code Future.get()} is the documented happens-before edge — the
+     *     reader's writes to its own fields are visible here once it returns — where
+     *     {@code awaitTermination} alone only gives one through the pool's internal lock,
+     *     and gives none at all on the path where it times out and the report would then
+     *     read counters that live threads were still incrementing.
+     */
+    private static void awaitReaders(List<Future<?>> running) throws InterruptedException {
+        for (Future<?> reader : running) {
+            try {
+                reader.get(READER_STOP_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            } catch (ExecutionException e) {
+                // Unwrapped: the ExecutionException is this method's plumbing, and the
+                // reader's own failure is what somebody has to read.
+                throw new IllegalStateException("a reader thread failed", e.getCause());
+            } catch (TimeoutException e) {
+                reader.cancel(true);
+                throw new IllegalStateException(
+                        "a reader did not stop within " + READER_STOP_TIMEOUT_SECONDS + "s", e);
+            }
         }
     }
 

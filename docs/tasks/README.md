@@ -110,6 +110,7 @@ Phase 0 gates everything else; nothing below M0 should start before its blockers
 | [P31](post-v1.md#p31--a-layer-answers-for-itself-instead-of-being-recognised) | A layer answers for itself, instead of being recognised | **Done** — an internal `sealed Layer` built once at the boundary; the public SPI is untouched, and the marker idea was the one ADR-0042 refused twice; ADR-0051 |
 | [P32](post-v1.md#p32--the-recipe-d5s-argument-rests-on) | The recipe D5's argument rests on | **Done** — the conditional-write recipe for a remote writer; the `catch` is not a repeat of the `if`, and a probe shows why |
 | [P33](post-v1.md#p33--the-messages-d6-leaves-a-user-and-where-they-are-looked-up) | The messages D6 leaves a user, and where they are looked up | **Done** — the table had no row for an unreadable layer; a write failure named a temporary file and no cause |
+| [P35](post-v1.md#p35--four-corrections-from-a-java-review) | Four corrections from a Java review | **Done** — a renumbered ADR left four javadoc citations pointing at the wrong accepted ADR; a discarded `Future` hid a reader failure in `AtomicSnapshot`; `ConsoleChat` closed `System.in` |
 | [D1](open-decisions.md#d1--glm-route-if-no-maintained-module-exists) | GLM route if no maintained module | **Closed** — never became live |
 | [D2](open-decisions.md#d2--repository-visibility) | Repository visibility | **Settled** — public, not released; ADR-0034 |
 | [D3](open-decisions.md#d3--token-window-memory-on-a-remote-estimator) | Token-window memory on a remote estimator | **Settled** — opt-in flag |

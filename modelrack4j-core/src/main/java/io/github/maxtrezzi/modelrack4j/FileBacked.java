@@ -29,7 +29,7 @@ import java.nio.file.Path;
  *     <p>Only {@link Layer#of(ConfigSource)} reads this marker, and it is {@code sealed}
  *     because that set is closed and internal: the three records permitted below are the
  *     only layers this library can parse through a file or watch, and an application's own
- *     source cannot join them (ADR-0053).
+ *     source cannot join them (ADR-0051).
  */
 sealed interface FileBacked extends ConfigSource
         permits FileConfigSource, StagedFileSource, WritableFileConfigSource {
