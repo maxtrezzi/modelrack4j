@@ -169,7 +169,7 @@ Or import the BOM once and drop the versions:
 </dependencyManagement>
 ```
 
-Requires **Java 17+**. Built against **LangChain4j 1.19.0**.
+Requires **Java 17+**. Built against **LangChain4j 1.20.0**.
 
 ### 2. Write the configuration
 
@@ -345,7 +345,7 @@ rebuilds that one bundle on reload. That is deliberate — see
 **Model names are strings, and nothing here validates them.** `model-name` is passed
 straight to the provider's builder. LangChain4j ships model-name *enums*, but they are a
 convenience rather than a whitelist, and being compiled at release time they lag the
-providers — a model released after LangChain4j 1.19.0 works perfectly well through this
+providers — a model released after LangChain4j 1.20.0 works perfectly well through this
 library. The examples above use `claude-sonnet-5`, which no enum in the pinned jar lists,
 alongside `gpt-5.1`, which one does. The trade is that a typo surfaces as the provider's own
 error on the first request rather than at load time.
@@ -561,7 +561,7 @@ application configuring only Anthropic never has OpenAI's dependencies on its cl
 | `modelrack4j-provider-gemini` | `gemini` | ✅ | ✅ | ❌ | remote |
 | `modelrack4j-provider-glm` | `glm` | ✅ | ✅ | ❌ | none |
 
-Read out of the LangChain4j 1.19.0 artifacts, not from documentation. Gemini is the stable
+Read out of the LangChain4j 1.20.0 artifacts, not from documentation. Gemini is the stable
 `langchain4j-google-ai-gemini` module; GLM comes from `langchain4j-community-zhipu-ai`,
 which is released on the community cycle, separately from the stable modules.
 

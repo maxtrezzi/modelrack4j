@@ -3749,6 +3749,122 @@ with it. Corrected here: the sentence now says the library throws five and owns 
 
 ---
 
+### P34 — LangChain4j 1.20.0, and the jar the aggregate started bringing
+
+**Status:** Done 2026-09-04 · **Branch:** `task/p34-langchain4j-1-20-0` · no ADR
+
+LangChain4j `1.20.0` was published on 2026-09-04, the community train with it as
+`1.20.0-beta30`. The owner asked what in it concerns this project. Most of it does not — the
+release is largely MCP, agentic and A2A work, embedding stores, RAG and provider-specific
+features this library does not configure. Two things do, and neither is in the release notes.
+
+This is the one-line BOM bump [ADR-0018](../adr/0018-manage-langchain4j-versions-via-bom.md)
+was designed to make routine. It needed a second line, and the reason is worth writing down.
+
+#### 1. The aggregate stopped being free
+
+[ADR-0020](../adr/0020-core-depends-on-langchain4j-aggregate.md) lets core take the
+`langchain4j` aggregate for `ChatMemoryProvider` alone, and the argument rests on a
+measurement recorded in [M0](milestones.md#m0--skeleton-and-ci): the aggregate
+declares six dependencies and every one is already present or excluded, so it costs one jar
+and adds nothing transitively. M0 says in the same paragraph to re-run the command on every
+bump, because a dependency added upstream would land there silently. That is what happened.
+
+| At | Aggregate declares | Core's compile scope | Aggregate jar |
+|---|---|---|---|
+| `1.19.0` | six | eight artifacts | 317 KB |
+| `1.20.0` | seven | **nine** artifacts | 389 KB |
+
+The new one is `io.smallrye.reactive:mutiny-zero:1.3.1`, 58 KB. It arrived with the
+release's headline feature: an AI Service method may now return `CompletableFuture<T>` or
+`Flow.Publisher<…>` and run without holding a thread. It declares exactly one compile
+dependency of its own, `jspecify`, which `langchain4j-core` already brings — so the tree
+gains a node and no subtree.
+
+**It is not excluded, and the difference from `opennlp-tools` is the whole point.** The
+opennlp exclusion is safe because the only class referencing it, `DocumentBySentenceSplitter`,
+does RAG splitting, which [ADR-0003](../adr/0003-bundle-holds-config-shaped-inputs-only.md)
+puts permanently out of scope. mutiny-zero backs the reactive `AiServices` path — and *using*
+`AiServices` was never out of scope, which is the distinction
+[P21](#p21--what-the-library-leaves-available-said-out-loud) spent a whole item making clear.
+Excluding it would remove the jar from every consumer's classpath to save 58 KB and break the
+new API for anyone who reaches for it. Nothing in ADR-0020's argument changes; the number it
+rests on does, and M0 now carries the new one.
+
+#### 2. The bump does not build without a `jspecify` pin
+
+`mvn clean install` at `1.20.0` / `1.20.0-beta30` fails in `modelrack4j-provider-glm`, on the
+`DependencyConvergence` rule:
+
+```
+org.jspecify:jspecify:1.0.1  <- langchain4j-core 1.20.0
+org.jspecify:jspecify:1.0.1  <- langchain4j 1.20.0 -> mutiny-zero 1.3.1
+org.jspecify:jspecify:1.0.0  <- langchain4j-community-zhipu-ai 1.20.0-beta30 -> guava 33.6.0-jre
+```
+
+`langchain4j-core` moved jspecify from `1.0.0` to `1.0.1`; guava stayed at `33.6.0-jre` in
+both community betas and still brings `1.0.0`. Neither BOM manages jspecify, so nothing
+reconciles the two. Fixed the way `slf4j-api` already is: a `<jspecify.version>` property and
+a `dependencyManagement` entry in the parent POM, with a comment saying which two paths
+disagree and to re-check it on the next bump.
+
+This is the same class of failure M0 recorded for the GLM module's `jjwt` — the rule is on
+precisely because nearest-wins would otherwise pick a version by depth and flip silently.
+
+#### Everything the pin gates, re-checked against the 1.20.0 artifacts
+
+Read from the jars, not from the release notes.
+
+| Gated by the pin | Re-checked against | Result |
+|---|---|---|
+| [Task 0.2](phase-0-verification.md#task-02--verify-the-java-baseline) — Java baseline | bytecode of `langchain4j-core-1.20.0` and `langchain4j-1.20.0` | major **61** (= Java 17) on all **752** classes, no `META-INF/versions` overlays — `release` 17 stands |
+| [Task 0.5](phase-0-verification.md#task-05--confirm-interface-names) — interface names | both jars' entry listings | all nine types unmoved — the set Task 0.5 tabulates in eight rows, counting the two window memories as one; `ChatMemoryProvider`, `MessageWindowChatMemory` and `TokenWindowChatMemory` still aggregate-only; `TokenCountEstimator` still in `dev.langchain4j.model`; `ChatLanguageModel` still absent. The five request/response types the SPI touches are unmoved too |
+| [Task 0.6](phase-0-verification.md#task-06--provider-capability-matrix) — capability matrix | the four provider jars | unchanged: `OpenAiModerationModel` and `OpenAiTokenCountEstimator` in `-open-ai`; an estimator and no moderation model in `-anthropic` and `-google-ai-gemini`; neither in `-community-zhipu-ai` |
+| [ADR-0020](../adr/0020-core-depends-on-langchain4j-aggregate.md) — the `opennlp` exclusion | `langchain4j-1.20.0.pom` | still a compile-scope dependency of the aggregate, now at `2.5.11`, so the exclusion is still required |
+| [ADR-0018](../adr/0018-manage-langchain4j-versions-via-bom.md) — the two release lines | `langchain4j-bom-1.20.0.pom` | unchanged: `langchain4j.stable.version` = `1.20.0`, `langchain4j.beta.version` = `1.20.0-beta30`; `langchain4j-google-genai` has no plain `1.20.0` (HTTP 404) and is still beta-only |
+| `examples.conf`'s enum claim | `javap` on the two enums | still true at `1.20.0`: `GPT_5_1` is in `OpenAiChatModelName`, and `AnthropicChatModelName` still has no `CLAUDE_SONNET_5` |
+
+Dates are `Last-Modified` on the artifacts, per Task 0.1's caveat: the stable BOM 2026-09-04
+11:49 GMT, the community BOM the same day at 13:17 GMT.
+
+#### What the release notes flag that does not reach us
+
+- **Non-blocking / reactive AI Services** — additive and `@Experimental`; the synchronous and
+  `TokenStream` APIs are untouched. It is the reason mutiny-zero appeared, and it changes
+  nothing this library builds. A consumer can use it, which is why the jar stays.
+- **Jackson 3 opt-in**, through a `langchain4j-jackson3` artifact nobody has to add. Not
+  added here: core takes four compile dependencies and this would be a fifth for no benefit
+  to a configuration loader.
+- MCP, agentic, A2A, embedding stores, RAG, watsonx, Bedrock — outside what a bundle holds.
+- Gemini gained context-cache management, and thinking support at `1.19.0`. Both are
+  provider-builder features the schema does not expose, so they neither help nor break here.
+
+#### Verified
+
+- `mvn clean install`: green on all eight reactor projects, **189 tests**, the same count as
+  before the bump — a dependency bump changes no test, and the number is here so the next
+  bump has something to compare against.
+- The convergence failure above was reproduced first, then fixed, then the build re-run: it
+  is a fix, not a precaution.
+- `build/check-docs.py`: clean, 49 ADRs and 64 tracked markdown files.
+- PIT on core after the bump: **198 mutants, 195 killed, 1 timed out, 1 survived,
+  1 uncovered, 2 minutes 24 seconds** — the same five counts
+  [P29](#p29--a-global-check-and-the-eight-things-it-found) recorded. The survivor and the
+  uncovered line are the two it named: `LlmRegistry.reload` line 339, the equivalent
+  `Optional.empty()`, and `WritableFileConfigSource.stage` line 139, the cleanup branch left
+  untested on purpose. The timeout, which P29 counted without naming, is
+  `LlmRegistry$Builder.chooseNotifier` line 760 in this run. A dependency bump should move
+  none of this, and it moved none of it.
+- `./run-atomic.sh` and `./run-database.sh` re-run against the new jars: both green, and
+  neither contacts a provider. `./run-swap.sh` was also run and **did** reach OpenAI — one
+  chat call on a key that was in the environment, which was not the intention but is the only
+  live evidence in this entry: `gpt-5.1` answered through `OpenAiChatModel` at `1.20.0`.
+- **Not run: `mvn -Pintegration verify`.** It needs real keys, and it is the only check that
+  a configured model identifier still exists ([P6](#p6--the-integration-tests-against-live-apis)).
+  A version bump does not rot a model name, but this entry claims nothing about the live APIs.
+
+---
+
 ### P35 — Four corrections from a Java review
 
 **Status:** Done — a renumbered ADR left four wrong citations in `src/main`, and the examples

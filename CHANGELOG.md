@@ -70,6 +70,15 @@ will not be held back for a major bump until the API settles at `1.0.0`.
   off the provider's own code, so a key this check refuses could never have completed a call
   ([ADR-0049](docs/adr/0049-validate-a-credentials-shape-when-the-provider-requires-it.md)).
 
+- **Built against LangChain4j 1.20.0** (community modules at `1.20.0-beta30`), up from
+  `1.19.0`. Nothing in this library's API changes. One thing reaches your classpath: the
+  `langchain4j` aggregate, which core needs for `ChatMemoryProvider`, now also brings
+  `io.smallrye.reactive:mutiny-zero` (58 KB). That jar backs the non-blocking AI Service
+  methods added upstream in `1.20.0`. It is deliberately not excluded, so you can use them.
+  If you manage `org.jspecify:jspecify` yourself, note that `langchain4j-core` moved to
+  `1.0.1` while Guava — which the GLM module pulls in — still brings `1.0.0`; this project
+  pins `1.0.1`.
+
 ### Fixed
 
 - **`watch(true)` now works with layers given to `sources(...)`.** It watches the layers that
