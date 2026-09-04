@@ -19,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatNullPointerException;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
+import static org.awaitility.Awaitility.await;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -350,6 +351,14 @@ class ConfigStoreTest {
             Path locked = Files.createDirectory(dir.resolve("locked"));
             Path file = locked.resolve("app.conf");
             Files.writeString(file, LAYER, StandardCharsets.UTF_8);
+            // Both conditions are needed: a filesystem with no POSIX permissions cannot set
+            // them at all, and root ignores them once set, so the store would succeed and
+            // the test would fail for a reason that says nothing about the code.
+            Assumptions.assumeTrue(
+                    Files.getFileAttributeView(locked, PosixFileAttributeView.class) != null,
+                    "POSIX permissions are not a concept on this filesystem");
+            Assumptions.assumeFalse("root".equals(System.getProperty("user.name")),
+                    "root ignores the permissions this test relies on");
             WritableConfigSource target = ConfigSource.ofWritableFile(file);
 
             try (LlmRegistry registry = registryOver(target)) {
@@ -476,7 +485,7 @@ class ConfigStoreTest {
 
         @Test
         @DisplayName("a watcher that wakes after a store finds nothing to publish")
-        void store_leavesAWakingWatcherNothingToPublish() throws Exception {
+        void store_leavesAWakingWatcherNothingToPublish() throws IOException {
             Path file = writeLayer("app.conf", LAYER);
             WritableConfigSource target = ConfigSource.ofWritableFile(file);
             AtomicInteger reloads = new AtomicInteger();
@@ -489,11 +498,13 @@ class ConfigStoreTest {
 
                 registry.store(target, LAYER_WITH_SECOND_MODEL);
 
-                // Long enough for the debounce to expire and the watcher to have re-read.
-                Thread.sleep(600);
+                // Six times the debounce, and the count has to stay at zero for the whole
+                // window rather than merely be zero once at the end. A fixed sleep asserted
+                // the weaker thing and was the slowest test in this class.
+                await("the application's own store must raise no event")
+                        .during(Duration.ofMillis(300)).atMost(Duration.ofSeconds(5))
+                        .until(() -> reloads.get() == 0);
                 assertThat(registry.get("SL").config().modelName()).isEqualTo("second");
-                assertThat(reloads).as("the application's own store must raise no event")
-                        .hasValue(0);
             }
         }
     }
@@ -738,7 +749,9 @@ class ConfigStoreTest {
                 }
             } finally {
                 pool.shutdown();
-                assertThat(pool.awaitTermination(30, TimeUnit.SECONDS)).isTrue();
+                if (!pool.awaitTermination(30, TimeUnit.SECONDS)) {
+                    pool.shutdownNow();
+                }
             }
         }
 
@@ -996,7 +1009,9 @@ class ConfigStoreTest {
                 }
             } finally {
                 pool.shutdown();
-                assertThat(pool.awaitTermination(30, TimeUnit.SECONDS)).isTrue();
+                if (!pool.awaitTermination(30, TimeUnit.SECONDS)) {
+                    pool.shutdownNow();
+                }
             }
         }
 

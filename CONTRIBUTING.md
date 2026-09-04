@@ -64,6 +64,9 @@ is.
   approving review is required, so a green build is the whole gate.
 - New behaviour comes with a test. A test that cannot fail is worse than no test — if it
   guards against a specific fault, break the code and confirm it catches it.
+- A test that starts threads must collect what they return. An assertion that fails inside a
+  submitted task does not fail the test: the error is kept in that task's `Future`, and if
+  nobody reads the `Future` nobody ever sees it. Keep them all and check each one at the end.
 - If you changed logic in `modelrack4j-core`, run mutation testing before you open the pull
   request. This is the automatic form of the rule above. Nothing enforces it: no build step
   runs it and no CI check requires it.

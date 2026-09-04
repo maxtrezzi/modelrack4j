@@ -3991,3 +3991,346 @@ printed its menu and `bye.` with no request sent.
 
 No public API changed and no behaviour changed, so there is no CHANGELOG entry — three of the
 four are comments and a test, and the fourth is example code.
+
+---
+
+### P36 — Housekeeping: a test that raced its own listener, and the first read of five merged branches
+
+**Status:** Done — two defects in `ReloadTest`, one of them a concurrency test that stayed
+green when it detected the thing it exists to detect; the combined documentation read found
+nothing to correct ·
+**Raised by:** the owner, who asked for one branch to carry small work instead of one branch
+each
+
+This entry is a batch on purpose. Five items in a row (P26, P29, P32, P33, P35) were each a
+branch, a task entry, a pull request and five checks for a fix measured in minutes, and the
+verification was then repeated from the start for the next one. Small findings now collect
+here until there are enough of them to be worth a branch.
+
+#### `ReloadTest` waited on the registry and then read a counter the listener writes
+
+`rapidWritesCollapseIntoOneReload` ended:
+
+```java
+awaitModel("SL", "v5");
+assertThat(reloads).hasValue(1);
+```
+
+`awaitModel` polls `registry.get(name).config().modelName()`. `LlmRegistry.reload()` publishes
+first and announces afterwards:
+
+```java
+bundles = staged;   // THE swap: one write, whole snapshot, nothing torn
+notify(reloadListeners, change, "reload");
+```
+
+So the model a reader sees through `get()` can arrive *before* the callback that announces it,
+and the assertion above reads a counter that the listener has not written yet. The window is
+the width of one `notify` call, which is why no run has ever lost the race.
+
+A probe made it visible rather than arguing about it. A first listener that sleeps 500 ms
+widens the window; a second one counts. Inside the sleep:
+
+    PROBE: get() reports model-name=v1 while the reload count is still 0
+
+**Six of the twenty-one tests in the class stood on that ordering**, not one — the other five
+read `changes.get(0)` the same way, which fails as an index error rather than as a wrong count.
+Proved by widening the window in `LlmRegistry` itself, by 300 ms between the swap and the
+notify, and running the suite unchanged: 4 failures and 2 errors, and the two errors were
+`ArrayIndexOutOfBounds: Index 0 out of bounds for length 0` from `addedNameBecomesAvailable`
+and `removedNameThrows`.
+
+The fix is one helper, used at six call sites:
+
+```java
+private void awaitReloads(int expected) {
+    await().pollDelay(Duration.ZERO).atMost(TIMEOUT).until(() -> reloads.get() >= expected);
+    assertThat(reloads).hasValue(expected);
+}
+```
+
+It waits on the callback and then pins the count, so it asserts exactly what the old line
+asserted and nothing more. `pollDelay(Duration.ZERO)` keeps the cost at nothing: the condition
+is already true by the time it is asked.
+
+With the widened window still in place the fixed class is green, which is what says the helper
+is not vacuous. `LlmRegistry` was then restored from `git` and the whole build re-run.
+
+#### The debounce itself was not the fragile part
+
+The suspicion worth ruling out was the other one: five writes into a 60 ms trailing-edge
+debounce, where one stall longer than the debounce would split the burst into two reloads. A
+probe ran the burst 60 times and measured the gap between consecutive writes. **Worst gap
+3.43 ms against 60 ms**, and no run saw a reload count other than 1. Measured on the project's
+usual machine — AMD Ryzen 7 7840HS, ext4 on NVMe, Pop!_OS 24.04 (kernel 7.0.11), Temurin
+25.0.3 — which is one machine and not a benchmark; a loaded CI runner has less room. The
+margin is about seventeen-fold, so the debounce constant is left alone.
+
+#### The combined read of five merged branches
+
+`#50` to `#54` merged on 2026-09-04 within four hours, and each was verified against its own
+code only. Four documents had been touched by two or three of them and had never been read as
+one text: `AGENTS.md`, `docs/tasks/README.md`, `docs/tasks/post-v1.md` and
+`docs/manual/part-2-reference.md`.
+
+Nothing needed correcting. Recorded because a check that finds nothing is only worth its cost
+if the next session can see it ran:
+
+- Both counted lists in `AGENTS.md` still match their bullets — "Four consequences" over four,
+  and P20's "Five things" over five, that last one having gained its fifth bullet from D6.
+- The `open-decisions.md` claim in `AGENTS.md`, D1–D6 all settled, matches the file: six
+  entries, six `Settled` or `Closed` statuses.
+- In `part-2-reference.md` the `build()` row carries both branches' clauses, and Troubleshooting
+  has P24's rewritten `watch(true)` row followed by D6's three, in that order.
+- `build/check-docs.py`: 53 ADRs, 68 tracked markdown files, no problems.
+
+One thing looked like a defect and was not. Every message the Troubleshooting table quotes was
+grepped for in `src/main`; `watch(true) watches configuration files, and none of these layers
+is one` returned nothing. The string is split across two source lines between `is` and `one`,
+so the table is right and the grep was wrong. A quoted message has to be matched against the
+concatenated literal, not against the file.
+
+#### A Java review of the test tree, which had never had one
+
+P35 read the whole of `src/main` and stopped there. The defect above came from `src/test`, so
+the batch went back over all 3,806 lines of core's tests against the project's Java-17
+guidance. Five findings, all in the tests, none in the library.
+
+**A concurrency test that could not fail for the reason it existed.** `getIsSafeDuringReload`
+is what defends ADR-0038: four reader threads assert that a bundle and the config it reports
+belong together, while ten reloads run underneath. It discarded all four `Future`s, so a
+reader that *found* a torn bundle threw its `AssertionError` into a `Future` nobody read, and
+died quietly while the other three carried on. The only net was `reads > 0` at the end, which
+catches just the case where every reader dies at once.
+
+Measured rather than argued. Failing one reader once, after 5,000 reads — the shape of a rare
+torn read — left the suite green:
+
+```java
+if (reads.incrementAndGet() == 5_000) {
+    throw new AssertionError("a torn bundle, deliberately");
+}
+```
+
+    Tests run: 1, Failures: 0, Errors: 0 — BUILD SUCCESS
+
+The `Future`s are now kept and re-raised, and the same sabotage fails the test naming its
+cause: `ExecutionException: AssertionError: a torn bundle, deliberately`. **The project had
+already written this rule down twice** — `ConfigSourceTest` keeps its futures with a comment
+saying an exception "lands in its Future and nowhere else", and P35 fixed the same thing in
+`AtomicSnapshot`. This was the site both passes missed, which is the P16 lesson again: a rule
+recorded in one file does not check the file next to it.
+
+**An assertion inside `finally` can replace the failure it was meant to report.** Four sites
+asserted `pool.awaitTermination(...)` in a `finally`; when the body fails *and* the shutdown
+times out, JUnit reports the shutdown and the real cause is gone. Three now fall back to
+`shutdownNow()` — which the Java-17 profile asks for anyway, and which none of them did, so
+the threads outlived the test — and the fourth moved to after the `try`, where it still
+asserts a clean shutdown without competing.
+
+**A fixed `Thread.sleep(600)` became an Awaitility window.** `store_leavesAWakingWatcherNothingToPublish`
+slept, then looked once. It now requires the reload count to stay at zero for 300 ms, six
+times the 50 ms debounce — a stronger claim, and faster: **0.417 s against 0.608 s**, taking
+the class from 0.874 s to 0.666 s. It had been the slowest test in it by a factor of nine.
+
+**A POSIX guard present in one test and missing in its neighbour.**
+`store_keepsTheFilesPermissions` skipped itself where POSIX permissions do not exist;
+`store_ontoAReadOnlyDirectory_failsAsAccessNotValidation` set them unguarded, which is an
+`UnsupportedOperationException` there. Both now also skip under `root`, which ignores the
+permissions the test depends on and would have failed it for a reason that says nothing about
+the code.
+
+**Registries built and never closed.** `LlmRegistryTest` left 12 open and
+`LayeredResolutionTest` 5. Harmless today — `close()` is a no-op with no notifier, which was
+checked rather than assumed — but the tests were silently relying on that. Both classes now
+track what they build and close it in `@AfterEach`, the shape `ReloadTest` already used.
+
+Two things looked like findings and were not, both checked before being written down: the two
+`.formatted(...)` calls in the examples take only `%s` with `String` arguments, so `Locale.ROOT`
+would change nothing, and `ConfigSourceTest:490` asserts a shutdown inside its `try`, which is
+the correct place.
+
+#### The documentation pass, which found the one defect the code review could not
+
+Re-reading `AGENTS.md` end to end after editing it — the P19 rule, that a diff hides the
+lines describing what you changed — turned up a command that had never worked. The Build and
+test block gave this as its example of running a single method:
+
+```bash
+mvn -pl modelrack4j-core test -Dtest='LlmRegistryTest#reloadSwapsAtomically'
+```
+
+**No method of that name has ever existed in this repository.** It arrived with the first
+guidance commit on 2026-07-26 and survived the move to `AGENTS.md` in P23. What makes it
+worth an entry is the failure mode rather than the typo: scoped with `-pl`, a `-Dtest=`
+method name that matches nothing does not fail.
+
+    [INFO] Tests run: 0, Failures: 0, Errors: 0, Skipped: 0
+    [INFO] BUILD SUCCESS
+
+A session that followed the line would read the green and conclude the test passed. The
+command now names `LlmRegistryTest#unknownNameThrows`, which was run and reports one test, and
+the paragraph under the block says that a name matching nothing is a silent no-op.
+
+`CONTRIBUTING.md` already said "a test that cannot fail is worse than no test" and told a
+contributor to break the code and confirm the test catches it. That is right and covers the
+single-threaded case; it does not cover the one above, where the assertion runs on a thread
+whose failure never reaches the test. It gained one line for that, in the user-facing
+register.
+
+**`docs/tasks/milestones.md` was checked and deliberately left alone.** Its M1 table says
+`LayeredResolutionTest` has 6 tests and `LlmRegistryTest` 18, against 7 and 25 today. That
+table is the record of what M1 built, under a heading that says so and with a note explaining
+one later growth — editing it to today's counts would misdescribe the milestone rather than
+correct it. The same reading applies to ADR-0038's "four tests in `ReloadTest` pin the
+behaviour", which is still true and, being an accepted ADR, frozen anyway.
+
+The three other documents that name the changed tests were read and need nothing:
+`milestones.md` describes `rapidWritesCollapseIntoOneReload` as "five writes, one reload" and
+`getIsSafeDuringReload` as "four reader threads across ten reloads never see a bundle whose
+config belongs to another block", both still exactly what the tests do. `./run-atomic.sh
+--help` was run and prints what `AGENTS.md` claims for it.
+
+One more stale enumeration sat in the same block: the launcher line offered "swap, chat,
+council" beside `run-atomic.sh`, which is four of the five scripts in the repository root.
+`run-database.sh` arrived with P19 and never reached the list. All five were run with
+`--help` and the line now names all five. The P14 rule — count the list you just wrote before
+naming its size — reaches a list whose size is only implied by it.
+
+#### Mutation testing, which found the one thing the review had left wrong
+
+**PIT on core: 205 mutants, 202 killed, 1 timed out, 1 survived, 1 uncovered.** That is the
+same profile P33 recorded, on the same three lines, which is the expected answer for a batch
+that changed no production code. The report was checked for `Layer`, `FileLayer`, `TextLayer`,
+`StagedWrite` and `StaleLayerException` before being read — P31's lesson, that
+`mutationCoverage` mutates whatever `target/classes` already holds and never says which tree
+that was.
+
+- **`LlmRegistry.reload:341`, survived.** `EmptyObjectReturnValsMutator` replacing
+  `return Optional.empty()` with `Optional.empty()`. The same equivalent mutant P27 found:
+  no gap, nothing to write.
+- **`WritableFileConfigSource.stage:142`, no coverage.** The `discardStaged` call in the
+  `finally`, which needs a filesystem that fails between `createTempFile` and `writeString`.
+  Left untested deliberately, as `AGENTS.md` says.
+- **`LlmRegistry$Builder.chooseNotifier:798`, timed out.** Pre-existing, and PIT counts a
+  timeout as killed.
+
+**The first run had a second timeout, and it was this batch's own doing.**
+`LlmRegistry.reload:345`, "removed call to `notify`", had been `KILLED` in P33's run and came
+back `TIMED_OUT`: 201 killed and 2 timed out instead of 202 and 1. The cause is
+`awaitReloads`, which had been given `TIMEOUT` — the ten-second bound that exists because a
+loaded CI runner is slow at the *filesystem*. A reload callback is not a filesystem event: by
+the time the registry shows the new model, the listeners are one method call away on the
+thread that just published. With the callback removed by hand, the class took **76.40 s
+against 6.59 s**, seven tests each sitting out the full ten seconds where the old assertion on
+a counter had failed at once.
+
+`awaitReloads` now uses its own `CALLBACK_TIMEOUT` of two seconds. The same hand-applied
+mutant then costs 28.25 s instead of 76.40 s, still killing it, and the re-run puts the mutant
+back to `KILLED` — 202, 1, 1, 1 again. The suite itself is unchanged at 6.77 s, because the
+condition is true the first time it is asked.
+
+Worth keeping as the general shape: **a wait inherits the reason for its bound, not just its
+number.** The two waits in this class look alike and are not — one waits for an event to cross
+the filesystem, the other for a call already in flight — and giving both the generous bound
+turned a fast failure into a slow one. The run took 2 min 50 s; `AGENTS.md`'s "122 s" comes
+from ADR-0043 over 153 mutants and is not comparable.
+
+#### The examples and the manual, run rather than read
+
+Every command the manual prints was executed and its terminal compared to the page — the P26
+rule. The two free examples were run in full; the three that cost money were started with a
+dummy key and taken to `/exit`, which sends no request, so what is verified for those is the
+command, the configuration path and the startup output, not an answer.
+
+- **`AtomicSnapshot`**, through `./run-atomic.sh` and through the reference's own
+  `exec:java` line. The second run is the one worth recording: **1 torn pair through two
+  `get()` calls out of 112,186,373 samples, and 0 through `snapshot()`** — ADR-0038's
+  guarantee and its limit, both observed in one run rather than quoted. The first run tore
+  neither way over 190,786,779 samples, which is what the example's own closing line prepares
+  the reader for.
+- **`DatabaseSource`** prints the six steps the reference promises, in order: a name added, a
+  name updated, a reload that changes nothing, a rejected reload that leaves the row holding
+  the broken text, the same change refused by `store()` before the row is written, and a valid
+  `store()`.
+- **Tutorial step 3.** The `ConsoleChat` menu matches the printed block character for
+  character, apart from the `/home/you` placeholder in the path.
+- **Tutorial step 7**, the block P26 corrected. Reproduced by starting the session with the
+  documented `-Dorg.slf4j.simpleLogger.log...=warn` flag and deleting `model-name` from the
+  file while it ran: the `WARN`, the stack trace and the example's own
+  `[config rejected, still running the previous one: ...]` all arrive, and the page's `...`
+  stands for the merge path the terminal prints in full.
+- **Tutorial step 8** runs with its two layers. Its claim that `local.conf` overrides
+  `timeout` is not visible in the menu, so that half rests on `LayeredResolutionTest`, not on
+  this run.
+- **Tutorial step 9.** `ThreeModelCouncil` was given the relative
+  `modelrack4j-examples/src/main/resources/examples.conf` **and found it** — the suspicion
+  was P18's defect returning, a path verified in one directory and handed to a run that looks
+  in another. `exec:java` runs with the reactor root as its working directory, so the line is
+  correct as printed.
+
+#### The version was still the published one, and every build overwrote it
+
+Found by running the examples: `exec:java` resolved
+`~/.m2/.../modelrack4j-core/0.1.0/modelrack4j-core-0.1.0.jar` with today's timestamp. The POM
+had stayed at `0.1.0` after M6 published it, so **every `mvn install` since has written an
+unpublished build over the cached copy of a released artifact.** Anything else on the machine
+depending on `io.github.maxtrezzi:modelrack4j-core:0.1.0` silently got P24 to P35 instead of
+what Central serves. No document recorded a decision either way; the version simply never
+moved.
+
+**Now `0.2.0-SNAPSHOT`, set with `versions:set` across all eight POMs.** Two choices inside
+that, both deliberate:
+
+- **`0.2.0`, not `0.1.1`.** `[Unreleased]` carries a change marked *Breaking*:
+  `ConfigAccessException` is not a subclass of `ConfigValidationException`, so an existing
+  `catch` stops catching. The CHANGELOG's own policy makes that a minor.
+- **`-SNAPSHOT`, not the bare release number.** This branch is the *base* for the 0.2.0
+  release, not the release: ADR-0045 puts the tag after the publish, so the commit that drops
+  the suffix and dates the CHANGELOG belongs to the release itself, on `main`. Setting `0.2.0`
+  here would date the CHANGELOG on the day of the bump rather than the day of the publish —
+  the same shape of defect this entry just fixed. A snapshot is also inert against an
+  accidental publish: ADR-0045 established that the plugin branches on the version and that
+  snapshot publishing for `io.github.maxtrezzi` answers **403**.
+
+**What was deliberately left at `0.1.0`.** The `<version>` in the README's and the manual's
+dependency snippets is not this project's version — it is the instruction to a reader about
+what to put in their own POM, and `0.2.0` is not on Central. Changing it now would send
+readers to an artifact that does not exist. The README's "Status: `0.1.0`, the first release,
+on Maven Central" and the reference's "On Maven Central since `0.1.0`" are true as written.
+One README line did change: the build comment said `mvn clean install` "installs 0.1.0 to
+~/.m2", which is this project's version and was wrong the moment the bump landed. It now says
+"the current version", so it cannot go stale again.
+
+**Checklist for the 0.2.0 release**, since M6 recorded what it did rather than what to do:
+
+1. `mvn versions:set -DnewVersion=0.2.0 -DgenerateBackupPoms=false`. **Then check
+   `project.build.outputTimestamp` in the parent POM**: `versions:set` rewrites it to the
+   moment the command ran. It must be the release's own date at midnight — `2026-09-02T00:00:00Z`
+   is what M6 published and verified inside the jars — not a build instant. This bump had to
+   put it back by hand for exactly that reason.
+2. Close the CHANGELOG: `## [0.2.0] — <the day it is published>`, and its link at the bottom.
+3. Bump the four dependency snippets to `0.2.0` — README (three, plus the BOM block),
+   `part-1-tutorial.md` and `part-2-reference.md` — **and only once it is on Central**.
+4. Update "Status: `0.1.0`, the first release" in the README and "On Maven Central since
+   `0.1.0`" in the reference.
+5. Then ADR-0045's own steps: `mvn -Prelease clean deploy`, `autoPublish=false` stops at
+   `VALIDATED`, a human presses Publish, verify from an empty local repository, and only then
+   tag `v0.2.0` on `main` after the merge.
+
+**`versions:set` has a side effect worth knowing about.** It rewrote
+`project.build.outputTimestamp` from `2026-09-02T00:00:00Z` to the second the command ran.
+That property is the reproducible-build stamp every published jar carries, and the comment
+above it says to bump it at each release to that release's date. A snapshot bump is not a
+release, so it was put back.
+
+**The `0.1.0` in `~/.m2` on this machine is still the overwritten one** and is not repaired by
+the bump. Deleting `~/.m2/repository/io/github/maxtrezzi/` makes the next resolution fetch the
+real artifacts from Central.
+
+#### Verification
+
+`mvn clean install` green across all seven modules; core is 148 tests, unchanged — every
+finding was an assertion that did not hold, not a case that was missing. `ReloadTest` is 21
+tests in 6.59 s. No production code and no public API changed, so there is no CHANGELOG
+entry.

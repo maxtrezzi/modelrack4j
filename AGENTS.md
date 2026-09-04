@@ -165,15 +165,22 @@ so its `No pinentry` says nothing about what is available.
 mvn clean install                        # full build, all modules
 mvn -pl modelrack4j-core -am test        # build core and its deps, run core tests
 mvn -pl modelrack4j-core test -Dtest=LlmRegistryTest                        # single class
-mvn -pl modelrack4j-core test -Dtest='LlmRegistryTest#reloadSwapsAtomically' # single method
+mvn -pl modelrack4j-core test -Dtest='LlmRegistryTest#unknownNameThrows'    # single method
 mvn -Pintegration verify                 # provider tests against real APIs (keys from env)
 mvn -pl modelrack4j-core org.pitest:pitest-maven:mutationCoverage   # mutation testing, core only
-./run-atomic.sh                          # run an example (also swap, chat, council; --help each)
+./run-atomic.sh                          # an example (also swap, chat, council, database; --help each)
 ```
 
 Scope `-Dtest=` to a module with `-pl`. Running it from the root across all modules fails
 in every module that does not contain the named test unless `-DfailIfNoTests=false` is
 added.
+
+**A `-Dtest=` method name that does not exist is a silent no-op, not an error.** Scoped with
+`-pl`, a misspelled or renamed method prints `Tests run: 0` and `BUILD SUCCESS`, so a session
+reads the green and concludes the test passed. The example above named
+`LlmRegistryTest#reloadSwapsAtomically` from the first guidance commit on 2026-07-26 until
+P36 ran it, and no such method has ever existed. Check that the run reports the test count you
+expected, and prefer copying a method name out of the file to typing one from memory.
 
 Integration tests are skipped by default and require real API keys from the environment;
 everything else must pass offline with no keys (that is what `FakeProviderFactory` in core
@@ -236,6 +243,13 @@ fires exactly once. Success fires exactly ONE `onReload(change)` with `updated`/
 independently — two callbacks would let an application observe new-SL with old-SH, which
 is a correctness hazard for multi-model councils. The staging step is load-bearing:
 builders throw for reasons `validate()` cannot predict.
+
+**The swap comes before the callbacks, and that ordering is a trap for tests.** `reload()`
+assigns the new snapshot and only then calls the listeners, so a bundle read through `get()`
+can arrive before the `onReload` announcing it. A test that waits on the registry and then
+reads something a listener wrote — a counter, a captured `ReloadChange` — is racing, however
+wide the gap looks. Wait for the callback instead. Six of `ReloadTest`'s twenty-one tests did
+it the racing way until P36; widening the window by 300 ms inside `reload()` failed all six.
 
 **How much of that atomicity a caller gets is a separate question, and ADR-0038 answers it.**
 `get()` reads the live snapshot on every call, so two consecutive calls can straddle a swap
@@ -522,6 +536,17 @@ in-flight requests may still hold them.
   not length. **`docs/adr/`, `docs/tasks/` and this file are deliberately exempt**: their
   readers already hold the context, and an accepted ADR's body cannot be edited anyway. Do
   not "fix" their register, and do not let a user-facing paragraph drift back toward it.
+- **A task's exception lands in its `Future` and nowhere else, and a test that drops the
+  `Future` cannot fail.** `pool.submit(...)` swallows an `AssertionError` from the task
+  itself: the thread dies, its siblings carry on, and a suite asserting only an aggregate
+  counter stays green. Keep every `Future` and end with
+  `assertThatCode(f::get).doesNotThrowAnyException()`. **The project has now met this three
+  times** — `ConfigSourceTest` wrote the rule in a comment, P35 fixed it in `AtomicSnapshot`,
+  and P36 found `ReloadTest.getIsSafeDuringReload` — the test defending ADR-0038 — still
+  doing it, green while a reader detected a torn bundle. Neither earlier pass looked at the
+  file next door. Related: never assert inside a `finally` that follows work which can fail,
+  because the assertion replaces the failure; `pool.shutdown()` there takes an
+  `if (!awaitTermination(...)) shutdownNow();`, and the check belongs after the `try`.
 - **`docs/tasks/open-decisions.md` needs the owner.** Ask; do not decide unilaterally. A new
   entry there is a question for the owner, not work to pick up, and an entry marked
   `Needs decision` blocks the code that depends on it rather than inviting a guess. **D1–D6

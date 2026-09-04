@@ -672,7 +672,7 @@ Deliberately, permanently:
 ## Building from source
 
 ```bash
-mvn clean install                        # full build, installs 0.1.0 to ~/.m2
+mvn clean install                        # full build, installs the current version to ~/.m2
 mvn -pl modelrack4j-core -am test        # core and its dependencies
 mvn -Pintegration verify                 # provider tests against real APIs, keys from env
 ```

@@ -22,7 +22,9 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -39,6 +41,9 @@ class LayeredResolutionTest {
 
     @TempDir
     Path dir;
+
+    /** Every registry a test built, so none is left open when it ends. */
+    private final List<LlmRegistry> built = new ArrayList<>();
 
     @Test
     @DisplayName("a mandatory substitution in a lower layer is fine when a higher layer overrides that key")
@@ -64,7 +69,7 @@ class LayeredResolutionTest {
                 }
                 """);
 
-        var registry = LlmRegistry.builder().configFiles(List.of(defaults, customer)).build();
+        var registry = registryOver(defaults, customer);
 
         assertThat(registry.get("SL").config().apiKey()).isEqualTo("supplied-by-customer");
         assertThat(registry.get("SL").config().modelName()).isEqualTo("customer-model");
@@ -83,7 +88,7 @@ class LayeredResolutionTest {
                 }
                 """);
 
-        assertThatThrownBy(() -> LlmRegistry.builder().configFiles(List.of(only)).build())
+        assertThatThrownBy(() -> registryOver(only))
                 .isInstanceOf(ConfigValidationException.class)
                 .hasMessageContaining("mandatory substitution")
                 .hasMessageContaining("higher-precedence layer");
@@ -106,7 +111,7 @@ class LayeredResolutionTest {
                 shared { model = "defined-higher-up" }
                 """);
 
-        var registry = LlmRegistry.builder().configFiles(List.of(defaults, customer)).build();
+        var registry = registryOver(defaults, customer);
 
         assertThat(registry.get("SL").config().modelName()).isEqualTo("defined-higher-up");
     }
@@ -121,7 +126,7 @@ class LayeredResolutionTest {
                 llm { SL { temperature = 0.9 } }
                 """);
 
-        var registry = LlmRegistry.builder().configFiles(List.of(low, high)).build();
+        var registry = registryOver(low, high);
 
         assertThat(registry.get("SL").config().temperature()).contains(0.9);
     }
@@ -140,11 +145,10 @@ class LayeredResolutionTest {
                 llm { SL { description = null } }
                 """);
 
-        var registry = LlmRegistry.builder().configFiles(List.of(low, high)).build();
+        var registry = registryOver(low, high);
 
         assertThat(registry.get("SL").config().description()).isEmpty();
-        assertThat(LlmRegistry.builder().configFiles(List.of(low)).build()
-                        .get("SL").config().description())
+        assertThat(registryOver(low).get("SL").config().description())
                 .contains("inherited from the defaults layer");
     }
 
@@ -153,7 +157,7 @@ class LayeredResolutionTest {
     void missingFileIsReported() {
         Path missing = dir.resolve("nope.conf");
 
-        assertThatThrownBy(() -> LlmRegistry.builder().configFiles(List.of(missing)).build())
+        assertThatThrownBy(() -> registryOver(missing))
                 .isInstanceOf(ConfigAccessException.class)
                 .hasMessageContaining("nope.conf");
     }
@@ -168,9 +172,21 @@ class LayeredResolutionTest {
         Files.write(file, ("llm { SL { provider = fake-local, api-key = \"k\""
                 + ", model-name = \"modèle-ünïcode-模型\" } }").getBytes(StandardCharsets.UTF_8));
 
-        var registry = LlmRegistry.builder().configFiles(List.of(file)).build();
+        var registry = registryOver(file);
 
         assertThat(registry.get("SL").config().modelName()).isEqualTo("modèle-ünïcode-模型");
+    }
+
+    /** Builds over the given layers, lowest precedence first, and closes it afterwards. */
+    private LlmRegistry registryOver(Path... files) {
+        LlmRegistry registry = LlmRegistry.builder().configFiles(List.of(files)).build();
+        built.add(registry);
+        return registry;
+    }
+
+    @AfterEach
+    void closeRegistries() {
+        built.forEach(LlmRegistry::close);
     }
 
     private Path write(String name, String content) throws IOException {

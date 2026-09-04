@@ -16,6 +16,7 @@
 package io.github.maxtrezzi.modelrack4j;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.awaitility.Awaitility.await;
 
@@ -25,11 +26,13 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -58,6 +61,15 @@ class ReloadTest {
     /** Long enough for a reload that should not happen to have happened. */
     private static final Duration QUIET = Duration.ofMillis(400);
 
+    /**
+     * Bound for a reload callback, which is much tighter than {@link #TIMEOUT} on purpose: by
+     * the time the registry shows the new model the listeners are one method call away on the
+     * thread that just published, not a filesystem event away. Keeping the generous bound here
+     * turns a callback that never comes into a ten-second wait per test instead of a fast
+     * failure — measured at 76 s for this class against 6.6 s, with the call removed.
+     */
+    private static final Duration CALLBACK_TIMEOUT = Duration.ofSeconds(2);
+
     @TempDir
     Path dir;
 
@@ -82,6 +94,7 @@ class ReloadTest {
         write("app.conf", block("SL", "second"));
 
         awaitModel("SL", "second");
+        awaitReloads(1);
         assertThat(changes).hasSize(1);
         assertThat(changes.get(0).updated()).containsExactly("SL");
         assertThat(changes.get(0).added()).isEmpty();
@@ -101,7 +114,7 @@ class ReloadTest {
         awaitModel("SL", "v5");
         // The point of the debounce. Without it this is five reloads, four of which rebuild
         // a model object nobody ever sees.
-        assertThat(reloads).hasValue(1);
+        awaitReloads(1);
     }
 
     @Test
@@ -117,7 +130,7 @@ class ReloadTest {
                 StandardCopyOption.REPLACE_EXISTING);
 
         awaitModel("SL", "after");
-        assertThat(reloads).hasValue(1);
+        awaitReloads(1);
     }
 
     @Test
@@ -157,6 +170,7 @@ class ReloadTest {
         write("app.conf", block("SL", "m") + "\n" + block("SH", "m"));
 
         await().atMost(TIMEOUT).until(() -> registry.names().contains("SH"));
+        awaitReloads(1);
         assertThat(registry.get("SH").chatModel()).isNotNull();
         assertThat(changes.get(0).added()).containsExactly("SH");
         assertThat(changes.get(0).updated()).isEmpty();
@@ -171,6 +185,7 @@ class ReloadTest {
         write("app.conf", block("SL", "m"));
 
         await().atMost(TIMEOUT).until(() -> !registry.names().contains("SH"));
+        awaitReloads(1);
         assertThatThrownBy(() -> registry.get("SH"))
                 .isInstanceOf(UnknownConfigurationException.class);
         assertThat(changes.get(0).removed()).containsExactly("SH");
@@ -301,7 +316,7 @@ class ReloadTest {
 
         write("app.conf", block("SL", "three"));
         awaitModel("SL", "three");
-        assertThat(reloads).hasValue(2);
+        awaitReloads(2);
     }
 
     @Test
@@ -339,9 +354,10 @@ class ReloadTest {
         CountDownLatch stop = new CountDownLatch(1);
         AtomicInteger reads = new AtomicInteger();
         ExecutorService pool = Executors.newFixedThreadPool(readers);
+        List<Future<?>> reading = new ArrayList<>(readers);
         try {
             for (int i = 0; i < readers; i++) {
-                pool.submit(() -> {
+                reading.add(pool.submit(() -> {
                     ready.countDown();
                     while (stop.getCount() > 0) {
                         LlmBundle bundle = registry.get("SL");
@@ -353,7 +369,7 @@ class ReloadTest {
                         reads.incrementAndGet();
                     }
                     return null;
-                });
+                }));
             }
             assertThat(ready.await(TIMEOUT.toMillis(), TimeUnit.MILLISECONDS)).isTrue();
             for (int i = 1; i <= 10; i++) {
@@ -363,8 +379,15 @@ class ReloadTest {
         } finally {
             stop.countDown();
             pool.shutdown();
-            assertThat(pool.awaitTermination(TIMEOUT.toMillis(), TimeUnit.MILLISECONDS))
-                    .isTrue();
+            if (!pool.awaitTermination(TIMEOUT.toMillis(), TimeUnit.MILLISECONDS)) {
+                pool.shutdownNow();
+            }
+        }
+        // A reader that saw a torn bundle threw into its Future and nowhere else: three of
+        // the four would carry on, `reads` would still be large, and the test would pass
+        // having detected exactly what it exists to detect. The Futures are the assertion.
+        for (Future<?> reader : reading) {
+            assertThatCode(reader::get).doesNotThrowAnyException();
         }
         assertThat(reads).hasValueGreaterThan(0);
     }
@@ -472,6 +495,22 @@ class ReloadTest {
         await().atMost(TIMEOUT)
                 .until(() -> registry.names().contains(name)
                         && registry.get(name).config().modelName().equals(modelName));
+    }
+
+    /**
+     * Waits for {@code expected} reload callbacks, then pins the count at that number.
+     *
+     * <p>A reload publishes the new snapshot <em>before</em> it calls the listeners, so a
+     * model read through {@code get()} can arrive before the callback announcing it. Waiting
+     * on the registry and then reading a counter the listener writes is therefore a race,
+     * however wide the gap between the two looks. A probe with a listener that sleeps shows
+     * the window directly: {@code get()} reports the new model name while the count is still
+     * zero.
+     */
+    private void awaitReloads(int expected) {
+        await().pollDelay(Duration.ZERO).atMost(CALLBACK_TIMEOUT)
+                .until(() -> reloads.get() >= expected);
+        assertThat(reloads).hasValue(expected);
     }
 
     /** Asserts that no callback of either kind arrives, and keeps not arriving. */
