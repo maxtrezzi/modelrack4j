@@ -278,7 +278,7 @@ watcher unchanged. Four consequences that look like tidying and are not:
 
 **A layer the application owns can be written back (P20).** `store(target, text)` stages the
 text, validates the whole configuration against the staged copy, publishes, and only then
-stores — and puts the previous snapshot back if storing fails. Four things about it are
+stores — and puts the previous snapshot back if storing fails. Five things about it are
 load-bearing:
 
 - **The order is the contract, and it is why the method exists at all.** Writing first and
@@ -290,6 +290,16 @@ load-bearing:
   write together; the compare happens inside the lock, against a fresh `text()`, and throws
   `StaleLayerException` carrying the current text. Two concurrent stores are still serialised
   either way — what the CAS adds is that the *caller's* read is part of the deal.
+- **"Cannot store" is not "your configuration is invalid" (ADR-0053).** A layer that cannot be
+  reached throws `ConfigAccessException`, which is **not** a subclass of
+  `ConfigValidationException` — an application mapping these onto HTTP has to tell `400` from
+  `500`, and a subclass would let it go on answering `400` for a full disk. The line is the
+  thing to maintain, not the list of sites: the access type means the library learned nothing
+  about the configuration because it could not reach it, the validation type means it read
+  something and objected. The symlink-and-`include` refusal involves a file and stays
+  validation for exactly that reason. Note that moving `FileConfigSource` was not enough —
+  a file layer is parsed with `parseFile` and never through `text()`, so the load path is
+  `ConfigLoader`, which now separates `ConfigException.IO` from `ConfigException.Parse` (P30).
 - **The registry stores text, never an `LlmConfig`.** An application holds resolved values,
   so an API that took one back would write the resolved secret into the layer. Measured in
   P20: `api-key = ${?HOME}` in the layer, `/home/...` from `config.apiKey()`.
@@ -493,9 +503,10 @@ in-flight requests may still hold them.
   not "fix" their register, and do not let a user-facing paragraph drift back toward it.
 - **`docs/tasks/open-decisions.md` needs the owner.** Ask; do not decide unilaterally. A new
   entry there is a question for the owner, not work to pick up, and an entry marked
-  `Needs decision` blocks the code that depends on it rather than inviting a guess. D1–D5 are
-  settled; **D6 is open**. Read the file for the current list rather than trusting this
-  sentence — it said "all settled" for a day after two entries had been added (P29).
+  `Needs decision` blocks the code that depends on it rather than inviting a guess. **D1–D6
+  are all settled**, so that file is a record rather than a queue right now. Read it for the
+  current list rather than trusting this sentence — it said "all settled" for a day after two
+  entries had been added (P29).
 - The §2 decision table in `brainstorm/PLAN.md` is closed: do not reopen those choices
   without asking. The ADRs carry the same decisions with their reasoning.
 - Milestones run M0 → M6 in `docs/tasks/milestones.md`; v1 was done at M5, and M6 gained its

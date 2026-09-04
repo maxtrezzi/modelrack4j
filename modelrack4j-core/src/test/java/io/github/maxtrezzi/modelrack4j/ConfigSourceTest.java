@@ -327,9 +327,46 @@ class ConfigSourceTest {
         ConfigSource source = ConfigSource.ofFile(dir.resolve("absent.conf"));
 
         assertThatThrownBy(source::text)
-                .isInstanceOf(ConfigValidationException.class)
+                .isInstanceOf(ConfigAccessException.class)
+                .isNotInstanceOf(ConfigValidationException.class)
                 .hasMessageContaining("absent.conf")
                 .hasMessageContaining("does not exist or is not readable");
+    }
+
+    @Test
+    @DisplayName("a layer that cannot be read fails the build as access, not as validation")
+    void aLayerThatCannotBeReadFailsTheBuild() {
+        assertThatThrownBy(() -> LlmRegistry.builder()
+                .configFiles(List.of(dir.resolve("absent.conf")))
+                .build())
+                .isInstanceOf(ConfigAccessException.class)
+                // Kept apart on purpose: an application answering an HTTP request has to tell
+                // "your text is wrong" from "the medium failed", and a subclass would not let
+                // it. This assertion is what stops the two being merged later.
+                .isNotInstanceOf(ConfigValidationException.class)
+                .hasMessageContaining("absent.conf");
+    }
+
+    @Test
+    @DisplayName("a layer that becomes unreadable is reported as access and changes nothing")
+    void aLayerThatBecomesUnreadableIsReportedAsAccess() throws IOException {
+        Path file = dir.resolve("app.conf");
+        Files.writeString(file, block("SL", "first"), StandardCharsets.UTF_8);
+        List<ReloadFailure> failures = new ArrayList<>();
+
+        try (LlmRegistry registry =
+                LlmRegistry.builder().configFiles(List.of(file)).build()) {
+            registry.onReloadFailure(failures::add);
+            Files.delete(file);
+
+            assertThatThrownBy(registry::reload)
+                    .isInstanceOf(ConfigAccessException.class)
+                    .isNotInstanceOf(ConfigValidationException.class);
+
+            assertThat(failures).hasSize(1);
+            assertThat(failures.get(0).cause()).isInstanceOf(ConfigAccessException.class);
+            assertThat(registry.get("SL").config().modelName()).isEqualTo("first");
+        }
     }
 
     @Test

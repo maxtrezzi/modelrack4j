@@ -3420,6 +3420,84 @@ go stale.
 
 ---
 
+### P30 — `ConfigAccessException`: the implementation of D6
+
+**Status:** Done — five throw sites moved, and a sixth the plan had not found; ADR-0053 ·
+**Settled by:** [D6](open-decisions.md#d6--cannot-store-is-not-your-configuration-is-invalid)
+
+The decision is D6's and the reasoning is in
+[ADR-0053](../adr/0053-a-separate-exception-for-a-layer-that-cannot-be-reached.md). This entry
+records what building it found.
+
+#### What was found
+
+**1. Moving the five planned sites did not change what a missing config file does.** The plan
+listed two read sites in `FileConfigSource.read` and three write sites in
+`WritableFileConfigSource`, and all five moved cleanly. Then a new test — a missing layer at
+`build()` — still caught `ConfigValidationException`, saying *"could not be parsed"*.
+
+The reason is ADR-0042: a file layer is parsed with `parseFile`, not by reading its text, so
+`FileConfigSource.text()` is never called during a load. The load path for a file layer runs
+through `ConfigLoader`, which wrapped every `ConfigException` as a parse failure. So the
+commonest read failure in the library — the file is not there — was reported as a problem with
+text that had never been read.
+
+`ConfigLoader.load` now catches `ConfigException.IO` before `ConfigException`. Probed against
+`config-1.4.9` before writing the catch, rather than assumed: a missing file is
+`com.typesafe.config.ConfigException$IO`, an unreadable file is the same, and a syntax error is
+`ConfigException$Parse`. The two cases separate exactly on that boundary.
+
+This is the second time in two days that a decision's plan was right about the code it had read
+and blind to a path it had not. The plan was written from a grep for `ConfigValidationException`;
+what it could not see was which of those sites the loader actually reaches.
+
+**2. The example needed nothing.** `DatabaseSource` has two `catch (ConfigValidationException)`
+blocks, and the plan said to check whether each should also catch the new type. Both surround a
+deliberately invalid provider name, so both are still exactly right. Its in-memory `Row` never
+fails as a medium.
+
+**3. Two javadoc contracts named the wrong type after the move**, and a grep for
+`ConfigValidationException` over every `.java` and `.md` file is what found them:
+`SnapshotLoader.load` (both overloads) and `StagedWrite.commit` still said an unreadable layer
+or a failed store was a validation failure. Reading the diff would not have shown either —
+neither file has a throw site, only the `@throws` line above a method whose behaviour changed
+underneath it.
+
+**4. A sentence unrelated to D6 was false, found in the same grep.** The reference said *"All
+four factories in this repository now have an empty `validate()`"*. P25 (`d0d0ee6`) gave GLM's
+a real body two commits earlier, and `AGENTS.md` already said three of four. Corrected here
+rather than left for a later pass, and checked by reading all four bodies, not by trusting
+`AGENTS.md`.
+
+**5. A test fixture was carrying the old contract.** `ConfigStoreTest.MemoryRow` threw
+`ConfigValidationException("the database is unreachable")` from `write`, which is the failure
+the new type exists for. It now throws `ConfigAccessException`, so the suite demonstrates the
+contract `WritableConfigSource.write` documents instead of contradicting it.
+
+#### Verification
+
+Core went from 142 tests to 145, and `ConfigStoreTest` from 46 to 47. Four assertions were
+updated to the new type — a missing file in `LayeredResolutionTest`, an unreadable source and a
+failed move in the two store tests, and both rollback cases — and four cases are new:
+
+- a store onto a read-only directory: `ConfigAccessException` from `stage()`, **before** the new
+  text is validated, with the previous configuration live and no staged file left behind;
+- a missing layer at `build()`;
+- a layer deleted between `build()` and `reload()`: the throw, the `ReloadFailure.cause`, and
+  the previous snapshot still serving;
+- and, in three of those, an explicit `isNotInstanceOf(ConfigValidationException.class)`, so
+  turning one type into a subclass of the other fails loudly rather than silently restoring the
+  ambiguity.
+
+`mvn clean install` green. While this branch waited, `build/check-docs.py` reported
+`ADR numbering gaps: [50, 51, 52]` on it, which was never a defect: 0050 and 0051 belonged to
+P24's branch and 0052 to D5's, both unpushed at the time. The gap closed when they merged —
+[#50](https://github.com/maxtrezzi/modelrack4j/pull/50) and
+[#51](https://github.com/maxtrezzi/modelrack4j/pull/51) — which is also the merge order this
+branch was rebased into: P24, then D5, then this.
+
+---
+
 ### P31 — A layer answers for itself, instead of being recognised
 
 **Status:** Done — two type tests became one, at a boundary; ADR-0051 ·

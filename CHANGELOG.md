@@ -34,6 +34,23 @@ will not be held back for a major bump until the API settles at `1.0.0`.
 
 ### Changed
 
+- **Breaking: a layer that cannot be read or written now throws `ConfigAccessException`, not
+  `ConfigValidationException`.** The new type is public, unchecked, and deliberately **not** a
+  subclass of the old one, so catching one never catches the other. It comes from a file that
+  is missing or unreadable — at `build()`, at `reload()`, and from `ConfigSource.text()` — and
+  from a store that cannot write: no parent directory, an unwritable directory, a full disk, a
+  move that fails. Everything about the *text* stays `ConfigValidationException`: a malformed
+  block, a value out of range, an unresolved substitution, a provider that rejects its
+  configuration, and the refusal of a symbolic link whose `include` cannot be validated
+  honestly.
+
+  **Migration:** if you catch `ConfigValidationException` around `build()`, `reload()`,
+  `store()` or `storeIfUnchanged()` and want the old behaviour, catch both types. If you turn
+  these into HTTP responses, this is the change that lets you answer `400` for one and `503`
+  or `500` for the other — which is why it was made. A `ConfigSource` of your own should throw
+  the new type from `text()` and `write(String)` when the medium fails; one that still throws
+  `ConfigValidationException` compiles and behaves as before
+  ([ADR-0053](docs/adr/0053-a-separate-exception-for-a-layer-that-cannot-be-reached.md)).
 - Enabling `moderation.enabled = true` on Anthropic, Gemini or GLM is now refused by core
   rather than by each provider. The failure and the type are the same
   (`ConfigValidationException`, before any model is built); the wording changed from

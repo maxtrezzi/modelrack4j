@@ -106,6 +106,7 @@ Phase 0 gates everything else; nothing below M0 should start before its blockers
 | [P27](post-v1.md#p27--a-review-of-all-seven-modules-the-examples-and-the-manual) | A review of all seven modules, the examples and the manual | **Done** — 8 findings, none critical; a credential in `LlmConfig.toString()`; ADR-0047 and ADR-0048 |
 | [P28](post-v1.md#p28--a-failing-model-ends-the-council-round) | A failing model ends the council round | **Done** — one dead key cost all three answers; the other two examples already caught it |
 | [P29](post-v1.md#p29--a-global-check-and-the-eight-things-it-found) | A global check over a tree three sessions had just moved | **Done** — 8 findings: a `null` `Optional` that was an NPE at one call site of three, and seven sentences that had stopped being true, two of them in `AGENTS.md`'s own guidance |
+| [P30](post-v1.md#p30--configaccessexception-the-implementation-of-d6) | `ConfigAccessException`: the implementation of D6 | **Done** — five planned throw sites moved and a sixth found by a test; a missing file had been reported as a parse failure; ADR-0053 |
 | [P31](post-v1.md#p31--a-layer-answers-for-itself-instead-of-being-recognised) | A layer answers for itself, instead of being recognised | **Done** — an internal `sealed Layer` built once at the boundary; the public SPI is untouched, and the marker idea was the one ADR-0042 refused twice; ADR-0051 |
 | [P32](post-v1.md#p32--the-recipe-d5s-argument-rests-on) | The recipe D5's argument rests on | **Done** — the conditional-write recipe for a remote writer; the `catch` is not a repeat of the `if`, and a probe shows why |
 | [D1](open-decisions.md#d1--glm-route-if-no-maintained-module-exists) | GLM route if no maintained module | **Closed** — never became live |
@@ -113,7 +114,7 @@ Phase 0 gates everything else; nothing below M0 should start before its blockers
 | [D3](open-decisions.md#d3--token-window-memory-on-a-remote-estimator) | Token-window memory on a remote estimator | **Settled** — opt-in flag |
 | [D4](open-decisions.md#d4--mutation-testing-in-ci) | Mutation testing in CI | **Settled** — never, in any form; ADR-0043 |
 | [D5](open-decisions.md#d5--a-version-token-for-optimistic-concurrency) | A version token for optimistic concurrency | **Settled** — no token; the `ETag` pattern already works on the current signature; ADR-0052 |
-| [D6](open-decisions.md#d6--cannot-store-is-not-your-configuration-is-invalid) | "Cannot store" is not "your configuration is invalid" | **Needs decision** |
+| [D6](open-decisions.md#d6--cannot-store-is-not-your-configuration-is-invalid) | "Cannot store" is not "your configuration is invalid" | **Settled** — `ConfigAccessException`, standalone, covering reads as well as writes; ADR-0053 |
 
 **Phase 0 is complete except for one measurement, and M0 is done — the build is green.** Tasks 0.1–0.7 are
 done; Task 0.8 is done on Linux and open only on the macOS latency figure, which qualifies

@@ -69,8 +69,9 @@ final class SnapshotLoader {
      * @param previous the live snapshot, whose bundles are carried over where the parsed
      *     configuration is unchanged; empty on the first load
      * @return a complete snapshot, sorted by name
-     * @throws ConfigValidationException if any layer is unreadable, any block is invalid, or
-     *     any provider rejects or fails to build its configuration
+     * @throws ConfigValidationException if any block is invalid, or any provider rejects or
+     *     fails to build its configuration
+     * @throws ConfigAccessException if any layer cannot be read
      */
     Map<String, LlmBundle> load(Map<String, LlmBundle> previous) {
         return load(previous, layers);
@@ -84,8 +85,9 @@ final class SnapshotLoader {
      * @param layers the layers to read, which during a store is this registry's list with
      *     the layer being written replaced by its staged text
      * @return a complete snapshot, sorted by name
-     * @throws ConfigValidationException if any layer is unreadable, any block is invalid, or
-     *     any provider rejects or fails to build its configuration
+     * @throws ConfigValidationException if any block is invalid, or any provider rejects or
+     *     fails to build its configuration
+     * @throws ConfigAccessException if any layer cannot be read
      */
     Map<String, LlmBundle> load(Map<String, LlmBundle> previous, List<Layer> layers) {
         Config resolved = ConfigLoader.load(layers);

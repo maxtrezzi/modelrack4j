@@ -154,7 +154,7 @@ class LayeredResolutionTest {
         Path missing = dir.resolve("nope.conf");
 
         assertThatThrownBy(() -> LlmRegistry.builder().configFiles(List.of(missing)).build())
-                .isInstanceOf(ConfigValidationException.class)
+                .isInstanceOf(ConfigAccessException.class)
                 .hasMessageContaining("nope.conf");
     }
 

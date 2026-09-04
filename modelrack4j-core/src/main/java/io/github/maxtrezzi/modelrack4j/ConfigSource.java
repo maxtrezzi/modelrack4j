@@ -67,9 +67,11 @@ public interface ConfigSource {
      * file itself, and is the only layer whose includes resolve the way a reader expects.
      *
      * @return the text, never {@code null}; an empty string is a valid empty layer
-     * @throws ConfigValidationException if the text cannot be produced — a missing file, a
+     * @throws ConfigAccessException if the text cannot be produced — a missing file, a
      *     database that cannot be reached. The reload is then rejected as a whole and the
-     *     previous configuration stays live.
+     *     previous configuration stays live. Throw this rather than
+     *     {@link ConfigValidationException}: nothing is wrong with the text, it could not be
+     *     reached.
      */
     String text();
 

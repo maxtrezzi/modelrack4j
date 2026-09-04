@@ -109,13 +109,13 @@ record WritableFileConfigSource(Path file) implements WritableConfigSource, File
      *
      * @param text the text the target should end up holding
      * @return the staged file, which the caller must either commit or discard
-     * @throws ConfigValidationException if the staged file cannot be written
+     * @throws ConfigAccessException if the staged file cannot be written
      */
     StagedFile stage(String text) {
         Path destination = destination();
         Path directory = destination.getParent();
         if (directory == null) {
-            throw new ConfigValidationException(
+            throw new ConfigAccessException(
                     "Configuration file has no parent directory to write beside: " + file);
         }
         Path staged = null;
@@ -127,7 +127,7 @@ record WritableFileConfigSource(Path file) implements WritableConfigSource, File
             staged = null;   // handed over: the caller discards it from here on
             return prepared;
         } catch (IOException e) {
-            throw new ConfigValidationException(
+            throw new ConfigAccessException(
                     "Cannot write the configuration beside " + file + ": " + e.getMessage(), e);
         } finally {
             // Reached only when the file was created and then not handed over — a failing
@@ -236,7 +236,7 @@ record WritableFileConfigSource(Path file) implements WritableConfigSource, File
      * Moves a staged file onto the destination it was prepared for.
      *
      * @param prepared the file returned by {@link #stage(String)}
-     * @throws ConfigValidationException if the move fails
+     * @throws ConfigAccessException if the move fails
      */
     void commitStaged(StagedFile prepared) {
         try {
@@ -250,7 +250,7 @@ record WritableFileConfigSource(Path file) implements WritableConfigSource, File
                         StandardCopyOption.REPLACE_EXISTING);
             }
         } catch (IOException e) {
-            throw new ConfigValidationException(
+            throw new ConfigAccessException(
                     "Cannot replace the configuration file " + file + ": " + e.getMessage(), e);
         }
     }

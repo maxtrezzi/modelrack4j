@@ -208,10 +208,14 @@ key outright.
 
 ### Missing and malformed files
 
-A layer that does not exist, or cannot be read, is a `ConfigValidationException` naming the
-path. There is no "skip what is missing" mode. The reason: an operator expects every listed
-file to be read, and a file that was silently skipped is a worse outcome than a start that
-fails immediately.
+A layer that does not exist, or cannot be read, is a `ConfigAccessException` naming the path.
+A layer that is there but malformed is a `ConfigValidationException`. The two are separate
+types because the answer is different: the first has to be retried or fixed on the machine,
+the second has to be corrected in the text.
+
+There is no "skip what is missing" mode. The reason: an operator expects every listed file to
+be read, and a file that was silently skipped is a worse outcome than a start that fails
+immediately.
 
 ---
 
@@ -269,7 +273,7 @@ LlmRegistry registry = LlmRegistry.builder()
 | `watch(boolean)` | Off by default. On, the registry starts one daemon thread and watches the layers that are files, whichever of the two methods above supplied them. Layers that are not files are ignored; at least one must be a file. |
 | `notifier(ChangeNotifier)` | Something of your own that tells the registry when the configuration changed. Cannot be combined with `watch(true)`. |
 | `debounce(Duration)` | How long the files must be quiet before a reload runs. Must be positive. |
-| `build()` | Parses, validates and builds everything, then starts the notifier if there is one. Throws `ConfigValidationException` if no layer was given, two layers share an id, any layer or block is invalid, or `watch(true)` was set and no layer is a file. Throws `UncheckedIOException` if a directory cannot be watched. |
+| `build()` | Parses, validates and builds everything, then starts the notifier if there is one. Throws `ConfigValidationException` if no layer was given, two layers share an id, any block is invalid, or `watch(true)` was set and no layer is a file; `ConfigAccessException` if a layer cannot be read; `UncheckedIOException` if a directory cannot be watched. |
 
 `build()` is all-or-nothing: one bad block means no registry, not a registry missing one name.
 
@@ -459,10 +463,10 @@ already live, and publishes nothing.
 
 | Method | Contract |
 |---|---|
-| `store(WritableConfigSource, String)` | Validates, applies, stores. Returns what changed, or empty when the new text means what was already live — a text that only reformats is stored, and reported as no change. |
+| `store(WritableConfigSource, String)` | Validates, applies, stores. Returns what changed, or empty when the new text means what was already live — a text that only reformats is stored, and reported as no change. A text that does not validate throws `ConfigValidationException`; a layer that cannot be written throws `ConfigAccessException`, and both leave the previous configuration live. |
 | `storeIfUnchanged(WritableConfigSource, String, String)` | The same, but only while the layer still holds the text passed as `expected`. Otherwise throws `StaleLayerException`, which carries the text the layer holds now. |
 | `ConfigSource.ofWritableFile(Path)` | A file layer that can also be written. It writes through a temporary file beside the file it will replace, so a reader never sees half a write; it follows a symbolic link instead of replacing it; and it keeps the permissions the file already had. |
-| `WritableConfigSource.write(String)` | What the library calls to store the text. Implement it for a layer of your own: make it one statement, and make sure it stores nothing at all if it throws. |
+| `WritableConfigSource.write(String)` | What the library calls to store the text. Implement it for a layer of your own: make it one statement, make sure it stores nothing at all if it throws, and throw `ConfigAccessException` when the medium fails. |
 
 #### More than one writer
 
@@ -620,12 +624,13 @@ component participates, including `description`.
 
 | Exception | When |
 |---|---|
-| `ConfigValidationException` | A file is unreadable, a block is malformed, a value is out of range, a substitution is unresolved, or a provider rejects its configuration. Unchecked. |
+| `ConfigValidationException` | A block is malformed, a value is out of range, a substitution is unresolved, or a provider rejects its configuration. Always something about the text. Unchecked. |
+| `ConfigAccessException` | A layer cannot be reached: a file that is missing or unreadable, a directory that cannot be written, a full disk, a database that is down. Nothing is wrong with the configuration — it could not be read or stored. **Not** a subclass of `ConfigValidationException`. Unchecked. |
 | `UnknownConfigurationException` | `get()` on a name that is not in the current snapshot. |
 | `UncheckedIOException` | Watching was requested and a directory cannot be watched. |
 | `StaleLayerException` | `storeIfUnchanged()` on a layer that no longer holds the text the change was based on. Carries that layer's current text, to apply the change to instead. Unchecked. |
 
-Those four are the library's own, and they are thrown identically whichever provider a block
+Those five are the library's own, and they are thrown identically whichever provider a block
 names. **Everything a model call throws belongs to the provider instead**, and those types are
 not portable between providers.
 
@@ -861,10 +866,12 @@ gets a better message, earlier.
 
 `validate()` is for what core cannot see — a rule specific to your provider. Throw
 `ConfigValidationException` with a message naming the block and the way out; those messages
-are part of the contract, and the tests assert on them. All four factories in this repository
-now have an empty `validate()`: three of them used to reject moderation here, and that is
+are part of the contract, and the tests assert on them. Three of the four factories in this
+repository have an empty `validate()`: they used to reject moderation here, and that is
 reported through `supportsModeration()` instead, while OpenAI never had anything to reject.
-An empty body is the normal case, not a sign of an unfinished provider.
+The fourth is GLM, which checks the *shape* of the API key, because its own code splits the
+key and signs a token with the halves before any call. An empty body is the normal case, not
+a sign of an unfinished provider.
 
 ---
 
