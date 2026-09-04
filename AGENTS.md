@@ -493,10 +493,9 @@ in-flight requests may still hold them.
   not "fix" their register, and do not let a user-facing paragraph drift back toward it.
 - **`docs/tasks/open-decisions.md` needs the owner.** Ask; do not decide unilaterally. A new
   entry there is a question for the owner, not work to pick up, and an entry marked
-  `Needs decision` blocks the code that depends on it rather than inviting a guess. D1–D4 are
-  settled; **D5 and D6 are open** and have been since `5ae070a`. Read the file for the current
-  list rather than trusting this sentence — it said "all settled" for a day after two entries
-  had been added (P29).
+  `Needs decision` blocks the code that depends on it rather than inviting a guess. D1–D5 are
+  settled; **D6 is open**. Read the file for the current list rather than trusting this
+  sentence — it said "all settled" for a day after two entries had been added (P29).
 - The §2 decision table in `brainstorm/PLAN.md` is closed: do not reopen those choices
   without asking. The ADRs carry the same decisions with their reasoning.
 - Milestones run M0 → M6 in `docs/tasks/milestones.md`; v1 was done at M5, and M6 gained its

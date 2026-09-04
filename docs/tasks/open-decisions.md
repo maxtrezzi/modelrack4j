@@ -3,9 +3,10 @@
 Items waiting on the owner rather than on work. Do not resolve these unilaterally — each
 one closes by writing an ADR (see [ADR-0001](../adr/0001-record-decisions-as-adrs.md)).
 
-**D1 to D4 are all settled**, so this file is a record rather than a queue right now. A
-new entry here is a question for the owner, not work to pick up. Entries stay in number order
-and keep the framing they were decided under, with the outcome at the top.
+**D1 to D5 are settled; D6 is open.** A new entry here is a question for the owner, not work
+to pick up, and an entry marked `Needs decision` blocks the code that depends on it rather
+than inviting a guess. Entries stay in number order and keep the framing they were decided
+under, with the outcome at the top.
 
 ---
 
@@ -155,8 +156,29 @@ from the provider modules and their paid `*IT.java` suites is that a person type
 
 ### D5 — A version token for optimistic concurrency
 
-**Status:** Needs decision ·
-**Raised by:** putting `storeIfUnchanged` behind an HTTP `PUT`
+**Status:** Settled 2026-09-03 — **no token; the signature stays** ·
+**Raised by:** putting `storeIfUnchanged` behind an HTTP `PUT` ·
+**Settled by:** [ADR-0052](../adr/0052-no-version-token-the-expected-text-is-the-token.md)
+
+The owner took the first option below. `ConfigSource` keeps `id()` and `text()`,
+`storeIfUnchanged` keeps its signature, and there is no `version()`, no `storeIfVersion` and no
+digest-taking overload. An application that wants an `ETag` derives one from `text()` and keeps
+the digest to itself.
+
+**The framing below contains a false premise, and it is worth recording rather than editing
+away.** The entry says the caller "has to ship the entire previous document, encoded, in a
+header". It does not. The server that answers the `PUT` is the one that read the layer, so it
+can digest `text()` itself, compare that with `If-Match`, answer `412` on a mismatch, and pass
+the same text it just read as `expected`. The client ships a token; no document crosses the
+wire. Reading the code is what showed this: `storeIfUnchanged` re-reads under the reload lock,
+so the window between the server's read and its write is closed by the library rather than by
+the header.
+
+That correction is most of the answer. What remained was a real trade — a token is natural over
+a network and cheap for a client to hold — and it lost to permanence: `0.1.0` is published, the
+pattern is four lines of application code today, and a published method cannot be withdrawn.
+
+The framing the decision was taken under follows.
 
 `storeIfUnchanged(target, expected, text)` takes the whole expected document. Over HTTP that is
 an ETag-shaped problem solved without an ETag: the caller has to ship the entire previous
