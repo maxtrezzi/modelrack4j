@@ -4236,6 +4236,39 @@ the filesystem, the other for a call already in flight — and giving both the g
 turned a fast failure into a slow one. The run took 2 min 50 s; `AGENTS.md`'s "122 s" comes
 from ADR-0043 over 153 mutants and is not comparable.
 
+#### The examples and the manual, run rather than read
+
+Every command the manual prints was executed and its terminal compared to the page — the P26
+rule. The two free examples were run in full; the three that cost money were started with a
+dummy key and taken to `/exit`, which sends no request, so what is verified for those is the
+command, the configuration path and the startup output, not an answer.
+
+- **`AtomicSnapshot`**, through `./run-atomic.sh` and through the reference's own
+  `exec:java` line. The second run is the one worth recording: **1 torn pair through two
+  `get()` calls out of 112,186,373 samples, and 0 through `snapshot()`** — ADR-0038's
+  guarantee and its limit, both observed in one run rather than quoted. The first run tore
+  neither way over 190,786,779 samples, which is what the example's own closing line prepares
+  the reader for.
+- **`DatabaseSource`** prints the six steps the reference promises, in order: a name added, a
+  name updated, a reload that changes nothing, a rejected reload that leaves the row holding
+  the broken text, the same change refused by `store()` before the row is written, and a valid
+  `store()`.
+- **Tutorial step 3.** The `ConsoleChat` menu matches the printed block character for
+  character, apart from the `/home/you` placeholder in the path.
+- **Tutorial step 7**, the block P26 corrected. Reproduced by starting the session with the
+  documented `-Dorg.slf4j.simpleLogger.log...=warn` flag and deleting `model-name` from the
+  file while it ran: the `WARN`, the stack trace and the example's own
+  `[config rejected, still running the previous one: ...]` all arrive, and the page's `...`
+  stands for the merge path the terminal prints in full.
+- **Tutorial step 8** runs with its two layers. Its claim that `local.conf` overrides
+  `timeout` is not visible in the menu, so that half rests on `LayeredResolutionTest`, not on
+  this run.
+- **Tutorial step 9.** `ThreeModelCouncil` was given the relative
+  `modelrack4j-examples/src/main/resources/examples.conf` **and found it** — the suspicion
+  was P18's defect returning, a path verified in one directory and handed to a run that looks
+  in another. `exec:java` runs with the reactor root as its working directory, so the line is
+  correct as printed.
+
 #### Verification
 
 `mvn clean install` green across all seven modules; core is 148 tests, unchanged — every
