@@ -239,7 +239,7 @@ dedicated regression test; keep it.
 **A layer is a `ConfigSource`, not a file (ADR-0042).** `ConfigSource` is `id()` plus
 `text()` and names no file, path or URL, so a layer can be a database row; `ChangeNotifier`
 carries "how do I learn this changed" separately, and `FileChangeNotifier` wraps the existing
-watcher unchanged. Three consequences that look like tidying and are not:
+watcher unchanged. Four consequences that look like tidying and are not:
 
 - **A file layer is parsed with `parseFile`, everything else with `parseString`, and the
   `instanceof` in `ConfigLoader.parse` is load-bearing.** `include "sibling.conf"` resolves
@@ -253,13 +253,24 @@ watcher unchanged. Three consequences that look like tidying and are not:
   the later would discard the earlier in silence, after its listeners had announced it.
   Readers do not take that lock, so ADR-0038 is unaffected.
 - **`watch(true)` asks the layers, never the builder method that supplied them, and
-  `configFiles(...)` keeps no path list of its own (ADR-0050).** It watches every `FileBacked`
-  layer and ignores the rest; only a registry where *no* layer is a file is refused. The old
+  `configFiles(...)` keeps no path list of its own (ADR-0050).** It watches every file layer
+  and ignores the rest; only a registry where *no* layer is a file is refused. The old
   condition read a `watchableFiles` field that only `configFiles(...)` filled, so a registry
   whose every layer was a file was refused for having none — which also blocked `store()` and
   hot reload together, because a `WritableConfigSource` can only arrive through `sources(...)`.
   ADR-0042's own Decision already said "without file sources", so the code had been stricter
   than the ADR it came from. Do not reintroduce a field that remembers which method was called.
+- **A layer answers for itself; only `Layer.of` asks what kind it is (ADR-0051).** The two
+  questions a `ConfigSource` cannot answer — how to parse it, what to watch for it — used to be
+  recovered with `instanceof FileBacked` at each use site. They are now answered once, at
+  `Builder.build()`, into an internal `sealed Layer` (`FileLayer`, `TextLayer`), and the
+  internals carry `List<Layer>`. **The fix for a third such question is a method on `Layer`,
+  never a marker on `ConfigSource`:** an address on the public interface is what ADR-0042
+  refused twice, and a notifier per source undoes ADR-0013. `Layer.sourcesOf` unwraps where a
+  public type needs the source back — `ReloadFailure`, and `requireOwnLayer`'s message.
+  `StagedWrite.prepare` keeps its own `instanceof`, on purpose: it asks whether a *writable*
+  target is a file, which is a different axis, and folding it in would buy an unreachable
+  branch.
 
 **A layer the application owns can be written back (P20).** `store(target, text)` stages the
 text, validates the whole configuration against the staged copy, publishes, and only then

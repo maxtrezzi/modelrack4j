@@ -106,6 +106,7 @@ Phase 0 gates everything else; nothing below M0 should start before its blockers
 | [P27](post-v1.md#p27--a-review-of-all-seven-modules-the-examples-and-the-manual) | A review of all seven modules, the examples and the manual | **Done** — 8 findings, none critical; a credential in `LlmConfig.toString()`; ADR-0047 and ADR-0048 |
 | [P28](post-v1.md#p28--a-failing-model-ends-the-council-round) | A failing model ends the council round | **Done** — one dead key cost all three answers; the other two examples already caught it |
 | [P29](post-v1.md#p29--a-global-check-and-the-eight-things-it-found) | A global check over a tree three sessions had just moved | **Done** — 8 findings: a `null` `Optional` that was an NPE at one call site of three, and seven sentences that had stopped being true, two of them in `AGENTS.md`'s own guidance |
+| [P31](post-v1.md#p31--a-layer-answers-for-itself-instead-of-being-recognised) | A layer answers for itself, instead of being recognised | **Done** — an internal `sealed Layer` built once at the boundary; the public SPI is untouched, and the marker idea was the one ADR-0042 refused twice; ADR-0051 |
 | [D1](open-decisions.md#d1--glm-route-if-no-maintained-module-exists) | GLM route if no maintained module | **Closed** — never became live |
 | [D2](open-decisions.md#d2--repository-visibility) | Repository visibility | **Settled** — public, not released; ADR-0034 |
 | [D3](open-decisions.md#d3--token-window-memory-on-a-remote-estimator) | Token-window memory on a remote estimator | **Settled** — opt-in flag |

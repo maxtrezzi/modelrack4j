@@ -2766,6 +2766,10 @@ The way through already exists and is documented — `notifier(FileChangeNotifie
 Making the interface public, or adding a path-shaped method to `ConfigSource`, would put the
 filesystem back into the interface ADR-0042 removed it from, and is not taken here.
 
+**The same branch also carries [P31](#p31--a-layer-answers-for-itself-instead-of-being-recognised),**
+which removes the `instanceof` this entry's fix had just made the second of two. The owner
+asked for it here rather than on a branch of its own, because it finishes the same thought.
+
 **Verification.** `ConfigSourceTest` went from 23 tests to 26: the refusal now also asserts
 that the message names the layers, and three cases were added — every layer a file through
 `sources(...)`, a mixed registry where the file is watched and the row is asserted *not* to be,
@@ -3414,3 +3418,70 @@ go stale.
   billing. The council's **partial** round still needs a working key and was not run — the same
   gap P28 recorded.
 
+\n
+---
+
+### P31 — A layer answers for itself, instead of being recognised
+
+**Status:** Done — two type tests became one, at a boundary; ADR-0051 ·
+**Branch:** carried by P24's branch, at the owner's request — it finishes the same thought
+
+#### Why it came up
+
+P24 fixed `chooseNotifier` by giving it an `instanceof FileBacked`. That was the right fix for
+the defect and it made the codebase's second copy of the same test — `ConfigLoader.parse` has
+had one since ADR-0042. The owner read the hierarchy afterwards, said `instanceof` is a design
+smell and that this one was the ugly kind, and asked for alternatives.
+
+#### What was rejected, and why it is worth recording
+
+The first instinct — a public `MonitorableConfigSource`, so a layer declares that it can be
+watched — is the idea ADR-0042 already refused **twice**, in two forms: an address on the
+interface (`Optional<Path>`, then `Optional<URI>`) puts the filesystem back where that ADR had
+just removed it from, and a notifier per source undoes ADR-0013's single watch service over the
+deduplicated parent directories. Neither argument has aged.
+
+Full polymorphism on `ConfigSource` — `parse`, `watchTarget`, `stage` on the public interface —
+removes all three tests and takes the SPI from two methods to five, with
+`com.typesafe.config.ConfigParseOptions` in it, so every application-written source would have
+to implement HOCON parsing. On a published artifact that is the worse trade.
+
+And Java 17 does not sell the elegant version: a `sealed` type plus an exhaustive pattern
+`switch` is Java 21. The project already owns that scar — `MemoryConfig` is `sealed` and
+`SnapshotLoader` still ends its chain with a throwing default, because nothing checks it.
+
+#### What was done
+
+The repetition is removable without any of that: ask once, at the boundary every layer already
+passes through, and keep the answer. An internal `sealed Layer` (`FileLayer`, `TextLayer`) is
+built in `Builder.build()`, and `ConfigLoader`, `SnapshotLoader` and `LlmRegistry` carry
+`List<Layer>` and call methods. `FileBacked` is now `sealed` and read in exactly one place.
+
+**Two of the three `instanceof` became one.** `StagedWrite.prepare` keeps its own, deliberately:
+it asks whether a *writable* target is a file, which is the other axis, and folding it in would
+need a third `Layer` variant that exists only to throw for a read-only file layer. An
+unreachable branch is worse than a localised factory, and PIT would have reported it as an
+uncovered line for the life of the project.
+
+**The public API does not change**, so there is no CHANGELOG entry. That is deliberate, not an
+omission.
+
+#### Verification
+
+`mvn clean install` green, core still at 145 tests — no test changed, which is the useful
+signal: the behaviour is identical and the existing suite already covered every path through
+the new types.
+
+PIT on core: **205 mutants, 202 killed**, one survived and one `NO_COVERAGE`. Both are the two
+already known — the equivalent `Optional.empty()` in `LlmRegistry.reload` and the deliberate
+cleanup branch in `WritableFileConfigSource.stage`. The five new mutants come from `Layer`,
+`FileLayer` and `TextLayer`, and all five were killed, so the new code arrived covered.
+
+**The count, measured rather than asserted.** `grep -rn instanceof --include=*.java */src/main`,
+with comment lines dropped, gives **nine** expressions in production code. Two of them are the
+subject of this entry — `Layer.of` and `StagedWrite.prepare` — and before the change those two
+were three, spread over `ConfigLoader.parse`, `Builder.chooseNotifier` and `StagedWrite.prepare`.
+The other seven are unrelated and untouched: two in `MemoryConfig`, four in `SnapshotLoader`
+(one `ConfigObject` cast and three over `MemoryConfig`'s sealed variants), and one in
+`ConfigWatcher` over a `WatchEvent` context. So the number that moved is three to two, and the
+difference that matters is that neither survivor sits at a use site.

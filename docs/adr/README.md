@@ -102,7 +102,8 @@ by number, since the numbering only reflects the order of the original appendix.
 | [0027](0027-remote-token-counting-is-opt-in.md) | Token-window memory on a remote estimator is opt-in | Accepted |
 | [0048](0048-providers-report-capabilities-core-enforces-them.md) | Providers report capabilities; core enforces them | Accepted |
 | [0049](0049-validate-a-credentials-shape-when-the-provider-requires-it.md) | Validate a credential's shape, never its content | Accepted |
-| [0050](0050-watch-the-file-layers-whichever-method-supplied-them.md) | Watch the file layers, whichever builder method supplied them | Accepted |
+| [0050](0050-watch-the-file-layers-whichever-method-supplied-them.md) | Watch the file layers, whichever builder method supplied them | Accepted — the mechanism amended by ADR-0051 |
+| [0051](0051-layer-answers-for-itself-adapted-at-the-boundary.md) | A layer answers for itself, adapted at the boundary | Accepted |
 | [0030](0030-one-timeout-in-the-schema.md) | One `timeout` in the schema; providers map it onto their own client | Accepted |
 | [0018](0018-manage-langchain4j-versions-via-bom.md) | Manage LangChain4j versions by importing its BOM | Accepted — the BOM import set amended by ADR-0022 |
 | [0022](0022-glm-via-the-community-module-and-its-bom.md) | Take GLM from the community module, and import its BOM alongside the main one | Accepted |

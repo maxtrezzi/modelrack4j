@@ -1,6 +1,6 @@
 # ADR-0050: Watch the file layers, whichever builder method supplied them
 
-- **Status:** Accepted
+- **Status:** Accepted — the mechanism amended by ADR-0051
 - **Date:** 2026-09-04
 - **Supersedes:** —
 - **Amends:** ADR-0042

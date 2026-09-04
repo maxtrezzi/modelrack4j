@@ -40,20 +40,20 @@ final class ConfigLoader {
     /**
      * Parses every layer, merges them, and resolves the result exactly once.
      *
-     * @param sources the layers, lowest precedence first
+     * @param layers the layers, lowest precedence first
      * @return the merged and resolved configuration
      * @throws ConfigValidationException if a source cannot produce its text or cannot be
      *     parsed, or a mandatory substitution is unresolved after merging
      */
-    static Config load(List<ConfigSource> sources) {
-        Objects.requireNonNull(sources, "sources");
-        if (sources.isEmpty()) {
+    static Config load(List<Layer> layers) {
+        Objects.requireNonNull(layers, "layers");
+        if (layers.isEmpty()) {
             throw new ConfigValidationException("At least one configuration source is required");
         }
 
-        List<Config> layers = new ArrayList<>(sources.size());
-        for (ConfigSource source : sources) {
-            Objects.requireNonNull(source, "configuration source");
+        List<Config> parsed = new ArrayList<>(layers.size());
+        for (Layer layer : layers) {
+            Objects.requireNonNull(layer, "configuration layer");
             // Parse ONLY. Resolving here would break mandatory substitution: a ${VAR} in a
             // lower layer would fail even when a higher layer replaces that whole key, and
             // cross-layer references would not see the merged values.
@@ -62,21 +62,21 @@ final class ConfigLoader {
             // malformed database row reports "llm_config#42: 7: ..." rather than losing the
             // provenance a file used to get for free.
             try {
-                layers.add(parse(source));
+                parsed.add(parse(layer));
             } catch (ConfigException e) {
                 // Wrapped so a malformed layer arrives as this library's own failure, which
                 // is what LlmRegistry.build() and reload() document. The message already
                 // names the source and the line, because of the origin description above.
                 throw new ConfigValidationException(
-                        "Configuration source " + source.id() + " could not be parsed: "
-                                + e.getMessage(), e);
+                        "Configuration source " + layer.source().id() + " could not be"
+                                + " parsed: " + e.getMessage(), e);
             }
         }
 
         // Highest precedence first, each falling back to the one below it.
-        Config merged = layers.get(layers.size() - 1);
-        for (int i = layers.size() - 2; i >= 0; i--) {
-            merged = merged.withFallback(layers.get(i));
+        Config merged = parsed.get(parsed.size() - 1);
+        for (int i = parsed.size() - 2; i >= 0; i--) {
+            merged = merged.withFallback(parsed.get(i));
         }
 
         try {
@@ -98,35 +98,14 @@ final class ConfigLoader {
     /**
      * Turns one source into an unresolved {@link Config}.
      *
-     * @implNote A file is parsed with {@code parseFile} and not by reading its text, because
-     *     {@code include "sibling.conf"} in a HOCON file resolves <strong>relative to that
-     *     file</strong>, and only {@code parseFile} knows which file it is. Handing the same
-     *     bytes to {@code parseString} makes the includer fall back to the classpath, and
-     *     because an include is allow-missing by default the included block then vanishes
-     *     with no error at all. Any other source is text with no directory of its own, so it
-     *     gets Typesafe Config's documented behaviour for text: an include is looked up on
-     *     the classpath.
+     * @implNote How a layer is parsed is the layer's own answer, not a question asked here:
+     *     a file must be parsed through the file so that {@code include "sibling.conf"}
+     *     resolves beside it (ADR-0042, ADR-0053). All this method contributes is the origin
+     *     description, which is what puts the source's id into a parse error.
      */
-    private static Config parse(ConfigSource source) {
-        ConfigParseOptions options =
-                ConfigParseOptions.defaults().setOriginDescription(source.id());
-        if (source instanceof FileBacked fileSource) {
-            // setAllowMissing(false) so a layer that disappeared is an error rather than an
-            // empty layer; FileConfigSource.text() makes the same check for every other
-            // caller of the source.
-            return ConfigFactory.parseFile(
-                    fileSource.file().toFile(), options.setAllowMissing(false));
-        }
-        return ConfigFactory.parseString(text(source), options);
-    }
-
-    private static String text(ConfigSource source) {
-        String text = source.text();
-        if (text == null) {
-            throw new ConfigValidationException(
-                    "Configuration source " + source.id() + " returned no text");
-        }
-        return text;
+    private static Config parse(Layer layer) {
+        return layer.parse(
+                ConfigParseOptions.defaults().setOriginDescription(layer.source().id()));
     }
 
     /**

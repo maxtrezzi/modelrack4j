@@ -101,7 +101,7 @@ public final class LlmRegistry implements AutoCloseable {
     /** The default quiet period, ~100x the event burst measured for one write (Task 0.8). */
     private static final Duration DEFAULT_DEBOUNCE = Duration.ofMillis(300);
 
-    private final List<ConfigSource> sources;
+    private final List<Layer> layers;
     private final SnapshotLoader loader;
 
     /**
@@ -132,9 +132,9 @@ public final class LlmRegistry implements AutoCloseable {
      */
     private final AtomicReference<ChangeNotifier> notifier = new AtomicReference<>();
 
-    private LlmRegistry(List<ConfigSource> sources, SnapshotLoader loader,
+    private LlmRegistry(List<Layer> layers, SnapshotLoader loader,
             Map<String, LlmBundle> bundles) {
-        this.sources = sources;
+        this.layers = layers;
         this.loader = loader;
         this.bundles = bundles;
     }
@@ -327,7 +327,8 @@ public final class LlmRegistry implements AutoCloseable {
                 log.warn(
                         "modelrack4j reload rejected; the previous configuration stays live: {}",
                         e.getMessage(), e);
-                notify(failureListeners, new ReloadFailure(sources, e), "failure");
+                notify(failureListeners,
+                        new ReloadFailure(Layer.sourcesOf(layers), e), "failure");
                 throw e;
             }
 
@@ -515,6 +516,7 @@ public final class LlmRegistry implements AutoCloseable {
      * @throws ConfigValidationException if it is not one of this registry's sources
      */
     private void requireOwnLayer(WritableConfigSource target) {
+        List<ConfigSource> sources = Layer.sourcesOf(layers);
         if (!sources.contains(target)) {
             throw new ConfigValidationException("The layer '" + target.id() + "' is not one of"
                     + " this registry's configuration sources, so it cannot be stored through"
@@ -522,12 +524,12 @@ public final class LlmRegistry implements AutoCloseable {
         }
     }
 
-    private List<ConfigSource> staging(WritableConfigSource target, StagedWrite staged) {
-        List<ConfigSource> layers = new ArrayList<>(sources.size());
-        for (ConfigSource source : sources) {
-            layers.add(source.equals(target) ? staged.source() : source);
+    private List<Layer> staging(WritableConfigSource target, StagedWrite staged) {
+        List<Layer> staging = new ArrayList<>(layers.size());
+        for (Layer layer : layers) {
+            staging.add(layer.source().equals(target) ? Layer.of(staged.source()) : layer);
         }
-        return List.copyOf(layers);
+        return List.copyOf(staging);
     }
 
     /**
@@ -695,7 +697,7 @@ public final class LlmRegistry implements AutoCloseable {
          *     cannot be watched
          */
         public LlmRegistry build() {
-            List<ConfigSource> layers = ConfigSources.validated(sources);
+            List<Layer> layers = Layer.of(ConfigSources.validated(sources));
             // Chosen before the layers are loaded so that an impossible combination —
             // watch(true) with no files — is reported before any work, rather than after a
             // slow load.
@@ -754,11 +756,13 @@ public final class LlmRegistry implements AutoCloseable {
          *     or if watching was asked for and no layer is a file
          * @implNote The paths come from the layers themselves rather than from a field only
          *     {@code configFiles(...)} filled, which is what made a registry whose every
-         *     layer was a file refuse to be watched (ADR-0050). Each path is the one that
-         *     was configured, not the one it resolves to, so the watcher still registers on
-         *     the directory of a symlink rather than of its target (ADR-0024).
+         *     layer was a file refuse to be watched (ADR-0050). Each layer answers for
+         *     itself through {@link Layer#watchTarget()} rather than being recognised here
+         *     (ADR-0053), and what it answers is the configured path, not the one it
+         *     resolves to, so the watcher still registers on the directory of a symlink
+         *     rather than of its target (ADR-0024).
          */
-        private ChangeNotifier chooseNotifier(List<ConfigSource> layers) {
+        private ChangeNotifier chooseNotifier(List<Layer> layers) {
             if (notifier != null) {
                 if (watch) {
                     throw new ConfigValidationException(
@@ -771,10 +775,8 @@ public final class LlmRegistry implements AutoCloseable {
                 return null;
             }
             List<Path> files = new ArrayList<>(layers.size());
-            for (ConfigSource layer : layers) {
-                if (layer instanceof FileBacked fileLayer) {
-                    files.add(fileLayer.file());
-                }
+            for (Layer layer : layers) {
+                layer.watchTarget().ifPresent(files::add);
             }
             if (files.isEmpty()) {
                 throw new ConfigValidationException(
@@ -786,10 +788,10 @@ public final class LlmRegistry implements AutoCloseable {
         }
 
         /** @return the layers' identifiers, for a message that says which ones they are */
-        private static String ids(List<ConfigSource> layers) {
+        private static String ids(List<Layer> layers) {
             List<String> names = new ArrayList<>(layers.size());
-            for (ConfigSource layer : layers) {
-                names.add(layer.id());
+            for (Layer layer : layers) {
+                names.add(layer.source().id());
             }
             return names.toString();
         }

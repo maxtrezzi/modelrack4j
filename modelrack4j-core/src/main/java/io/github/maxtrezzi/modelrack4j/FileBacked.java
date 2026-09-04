@@ -21,14 +21,18 @@ import java.nio.file.Path;
  * A layer whose text lives in a real file, and which therefore must be parsed through that
  * file rather than through its text.
  *
- * @implNote This exists so that {@code ConfigLoader.parse} can recognise more than one kind
- *     of file-backed source. {@code include "sibling.conf"} resolves relative to the file
- *     that contains the line, and only {@code parseFile} knows which file that is; handing
- *     the same bytes to {@code parseString} makes the includer fall back to the classpath,
- *     where an allow-missing include quietly finds nothing (ADR-0042). Validating a text
- *     about to be stored needs the same treatment, against the not-yet-committed file.
+ * @implNote {@code include "sibling.conf"} resolves relative to the file that contains the
+ *     line, and only {@code parseFile} knows which file that is; handing the same bytes to
+ *     {@code parseString} makes the includer fall back to the classpath, where an
+ *     allow-missing include quietly finds nothing (ADR-0042). Validating a text about to be
+ *     stored needs the same treatment, against the not-yet-committed file.
+ *     <p>Only {@link Layer#of(ConfigSource)} reads this marker, and it is {@code sealed}
+ *     because that set is closed and internal: the three records permitted below are the
+ *     only layers this library can parse through a file or watch, and an application's own
+ *     source cannot join them (ADR-0053).
  */
-interface FileBacked extends ConfigSource {
+sealed interface FileBacked extends ConfigSource
+        permits FileConfigSource, StagedFileSource, WritableFileConfigSource {
 
     /** @return the file to parse */
     Path file();
