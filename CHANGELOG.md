@@ -55,6 +55,14 @@ will not be held back for a major bump until the API settles at `1.0.0`.
 
 ### Fixed
 
+- **`watch(true)` now works with layers given to `sources(...)`.** It watches the layers that
+  are files — `ConfigSource.ofFile(...)` and `ConfigSource.ofWritableFile(...)` — and ignores
+  the others; it still refuses to start when no layer is a file at all, and the message now
+  names the layers instead of the builder method. Before, `sources(...)` made `watch(true)`
+  throw even when every layer was a file, so an application could not both `store` a layer and
+  watch for hand edits without building a `FileChangeNotifier` itself, repeating each path in
+  a second list. That workaround still works and is no longer needed
+  ([ADR-0050](docs/adr/0050-watch-the-file-layers-whichever-method-supplied-them.md)).
 - A `ProviderFactory` returning `null` where the SPI declares `Optional` failed with a bare
   `NullPointerException` instead of a configuration error, for
   `createTokenCountEstimator` only — `createStreamingChatModel` and `createModerationModel`

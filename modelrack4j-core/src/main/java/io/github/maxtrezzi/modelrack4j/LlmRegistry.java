@@ -560,7 +560,6 @@ public final class LlmRegistry implements AutoCloseable {
     public static final class Builder {
 
         private List<ConfigSource> sources = List.of();
-        private List<Path> watchableFiles = List.of();
         private boolean watch;
         private Duration debounce = DEFAULT_DEBOUNCE;
         private ChangeNotifier notifier;
@@ -571,9 +570,9 @@ public final class LlmRegistry implements AutoCloseable {
         /**
          * Sets the configuration layers, as files. The shorthand for the common case.
          *
-         * <p>Equivalent to {@link #sources(List)} over {@link ConfigSource#ofFile(Path)},
-         * except that these files stay available to {@link #watch(boolean)}, which needs
-         * real paths and cannot get them from a source.
+         * <p>Exactly equivalent to {@link #sources(List)} over
+         * {@link ConfigSource#ofFile(Path)}, including for {@link #watch(boolean)}, which
+         * finds the files among the layers either way.
          *
          * <p>This and {@link #sources(List)} set the same thing; the last call wins.
          *
@@ -588,7 +587,6 @@ public final class LlmRegistry implements AutoCloseable {
                 asSources.add(ConfigSource.ofFile(file));
             }
             this.sources = List.copyOf(asSources);
-            this.watchableFiles = copy;
             return this;
         }
 
@@ -599,9 +597,11 @@ public final class LlmRegistry implements AutoCloseable {
          * configuration service, text built in memory. Layers of different kinds mix freely:
          * a base file under a database override is an ordinary list.
          *
-         * <p>Nothing watches these, because the library cannot know how. Call
-         * {@link LlmRegistry#reload()} when the configuration changes, or supply a
-         * {@link #notifier(ChangeNotifier)} that knows when it does.
+         * <p>{@link #watch(boolean)} watches the layers among these that are files —
+         * {@link ConfigSource#ofFile(Path)} and {@link ConfigSource#ofWritableFile(Path)} —
+         * and leaves the others alone, because the library cannot know how to watch them.
+         * For those, call {@link LlmRegistry#reload()} when the configuration changes, or
+         * supply a {@link #notifier(ChangeNotifier)} that knows when it does.
          *
          * <p>This and {@link #configFiles(List)} set the same thing; the last call wins.
          *
@@ -610,7 +610,6 @@ public final class LlmRegistry implements AutoCloseable {
          */
         public Builder sources(List<ConfigSource> sources) {
             this.sources = List.copyOf(Objects.requireNonNull(sources, "sources"));
-            this.watchableFiles = List.of();
             return this;
         }
 
@@ -618,7 +617,9 @@ public final class LlmRegistry implements AutoCloseable {
          * Supplies something that tells the registry when the configuration changed.
          *
          * <p>For a mechanism the library does not provide: a database
-         * {@code LISTEN}/{@code NOTIFY}, a Kubernetes informer, a message queue. For files,
+         * {@code LISTEN}/{@code NOTIFY}, a Kubernetes informer, a message queue. Also for a
+         * file behind a {@link ConfigSource} of your own, which {@link #watch(boolean)}
+         * cannot recognise as a file. For the file layers this library makes,
          * {@link #watch(boolean)} builds the right notifier already, and the two cannot both
          * be set.
          *
@@ -639,10 +640,16 @@ public final class LlmRegistry implements AutoCloseable {
          * <p>Off by default. When on, the registry starts one daemon thread that watches the
          * directories holding the configured files; {@link LlmRegistry#close()} stops it.
          *
-         * <p>Only for layers given as {@link #configFiles(List) files}. With layers that are
-         * not files there is nothing to watch, and {@link #build()} says so rather than
-         * watching nothing in silence — supply a {@link #notifier(ChangeNotifier)} or call
-         * {@link LlmRegistry#reload()} instead.
+         * <p>It watches the layers that are files and ignores the rest, so a registry that
+         * mixes a file with a layer of another kind is watched over its file half. At least
+         * one layer must be a file: with none, there is nothing to watch and {@link #build()}
+         * says so rather than watching nothing in silence — supply a
+         * {@link #notifier(ChangeNotifier)} or call {@link LlmRegistry#reload()} instead.
+         *
+         * <p>A file layer is one this library made, through {@link ConfigSource#ofFile(Path)}
+         * or {@link ConfigSource#ofWritableFile(Path)}. Your own {@link ConfigSource} that
+         * reads a file cannot say so, and is not watched; give a
+         * {@link #notifier(ChangeNotifier)} for it.
          *
          * @param watch whether to watch the configured files for changes
          * @return this builder
@@ -683,7 +690,7 @@ public final class LlmRegistry implements AutoCloseable {
          * @return the registry
          * @throws ConfigValidationException if no layer was given, two layers share an id,
          *     any layer is unreadable, any block is invalid, any provider rejects its
-         *     configuration, or watching was asked for without files to watch
+         *     configuration, or watching was asked for and no layer is a file
          * @throws UncheckedIOException if watching is enabled and a configured directory
          *     cannot be watched
          */
@@ -692,7 +699,7 @@ public final class LlmRegistry implements AutoCloseable {
             // Chosen before the layers are loaded so that an impossible combination —
             // watch(true) with no files — is reported before any work, rather than after a
             // slow load.
-            ChangeNotifier chosen = chooseNotifier();
+            ChangeNotifier chosen = chooseNotifier(layers);
             LlmRegistry registry;
             try {
                 SnapshotLoader loader = new SnapshotLoader(layers);
@@ -738,7 +745,20 @@ public final class LlmRegistry implements AutoCloseable {
             }
         }
 
-        private ChangeNotifier chooseNotifier() {
+        /**
+         * Picks what will tell the registry that the configuration changed.
+         *
+         * @param layers the validated layers, whose file members {@code watch(true)} watches
+         * @return the notifier, or {@code null} when neither was asked for
+         * @throws ConfigValidationException if both a notifier and watching were asked for,
+         *     or if watching was asked for and no layer is a file
+         * @implNote The paths come from the layers themselves rather than from a field only
+         *     {@code configFiles(...)} filled, which is what made a registry whose every
+         *     layer was a file refuse to be watched (ADR-0050). Each path is the one that
+         *     was configured, not the one it resolves to, so the watcher still registers on
+         *     the directory of a symlink rather than of its target (ADR-0024).
+         */
+        private ChangeNotifier chooseNotifier(List<ConfigSource> layers) {
             if (notifier != null) {
                 if (watch) {
                     throw new ConfigValidationException(
@@ -750,14 +770,28 @@ public final class LlmRegistry implements AutoCloseable {
             if (!watch) {
                 return null;
             }
-            if (watchableFiles.isEmpty()) {
-                throw new ConfigValidationException(
-                        "watch(true) watches configuration files, and this registry has none"
-                                + " — its layers were given through sources(...). Supply a"
-                                + " ChangeNotifier, or call reload() when the configuration"
-                                + " changes.");
+            List<Path> files = new ArrayList<>(layers.size());
+            for (ConfigSource layer : layers) {
+                if (layer instanceof FileBacked fileLayer) {
+                    files.add(fileLayer.file());
+                }
             }
-            return FileChangeNotifier.of(watchableFiles, debounce);
+            if (files.isEmpty()) {
+                throw new ConfigValidationException(
+                        "watch(true) watches configuration files, and none of these layers is"
+                                + " one: " + ids(layers) + ". Supply a ChangeNotifier, or call"
+                                + " reload() when the configuration changes.");
+            }
+            return FileChangeNotifier.of(files, debounce);
+        }
+
+        /** @return the layers' identifiers, for a message that says which ones they are */
+        private static String ids(List<ConfigSource> layers) {
+            List<String> names = new ArrayList<>(layers.size());
+            for (ConfigSource layer : layers) {
+                names.add(layer.id());
+            }
+            return names.toString();
         }
     }
 }

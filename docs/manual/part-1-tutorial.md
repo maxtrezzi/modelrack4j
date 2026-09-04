@@ -535,7 +535,8 @@ LlmRegistry registry = LlmRegistry.builder()
         .build();
 ```
 
-Nothing watches a database row, so you say when to re-read it:
+Nothing watches a database row, so you say when to re-read it. You can still add
+`watch(true)`: it watches the layers that are files, `basePath` here, and ignores the row.
 
 ```java
 jdbc.updateConfigText(42, newText);

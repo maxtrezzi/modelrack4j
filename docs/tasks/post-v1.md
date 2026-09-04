@@ -2696,7 +2696,8 @@ behaviour, it belongs here rather than in the ADR.
 
 ### P24 — `watch(true)` cannot see file-backed layers given through `sources(...)`
 
-**Status:** Not started
+**Status:** Done — at least one file layer, the rest ignored; ADR-0050 ·
+**Settled:** the argument below was put to the owner on 2026-09-03 and answered
 
 An application that both writes a configuration layer and wants hand edits to keep working
 needs `store()` and hot reload at once. The two are configured through builder methods that
@@ -2721,17 +2722,67 @@ watched.** No error, no log line, and the symptom is the one this library exists
 edits to a file that never reach the application. The manual's troubleshooting table names the
 exception but not this consequence.
 
-**The work, if it is taken:** let `watch(true)` accept layers from `sources(...)`, watching the
-`FileBacked` ones and ignoring the rest, and keep the current exception only for the case it
-was written for — a registry whose layers are *all* unwatchable. `Builder.build()` already
-knows which sources are `FileBacked`, so nothing new has to be discovered.
+**The work, as taken:** `watch(true)` accepts layers from `sources(...)`, watching the
+`FileBacked` ones and ignoring the rest, and the exception is kept for the case it was written
+for — a registry whose layers are *all* unwatchable.
 
-**The argument against**, which should be answered before any code moves: a registry mixing a
-database row with a file would then be "watched" in a way that covers only half its layers,
-and a caller who reads `watch(true)` as "changes reach me" would be half right — arguably worse
-than an exception that forces the question. If that argument wins, the item closes as a
-documentation change instead: a troubleshooting row for the silent drift, next to the row that
-already explains the exception.
+**The argument against** was that a registry mixing a database row with a file would then be
+"watched" in a way that covers only half its layers, and a caller who reads `watch(true)` as
+"changes reach me" would be half right — arguably worse than an exception that forces the
+question. It was put to the owner and it lost, on a point the entry had missed: refusing the
+mixed case does not make the row watchable. It sends the caller to
+`FileChangeNotifier.of(...)`, which watches exactly the same half, and adds a second path list
+that can silently drift out of step with the first.
+
+#### The decision, and the fact it turned on
+
+The owner's question was whether `watch(true)` is called only when files are present, or
+whether that is unpredictable at design time — because if it is predictable, the rule is
+simply *at least one file layer, and the rest does not count*.
+
+It is predictable, and statically so. At `build()` the layer list is complete and validated,
+and each layer either implements `FileBacked` — `FileConfigSource` and
+`WritableFileConfigSource`, what `ConfigSource.ofFile` and `ofWritableFile` return — or it does
+not. `ConfigLoader.parse` already makes exactly this test, to choose between `parseFile` and
+`parseString`. Nothing about a layer's kind changes after `build()`, so counting files is a
+read of the list rather than a forecast. **The rule stands: `watch(true)` requires at least one
+file layer; the rest is ignored.**
+
+#### What was found
+
+**The code had been stricter than the ADR it came from.** ADR-0042's Decision section says
+`watch(true)` "without file **sources**" fails at `build()` — a statement about layers. The
+implementation tested `watchableFiles`, a builder field only `configFiles(...)` fills and
+`sources(...)` cleared, which is a statement about which method the caller happened to call.
+Nobody had to decide to make the mixed case work: ADR-0042 had already said it. The only
+genuinely open question was the one the owner answered.
+
+So ADR-0050 amends ADR-0042 rather than reversing it, and the field is gone: `configFiles(...)`
+and `sources(...)` are now exactly equivalent.
+
+**The limit this deliberately keeps.** `FileBacked` is package-private, so an application's own
+`ConfigSource` that reads a file cannot declare itself one, and `watch(true)` will not see it.
+The way through already exists and is documented — `notifier(FileChangeNotifier.of(...))`.
+Making the interface public, or adding a path-shaped method to `ConfigSource`, would put the
+filesystem back into the interface ADR-0042 removed it from, and is not taken here.
+
+**Verification.** `ConfigSourceTest` went from 23 tests to 26: the refusal now also asserts
+that the message names the layers, and three cases were added — every layer a file through
+`sources(...)`, a mixed registry where the file is watched and the row is asserted *not* to be,
+and the case P24 exists for, one registry that stores a writable layer and picks up a hand edit
+of another. `mvn clean install` is green at 145 core tests.
+
+PIT on core: 200 mutants, 197 killed, 1 survived, 1 `NO_COVERAGE`, 1 timed out. The two that
+are not killed are the two already known — the equivalent `Optional.empty()` in
+`LlmRegistry.reload` from P27, and the deliberate cleanup branch in
+`WritableFileConfigSource.stage` — so this change added no survivor and no uncovered line.
+
+The end-to-end case was also run outside the test suite, against the real `openai` provider
+with an unused key: one registry built from `ofFile` plus `ofWritableFile` with `watch(true)`,
+a `store()` that published without firing a listener, then a hand edit of the base file that
+arrived as `onReload updated=[SL]`. Both free examples still run — `AtomicSnapshot`, which
+uses `configFiles(...)` with `watch(true)`, and `DatabaseSource`, which uses `sources(...)`
+with no watching at all.
 
 ---
 

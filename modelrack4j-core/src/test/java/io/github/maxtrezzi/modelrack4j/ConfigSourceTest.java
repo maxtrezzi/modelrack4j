@@ -18,6 +18,7 @@ package io.github.maxtrezzi.modelrack4j;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.awaitility.Awaitility.await;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -43,6 +44,12 @@ import org.junit.jupiter.api.io.TempDir;
  * (ADR-0042).
  */
 class ConfigSourceTest {
+
+    /** Short enough to keep the suite quick, still well above the burst one write makes. */
+    private static final Duration DEBOUNCE = Duration.ofMillis(60);
+
+    /** Generous: a loaded CI runner is slow, and a too-tight bound is a flaky test. */
+    private static final Duration TIMEOUT = Duration.ofSeconds(10);
 
     @TempDir
     private Path dir;
@@ -203,14 +210,78 @@ class ConfigSourceTest {
     }
 
     @Test
-    @DisplayName("watch(true) without files to watch is refused, not silently ignored")
+    @DisplayName("watch(true) with no file among the layers is refused, and says which they are")
     void watchingWithoutFilesIsRefused() {
         assertThatThrownBy(() -> LlmRegistry.builder()
                 .sources(List.of(ConfigSource.of("row#1", block("SL", "m"))))
                 .watch(true)
                 .build())
                 .isInstanceOf(ConfigValidationException.class)
+                .hasMessageContaining("row#1")
                 .hasMessageContaining("reload()");
+    }
+
+    @Test
+    @DisplayName("watch(true) watches a file layer given through sources(...)")
+    void watchingAFileGivenThroughSources() throws IOException {
+        Path file = dir.resolve("app.conf");
+        Files.writeString(file, block("SL", "first"), StandardCharsets.UTF_8);
+
+        // Every layer here is a file, and this was refused for having none (ADR-0050).
+        try (LlmRegistry registry = LlmRegistry.builder()
+                .sources(List.of(ConfigSource.ofFile(file)))
+                .watch(true)
+                .debounce(DEBOUNCE)
+                .build()) {
+            Files.writeString(file, block("SL", "second"), StandardCharsets.UTF_8);
+
+            awaitModel(registry, "SL", "second");
+        }
+    }
+
+    @Test
+    @DisplayName("a registry mixing a file and a row is watched over its file half")
+    void watchingAMixedRegistryWatchesTheFile() throws IOException {
+        Path file = dir.resolve("base.conf");
+        Files.writeString(file, block("SL", "first"), StandardCharsets.UTF_8);
+        MutableSource row = new MutableSource("row#1", block("SH", "unwatched"));
+
+        try (LlmRegistry registry = LlmRegistry.builder()
+                .sources(List.of(ConfigSource.ofFile(file), row))
+                .watch(true)
+                .debounce(DEBOUNCE)
+                .build()) {
+            Files.writeString(file, block("SL", "second"), StandardCharsets.UTF_8);
+
+            awaitModel(registry, "SL", "second");
+            // The row is not watched and nothing pretends otherwise: it changed, and only
+            // the file's event carried the change into the registry.
+            assertThat(registry.get("SH").config().modelName()).isEqualTo("unwatched");
+        }
+    }
+
+    @Test
+    @DisplayName("one registry can store a layer and pick up a hand edit of another")
+    void storingAndWatchingInOneRegistry() throws IOException {
+        Path base = dir.resolve("base.conf");
+        Path user = dir.resolve("user.conf");
+        Files.writeString(base, block("SL", "first"), StandardCharsets.UTF_8);
+        Files.writeString(user, block("SH", "first"), StandardCharsets.UTF_8);
+        WritableConfigSource target = ConfigSource.ofWritableFile(user);
+
+        try (LlmRegistry registry = LlmRegistry.builder()
+                .sources(List.of(ConfigSource.ofFile(base), target))
+                .watch(true)
+                .debounce(DEBOUNCE)
+                .build()) {
+            registry.store(target, block("SH", "stored"));
+            assertThat(registry.get("SH").config().modelName()).isEqualTo("stored");
+
+            Files.writeString(base, block("SL", "edited"), StandardCharsets.UTF_8);
+
+            awaitModel(registry, "SL", "edited");
+            assertThat(registry.get("SH").config().modelName()).isEqualTo("stored");
+        }
     }
 
     @Test
@@ -578,5 +649,11 @@ class ConfigSourceTest {
         public void close() {
             closed = true;
         }
+    }
+
+    private static void awaitModel(LlmRegistry registry, String name, String modelName) {
+        await().atMost(TIMEOUT)
+                .until(() -> registry.names().contains(name)
+                        && registry.get(name).config().modelName().equals(modelName));
     }
 }
