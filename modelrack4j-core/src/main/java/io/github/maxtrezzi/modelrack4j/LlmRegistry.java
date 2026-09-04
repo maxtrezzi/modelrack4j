@@ -302,7 +302,8 @@ public final class LlmRegistry implements AutoCloseable {
      * @return what changed, or empty when the reloaded configuration equals the one already
      *     in effect. The comparison is record equality on the parsed configuration, not on
      *     the text, so reformatting a layer changes nothing and publishes nothing.
-     * @throws ConfigValidationException if a layer cannot be read, parsed or validated
+     * @throws ConfigValidationException if a layer does not parse or does not validate
+     * @throws ConfigAccessException if a layer cannot be read
      * @throws RuntimeException whatever a provider's builder threw. Nothing was swapped: the
      *     previous snapshot stays live in full, and the failure listeners have already been
      *     told.
@@ -389,8 +390,11 @@ public final class LlmRegistry implements AutoCloseable {
      * @return what changed, or empty when the new text means exactly what was already live —
      *     the comparison is on the parsed configuration, so a reformatting is stored and
      *     reported as no change
-     * @throws ConfigValidationException if the layer is not one of this registry's own, if
-     *     the text does not parse or does not validate, or if it cannot be stored
+     * @throws ConfigValidationException if the layer is not one of this registry's own,
+     *     or if the text does not parse or does not validate
+     * @throws ConfigAccessException if the text validates but cannot be stored, or if
+     *     another layer cannot be read while it is validated. The previous configuration is
+     *     back in place and no listener ran.
      * @throws RuntimeException whatever the layer's own
      *     {@link WritableConfigSource#write(String)} threw, or a provider's builder. The
      *     previous configuration is back in place and no listener ran.
@@ -453,8 +457,11 @@ public final class LlmRegistry implements AutoCloseable {
      * @return what changed, or empty when the new text means exactly what was already live
      * @throws StaleLayerException if the layer no longer holds {@code expected}. Nothing was
      *     published and nothing was stored.
-     * @throws ConfigValidationException if the layer is not one of this registry's own, if
-     *     the text does not parse or does not validate, or if it cannot be stored
+     * @throws ConfigValidationException if the layer is not one of this registry's own,
+     *     or if the text does not parse or does not validate
+     * @throws ConfigAccessException if the text validates but cannot be stored, or if
+     *     another layer cannot be read while it is validated. The previous configuration is
+     *     back in place and no listener ran.
      * @throws RuntimeException whatever the layer's own
      *     {@link WritableConfigSource#write(String)} threw, or a provider's builder. The
      *     previous configuration is back in place and no listener ran.
@@ -694,8 +701,9 @@ public final class LlmRegistry implements AutoCloseable {
          *
          * @return the registry
          * @throws ConfigValidationException if no layer was given, two layers share an id,
-         *     any layer is unreadable, any block is invalid, any provider rejects its
-         *     configuration, or watching was asked for and no layer is a file
+         *     any block is invalid, any provider rejects its configuration, or watching was
+         *     asked for and no layer is a file
+         * @throws ConfigAccessException if any layer cannot be read
          * @throws UncheckedIOException if watching is enabled and a configured directory
          *     cannot be watched
          */

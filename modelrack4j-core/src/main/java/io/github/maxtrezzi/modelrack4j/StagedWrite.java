@@ -31,7 +31,7 @@ interface StagedWrite {
     /**
      * Makes the staged text the layer's content.
      *
-     * @throws ConfigValidationException if it cannot be stored
+     * @throws ConfigAccessException if it cannot be stored
      */
     void commit();
 

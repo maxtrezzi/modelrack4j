@@ -114,7 +114,9 @@ class ConfigStoreTest {
         @Override
         public void write(String text) {
             if (refuseWrites) {
-                throw new ConfigValidationException("the database is unreachable");
+                // The medium failed, not the text: that is what ConfigAccessException means,
+                // and what WritableConfigSource.write tells an implementer to throw.
+                throw new ConfigAccessException("the database is unreachable");
             }
             writes.incrementAndGet();
             stored.set(text);
@@ -343,6 +345,35 @@ class ConfigStoreTest {
         }
 
         @Test
+        @DisplayName("a directory that cannot be written fails before validation, as access")
+        void store_ontoAReadOnlyDirectory_failsAsAccessNotValidation() throws IOException {
+            Path locked = Files.createDirectory(dir.resolve("locked"));
+            Path file = locked.resolve("app.conf");
+            Files.writeString(file, LAYER, StandardCharsets.UTF_8);
+            WritableConfigSource target = ConfigSource.ofWritableFile(file);
+
+            try (LlmRegistry registry = registryOver(target)) {
+                // Read and executable, not writable: the layer still loads, and staging beside
+                // it cannot. That is the commonest storage failure, and it happens before the
+                // new text is validated at all.
+                Files.setPosixFilePermissions(locked, PosixFilePermissions.fromString("r-xr-xr-x"));
+                try {
+                    assertThatThrownBy(() -> registry.store(target, LAYER_WITH_SECOND_MODEL))
+                            .isInstanceOf(ConfigAccessException.class)
+                            .isNotInstanceOf(ConfigValidationException.class)
+                            .hasMessageContaining("Cannot write the configuration beside");
+
+                    assertThat(registry.get("SL").config().modelName()).isEqualTo("first");
+                } finally {
+                    Files.setPosixFilePermissions(locked,
+                            PosixFilePermissions.fromString("rwxr-xr-x"));
+                }
+                assertThat(read(file)).isEqualTo(LAYER);
+                assertThat(stagedFilesUnder(dir)).isEmpty();
+            }
+        }
+
+        @Test
         @DisplayName("a write that fails puts the previous configuration back")
         void store_whenTheWriteFails_rollsBack() {
             MemoryRow row = new MemoryRow(LAYER);
@@ -351,7 +382,7 @@ class ConfigStoreTest {
                 row.refuseWrites = true;
 
                 assertThatThrownBy(() -> registry.store(row, LAYER_WITH_SECOND_MODEL))
-                        .isInstanceOf(ConfigValidationException.class)
+                        .isInstanceOf(ConfigAccessException.class)
                         .hasMessageContaining("unreachable");
 
                 assertThat(registry.get("SL").config().modelName()).isEqualTo("first");
@@ -875,7 +906,7 @@ class ConfigStoreTest {
 
                 assertThatThrownBy(() ->
                         registry.storeIfUnchanged(row, row.text(), LAYER_WITH_SECOND_MODEL))
-                        .isInstanceOf(ConfigValidationException.class)
+                        .isInstanceOf(ConfigAccessException.class)
                         .hasMessageContaining("unreachable");
 
                 assertThat(registry.get("SL").config().modelName()).isEqualTo("first");
@@ -1021,7 +1052,7 @@ class ConfigStoreTest {
             WritableConfigSource target = ConfigSource.ofWritableFile(occupied);
 
             assertThatThrownBy(() -> target.write(LAYER))
-                    .isInstanceOf(ConfigValidationException.class)
+                    .isInstanceOf(ConfigAccessException.class)
                     .hasMessageContaining("Cannot replace");
 
             assertThat(stagedFilesUnder(dir)).isEmpty();

@@ -42,8 +42,10 @@ final class ConfigLoader {
      *
      * @param layers the layers, lowest precedence first
      * @return the merged and resolved configuration
-     * @throws ConfigValidationException if a source cannot produce its text or cannot be
-     *     parsed, or a mandatory substitution is unresolved after merging
+     * @throws ConfigValidationException if a source cannot be parsed, or a mandatory
+     *     substitution is unresolved after merging
+     * @throws ConfigAccessException if a source cannot be reached at all — a file that is
+     *     missing or unreadable, a source whose {@code text()} threw
      */
     static Config load(List<Layer> layers) {
         Objects.requireNonNull(layers, "layers");
@@ -63,6 +65,14 @@ final class ConfigLoader {
             // provenance a file used to get for free.
             try {
                 parsed.add(parse(layer));
+            } catch (ConfigException.IO e) {
+                // The medium, not the text: parseFile reports a missing or unreadable file
+                // this way, and both are ConfigException.IO while a syntax error is
+                // ConfigException.Parse. Kept apart because the caller's answer differs —
+                // invalid text has to be changed, an unreachable layer retried.
+                throw new ConfigAccessException(
+                        "Configuration source " + layer.source().id() + " cannot be read: "
+                                + e.getMessage(), e);
             } catch (ConfigException e) {
                 // Wrapped so a malformed layer arrives as this library's own failure, which
                 // is what LlmRegistry.build() and reload() document. The message already

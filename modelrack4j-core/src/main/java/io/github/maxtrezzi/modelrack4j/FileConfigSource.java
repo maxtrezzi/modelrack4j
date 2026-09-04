@@ -57,20 +57,24 @@ record FileConfigSource(Path file) implements FileBacked {
      *
      * @param file the file to read
      * @return its text
-     * @throws ConfigValidationException if it is missing or cannot be read
+     * @throws ConfigAccessException if it is missing or cannot be read
      */
     static String read(Path file) {
         // Checked rather than left to readString so the message names the file and the
         // reason, instead of surfacing a bare NoSuchFileException from inside the loader.
         if (!Files.isReadable(file)) {
-            throw new ConfigValidationException(
+            throw new ConfigAccessException(
                     "Configuration file does not exist or is not readable: " + file);
         }
         try {
             return Files.readString(file, StandardCharsets.UTF_8);
         } catch (IOException e) {
-            throw new ConfigValidationException(
-                    "Cannot read configuration file " + file + ": " + e.getMessage(), e);
+            // e rather than e.getMessage(): the message of an IOException over a path is
+            // often just that path again, so the type is the only part that says what
+            // happened. "…: java.nio.file.AccessDeniedException: /etc/app.conf" beats
+            // "…: /etc/app.conf".
+            throw new ConfigAccessException(
+                    "Cannot read configuration file " + file + ": " + e, e);
         }
     }
 }

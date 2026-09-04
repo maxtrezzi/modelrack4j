@@ -22,6 +22,12 @@ package io.github.maxtrezzi.modelrack4j;
  *
  * <p>Validation is fail-fast: this is thrown while the registry is being built, before any
  * model object exists, so an invalid configuration never becomes a live bundle.
+ *
+ * <p><strong>It always says something about the text.</strong> A layer that cannot be reached
+ * at all — a missing file, an unwritable directory, a database that is down — throws
+ * {@link ConfigAccessException} instead, which is not a subclass of this one. The two are
+ * separate because the answer differs: invalid text has to be changed, and an unreachable
+ * layer has to be retried.
  */
 public final class ConfigValidationException extends RuntimeException {
 

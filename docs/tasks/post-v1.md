@@ -3420,6 +3420,84 @@ go stale.
 
 ---
 
+### P30 — `ConfigAccessException`: the implementation of D6
+
+**Status:** Done — five throw sites moved, and a sixth the plan had not found; ADR-0053 ·
+**Settled by:** [D6](open-decisions.md#d6--cannot-store-is-not-your-configuration-is-invalid)
+
+The decision is D6's and the reasoning is in
+[ADR-0053](../adr/0053-a-separate-exception-for-a-layer-that-cannot-be-reached.md). This entry
+records what building it found.
+
+#### What was found
+
+**1. Moving the five planned sites did not change what a missing config file does.** The plan
+listed two read sites in `FileConfigSource.read` and three write sites in
+`WritableFileConfigSource`, and all five moved cleanly. Then a new test — a missing layer at
+`build()` — still caught `ConfigValidationException`, saying *"could not be parsed"*.
+
+The reason is ADR-0042: a file layer is parsed with `parseFile`, not by reading its text, so
+`FileConfigSource.text()` is never called during a load. The load path for a file layer runs
+through `ConfigLoader`, which wrapped every `ConfigException` as a parse failure. So the
+commonest read failure in the library — the file is not there — was reported as a problem with
+text that had never been read.
+
+`ConfigLoader.load` now catches `ConfigException.IO` before `ConfigException`. Probed against
+`config-1.4.9` before writing the catch, rather than assumed: a missing file is
+`com.typesafe.config.ConfigException$IO`, an unreadable file is the same, and a syntax error is
+`ConfigException$Parse`. The two cases separate exactly on that boundary.
+
+This is the second time in two days that a decision's plan was right about the code it had read
+and blind to a path it had not. The plan was written from a grep for `ConfigValidationException`;
+what it could not see was which of those sites the loader actually reaches.
+
+**2. The example needed nothing.** `DatabaseSource` has two `catch (ConfigValidationException)`
+blocks, and the plan said to check whether each should also catch the new type. Both surround a
+deliberately invalid provider name, so both are still exactly right. Its in-memory `Row` never
+fails as a medium.
+
+**3. Two javadoc contracts named the wrong type after the move**, and a grep for
+`ConfigValidationException` over every `.java` and `.md` file is what found them:
+`SnapshotLoader.load` (both overloads) and `StagedWrite.commit` still said an unreadable layer
+or a failed store was a validation failure. Reading the diff would not have shown either —
+neither file has a throw site, only the `@throws` line above a method whose behaviour changed
+underneath it.
+
+**4. A sentence unrelated to D6 was false, found in the same grep.** The reference said *"All
+four factories in this repository now have an empty `validate()`"*. P25 (`d0d0ee6`) gave GLM's
+a real body two commits earlier, and `AGENTS.md` already said three of four. Corrected here
+rather than left for a later pass, and checked by reading all four bodies, not by trusting
+`AGENTS.md`.
+
+**5. A test fixture was carrying the old contract.** `ConfigStoreTest.MemoryRow` threw
+`ConfigValidationException("the database is unreachable")` from `write`, which is the failure
+the new type exists for. It now throws `ConfigAccessException`, so the suite demonstrates the
+contract `WritableConfigSource.write` documents instead of contradicting it.
+
+#### Verification
+
+Core went from 142 tests to 145, and `ConfigStoreTest` from 46 to 47. Four assertions were
+updated to the new type — a missing file in `LayeredResolutionTest`, an unreadable source and a
+failed move in the two store tests, and both rollback cases — and four cases are new:
+
+- a store onto a read-only directory: `ConfigAccessException` from `stage()`, **before** the new
+  text is validated, with the previous configuration live and no staged file left behind;
+- a missing layer at `build()`;
+- a layer deleted between `build()` and `reload()`: the throw, the `ReloadFailure.cause`, and
+  the previous snapshot still serving;
+- and, in three of those, an explicit `isNotInstanceOf(ConfigValidationException.class)`, so
+  turning one type into a subclass of the other fails loudly rather than silently restoring the
+  ambiguity.
+
+`mvn clean install` green. While this branch waited, `build/check-docs.py` reported
+`ADR numbering gaps: [50, 51, 52]` on it, which was never a defect: 0050 and 0051 belonged to
+P24's branch and 0052 to D5's, both unpushed at the time. The gap closed when they merged —
+[#50](https://github.com/maxtrezzi/modelrack4j/pull/50) and
+[#51](https://github.com/maxtrezzi/modelrack4j/pull/51) — which is also the merge order this
+branch was rebased into: P24, then D5, then this.
+
+---
+
 ### P31 — A layer answers for itself, instead of being recognised
 
 **Status:** Done — two type tests became one, at a boundary; ADR-0051 ·
@@ -3555,3 +3633,116 @@ because another writer stored between the two lines. Output:
 That second case is the one the paragraph describes, and it is the reason the `catch` stays.
 
 No code changed beyond the javadoc, so there is no CHANGELOG entry.
+
+---
+
+### P33 — The messages D6 leaves a user, and where they are looked up
+
+**Status:** Done — three troubleshooting rows, and a message that named no cause ·
+**Raised by:** [D6](open-decisions.md#d6--cannot-store-is-not-your-configuration-is-invalid) ·
+**Branch:** carried by D6's branch
+
+[P30](#p30--configaccessexception-the-implementation-of-d6) gave the library a second exception
+type. This entry is what that owed a reader: the messages it produces, in the table where a
+reader looks a message up.
+
+#### What was missing
+
+The Troubleshooting table in `docs/manual/part-2-reference.md` had **no row for a layer that
+cannot be read or written** — not before D6 and not after it. Every other failure the library
+can produce has one. A user whose configuration file is missing, or whose store meets a
+read-only directory, found the type described in the Exceptions section and nothing in the
+table they actually consult when they hold a message.
+
+Checked and found needing nothing: the tutorial, which shows four failures and all four are
+about text; the examples, where only `DatabaseSource` catches `ConfigValidationException` and
+both of its catches surround a deliberately invalid provider name; and `README.md`, which names
+no exception type at all.
+
+#### The defect the probe found
+
+Running the failures to capture their real text — rather than quoting them from the source —
+showed one that says nothing:
+
+    Cannot write the configuration beside /…/locked/app.conf: /…/locked/.modelrack4j-staged-3961….conf
+
+`e.getMessage()` on an `IOException` over a path is usually **just that path again**, and here
+that path is the staged temporary file, which the user never asked for and cannot act on. The
+message named a random hidden filename and no cause. All three write and read sites had the
+same shape. They now interpolate `e` rather than `e.getMessage()`:
+
+    Cannot write the configuration beside /…/locked/app.conf: java.nio.file.AccessDeniedException: /…/locked/.modelrack4j-staged-3961….conf
+
+**This was only visible by running it.** The source reads `+ e.getMessage()`, which looks
+correct, and no test asserted on the tail of the message.
+
+#### A second thing the probe settled
+
+The message a user meets at `build()` is **not** the one in `FileConfigSource`. A file layer is
+parsed with `parseFile` and never through `text()`, so a missing file surfaces from
+`ConfigLoader` as `Configuration source … cannot be read`, while
+`Configuration file does not exist or is not readable` appears only when the application calls
+`text()` itself. The table says both, and which is which — writing only the second would have
+sent a reader looking for a string the library never printed to them.
+
+#### What was added
+
+Three rows: the unreadable layer, the store that cannot write, and the migration symptom —
+something escaping a `catch (ConfigValidationException)` that used to catch it, with the reason
+the split exists.
+
+#### Verification
+
+`mvn clean install` green, core at 148 tests — unchanged by this item, which adds none: the
+message text is not asserted anywhere, which is exactly why the defect survived.
+`build/check-docs.py` reported only the two expected cross-branch items while this branch
+waited on P24's and D5's ADR numbers, and is clean now that both have merged.
+
+#### Checked again before merging, 2026-09-04
+
+Four things were run over the whole branch, on the machine this repository records:
+AMD Ryzen 7 7840HS, Temurin 25.0.3.
+
+**Mutation testing on core: 205 mutants, 202 killed, 1 timed out, 1 survived, 1 uncovered,
+2 minutes 50 seconds.** The same three that are not killed as
+[P31](#p31--a-layer-answers-for-itself-instead-of-being-recognised) recorded, at the line
+numbers this branch moved them to: the equivalent `Optional.empty()` in `LlmRegistry.reload`
+(341), the timeout in `Builder.chooseNotifier` (798), and the deliberate cleanup branch in
+`WritableFileConfigSource.stage` (142). `ConfigAccessException` produces no mutants at all —
+it declares constructors and no logic. The report was checked for a class this branch wrote
+before its numbers were believed, which is [P31](#p31--a-layer-answers-for-itself-instead-of-being-recognised)'s
+lesson: `ConfigLoader.load`'s mutants sit at lines 87, 88 and 96, where this branch's catch
+block put them, and not at main's.
+
+**All five examples were run.** `AtomicSnapshot` and `DatabaseSource` cost nothing;
+`ProviderSwap`, `ConsoleChat` and `ThreeModelCouncil` made real calls. The council answered
+from all three configured models in one round, with moderation on `CR` alone, streaming on
+`SH` alone and memory on `SL` alone — the capability matrix, observed rather than asserted.
+`ConsoleChat`'s `/tools` was driven to the end: the `@Tool` method ran
+(`[tool called: now() -> …]`) and the model used its result, which is
+[P21](#p21--what-the-library-leaves-available-said-out-loud)'s claim about `AiServices`
+demonstrated rather than described.
+
+**`mvn -Pintegration verify`: four tests, four providers, all passing.** So the four
+configured identifiers still exist upstream — `gpt-5-mini`, `claude-sonnet-4-6`,
+`gemini-3.6-flash`, `glm-5.3` — and `examples.conf`'s `gpt-5.1` and `claude-sonnet-5` answered
+through the examples. **This also settles what
+[P25](#p25--a-malformed-glm-key-fails-before-the-call-past-the-exception-guarantee) left open:**
+that entry could not check whether a real GLM key satisfies the `id.secret` rule with a secret
+of at least 16 bytes, because `ZHIPU_API_KEY` was not on the shell it ran from. `GlmProviderIT`
+passed with the real key, so the check refuses no working credential.
+
+**The documentation was checked by running it, not by reading it.** The four failures the
+tutorial prints in sections 6 and 7 were reproduced from a probe and match the printed text —
+moderation on Anthropic, token-window on Anthropic, an unset mandatory substitution, and a
+block with `model-name` deleted, all `ConfigValidationException`. A separate probe deleted a
+watched file and called `reload()`: `ConfigAccessException` naming the path, the `WARN` the
+README promises, and the previous configuration still live afterwards. One thing to know about
+that message — Typesafe's `ConfigException.IO.getMessage()` already begins with the path, so
+interpolating the cause puts the path in three times. It is verbose rather than wrong, and
+trimming an upstream prefix is a decision rather than a fix.
+
+**One defect found, in the reference's exceptions table.** *"Those five are the library's
+own"* — four are. `java.io.UncheckedIOException` is the JDK's, and it has been in that table
+since before this branch, which raised the count from four to five and carried the wording
+with it. Corrected here: the sentence now says the library throws five and owns four.

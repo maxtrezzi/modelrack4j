@@ -3,10 +3,10 @@
 Items waiting on the owner rather than on work. Do not resolve these unilaterally — each
 one closes by writing an ADR (see [ADR-0001](../adr/0001-record-decisions-as-adrs.md)).
 
-**D1 to D5 are settled; D6 is open.** A new entry here is a question for the owner, not work
-to pick up, and an entry marked `Needs decision` blocks the code that depends on it rather
-than inviting a guess. Entries stay in number order and keep the framing they were decided
-under, with the outcome at the top.
+**D1 to D6 are all settled**, so this file is a record rather than a queue right now. A new
+entry here is a question for the owner, not work to pick up, and an entry marked
+`Needs decision` blocks the code that depends on it rather than inviting a guess. Entries stay
+in number order and keep the framing they were decided under, with the outcome at the top.
 
 ---
 
@@ -203,8 +203,34 @@ added comment is a change somebody made on purpose.
 
 ### D6 — "Cannot store" is not "your configuration is invalid"
 
-**Status:** Needs decision ·
-**Raised by:** mapping the library's exceptions onto HTTP status codes
+**Status:** Settled 2026-09-03 — **a distinct exception, covering reads too** ·
+**Raised by:** mapping the library's exceptions onto HTTP status codes ·
+**Settled by:** [ADR-0053](../adr/0053-a-separate-exception-for-a-layer-that-cannot-be-reached.md)
+
+The owner took the second option below, and widened it. `ConfigAccessException` is public,
+unchecked, and **not** a subclass of `ConfigValidationException`, so catching one never catches
+the other.
+
+**Two corrections to the framing below, both found by reading the code rather than the entry.**
+
+1. **The entry scopes the new type too narrowly**, to "only once validation has passed and the
+   write itself fails". `WritableFileConfigSource.stage()` fails on an unwritable directory or a
+   full disk **before** validation runs at all, and that is the commonest storage failure there
+   is. Both `stage()` and `commitStaged()` moved.
+2. **The read side carries the identical mislabel.** A layer that does not exist was also a
+   `ConfigValidationException`. The owner chose to fix both sides, which is why the type is
+   named for *access* rather than for storing.
+
+**A third correction came from running the tests, and neither the entry nor the plan had it.**
+Moving `FileConfigSource.read` was not enough to change what a missing file does at `build()`.
+A file layer is parsed with `parseFile` and never through `text()` (ADR-0042), so a missing
+file surfaces from `ConfigLoader`, where it had been wrapped as *"could not be parsed"* — which
+is untrue twice over, since nothing was parsed and nothing was wrong with the text. The loader
+now catches `ConfigException.IO` before `ConfigException`. Probed against `config-1.4.9`: a
+missing file and an unreadable file are both `ConfigException$IO`, a syntax error is
+`ConfigException$Parse`.
+
+The framing the decision was taken under follows.
 
 `store` and `storeIfUnchanged` throw `ConfigValidationException` both when the text does not
 load **and** when the layer cannot be written — the javadoc says so plainly: *"if the text does

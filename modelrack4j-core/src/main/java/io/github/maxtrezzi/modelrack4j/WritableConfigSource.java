@@ -52,7 +52,8 @@ public interface WritableConfigSource extends ConfigSource {
      * @param text the new HOCON text, never {@code null}. It is unresolved: any
      *     {@code ${VAR}} it contains is written through as written, which is what keeps a
      *     secret out of the stored text.
-     * @throws ConfigValidationException if the text cannot be stored. The store is then
+     * @throws ConfigAccessException if the text cannot be stored — an unwritable
+     *     directory, a full disk, a database that refuses the write. The store is then
      *     rolled back, so nothing was published and no listener ran.
      */
     void write(String text);

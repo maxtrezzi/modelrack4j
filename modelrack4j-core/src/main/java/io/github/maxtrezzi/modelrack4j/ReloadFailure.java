@@ -28,7 +28,8 @@ import java.util.Objects;
  *
  * @param sources the layers the registry was reading, lowest precedence first
  * @param cause why the snapshot was rejected — usually a {@link ConfigValidationException}
- *     naming the offending block, but a provider builder may throw anything
+ *     naming the offending block, or a {@link ConfigAccessException} when a layer could not
+ *     be read at all, but a provider builder may throw anything
  */
 public record ReloadFailure(List<ConfigSource> sources, Exception cause) {
 

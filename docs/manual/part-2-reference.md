@@ -208,10 +208,14 @@ key outright.
 
 ### Missing and malformed files
 
-A layer that does not exist, or cannot be read, is a `ConfigValidationException` naming the
-path. There is no "skip what is missing" mode. The reason: an operator expects every listed
-file to be read, and a file that was silently skipped is a worse outcome than a start that
-fails immediately.
+A layer that does not exist, or cannot be read, is a `ConfigAccessException` naming the path.
+A layer that is there but malformed is a `ConfigValidationException`. The two are separate
+types because the answer is different: the first has to be retried or fixed on the machine,
+the second has to be corrected in the text.
+
+There is no "skip what is missing" mode. The reason: an operator expects every listed file to
+be read, and a file that was silently skipped is a worse outcome than a start that fails
+immediately.
 
 ---
 
@@ -269,7 +273,7 @@ LlmRegistry registry = LlmRegistry.builder()
 | `watch(boolean)` | Off by default. On, the registry starts one daemon thread and watches the layers that are files, whichever of the two methods above supplied them. Layers that are not files are ignored; at least one must be a file. |
 | `notifier(ChangeNotifier)` | Something of your own that tells the registry when the configuration changed. Cannot be combined with `watch(true)`. |
 | `debounce(Duration)` | How long the files must be quiet before a reload runs. Must be positive. |
-| `build()` | Parses, validates and builds everything, then starts the notifier if there is one. Throws `ConfigValidationException` if no layer was given, two layers share an id, any layer or block is invalid, or `watch(true)` was set and no layer is a file. Throws `UncheckedIOException` if a directory cannot be watched. |
+| `build()` | Parses, validates and builds everything, then starts the notifier if there is one. Throws `ConfigValidationException` if no layer was given, two layers share an id, any block is invalid, or `watch(true)` was set and no layer is a file; `ConfigAccessException` if a layer cannot be read; `UncheckedIOException` if a directory cannot be watched. |
 
 `build()` is all-or-nothing: one bad block means no registry, not a registry missing one name.
 
@@ -459,10 +463,10 @@ already live, and publishes nothing.
 
 | Method | Contract |
 |---|---|
-| `store(WritableConfigSource, String)` | Validates, applies, stores. Returns what changed, or empty when the new text means what was already live — a text that only reformats is stored, and reported as no change. |
+| `store(WritableConfigSource, String)` | Validates, applies, stores. Returns what changed, or empty when the new text means what was already live — a text that only reformats is stored, and reported as no change. A text that does not validate throws `ConfigValidationException`; a layer that cannot be written throws `ConfigAccessException`, and both leave the previous configuration live. |
 | `storeIfUnchanged(WritableConfigSource, String, String)` | The same, but only while the layer still holds the text passed as `expected`. Otherwise throws `StaleLayerException`, which carries the text the layer holds now. |
 | `ConfigSource.ofWritableFile(Path)` | A file layer that can also be written. It writes through a temporary file beside the file it will replace, so a reader never sees half a write; it follows a symbolic link instead of replacing it; and it keeps the permissions the file already had. |
-| `WritableConfigSource.write(String)` | What the library calls to store the text. Implement it for a layer of your own: make it one statement, and make sure it stores nothing at all if it throws. |
+| `WritableConfigSource.write(String)` | What the library calls to store the text. Implement it for a layer of your own: make it one statement, make sure it stores nothing at all if it throws, and throw `ConfigAccessException` when the medium fails. |
 
 #### More than one writer
 
@@ -620,13 +624,14 @@ component participates, including `description`.
 
 | Exception | When |
 |---|---|
-| `ConfigValidationException` | A file is unreadable, a block is malformed, a value is out of range, a substitution is unresolved, or a provider rejects its configuration. Unchecked. |
+| `ConfigValidationException` | A block is malformed, a value is out of range, a substitution is unresolved, or a provider rejects its configuration. Always something about the text. Unchecked. |
+| `ConfigAccessException` | A layer cannot be reached: a file that is missing or unreadable, a directory that cannot be written, a full disk, a database that is down. Nothing is wrong with the configuration — it could not be read or stored. **Not** a subclass of `ConfigValidationException`. Unchecked. |
 | `UnknownConfigurationException` | `get()` on a name that is not in the current snapshot. |
 | `UncheckedIOException` | Watching was requested and a directory cannot be watched. |
 | `StaleLayerException` | `storeIfUnchanged()` on a layer that no longer holds the text the change was based on. Carries that layer's current text, to apply the change to instead. Unchecked. |
 
-Those four are the library's own, and they are thrown identically whichever provider a block
-names. **Everything a model call throws belongs to the provider instead**, and those types are
+Those five are the exceptions this library throws, and they arrive identically whichever
+provider a block names. Four of them are its own types; `UncheckedIOException` is the JDK's. **Everything a model call throws belongs to the provider instead**, and those types are
 not portable between providers.
 
 All four providers were called against their live API in
@@ -861,10 +866,12 @@ gets a better message, earlier.
 
 `validate()` is for what core cannot see — a rule specific to your provider. Throw
 `ConfigValidationException` with a message naming the block and the way out; those messages
-are part of the contract, and the tests assert on them. All four factories in this repository
-now have an empty `validate()`: three of them used to reject moderation here, and that is
+are part of the contract, and the tests assert on them. Three of the four factories in this
+repository have an empty `validate()`: they used to reject moderation here, and that is
 reported through `supportsModeration()` instead, while OpenAI never had anything to reject.
-An empty body is the normal case, not a sign of an unfinished provider.
+The fourth is GLM, which checks the *shape* of the API key, because its own code splits the
+key and signs a token with the halves before any call. An empty body is the normal case, not
+a sign of an unfinished provider.
 
 ---
 
@@ -981,6 +988,9 @@ Deliberate and permanent:
 | `` `temperature` is deprecated for this model `` | A non-default `temperature` on a model that rejects one, such as `claude-sonnet-5` | Remove the key. The model then uses its own sampling settings. |
 | `UnknownConfigurationException` at runtime | The name was removed from the configuration while running | Catch it and re-read `names()`, or keep the block. The exception's `configurationName()` gives the name that was asked for. |
 | `watch(true) watches configuration files, and none of these layers is one` | `watch(true)` where no layer is a file — every one is a database row, or your own `ConfigSource` | There is nothing the library can watch. Call `reload()` when the configuration changes, or pass a `ChangeNotifier`. One file layer among the others is enough to watch that file. |
+| `Configuration source … cannot be read` | A layer's file is missing or unreadable, at `build()` or at any reload. Calling `text()` on the source yourself says `Configuration file does not exist or is not readable` instead | Check the path and the permissions. This is a `ConfigAccessException`, not a validation failure: nothing was found wrong with the text, because the text could not be read. |
+| `Cannot write the configuration beside …`, `Cannot replace the configuration file …` | A `store` could not write the layer — the directory is not writable, the disk is full. The cause is named after the last colon, for example `java.nio.file.AccessDeniedException` | The previous configuration is still live and the layer still holds its old text; nothing was half-applied. Also a `ConfigAccessException`. |
+| Something escapes a `catch (ConfigValidationException)` that used to catch it | A layer that cannot be reached now throws `ConfigAccessException`, which is deliberately not a subclass | Catch both types where you want the previous behaviour. The split is what lets an application answer `400` for a text it cannot accept and `503` for a disk it cannot write. |
 | `Configuration sources must have distinct ids` | Two layers with the same id — often one file listed twice | Remove the repeat. File ids are the absolute path, so two spellings of one file count as one. |
 | An `include` in a layer adds nothing, and nothing is logged | The layer is not a file, so the include is looked up on the classpath, and a HOCON include that finds nothing is not an error | Includes work in file layers. For a layer from a database, assemble the text before handing it over. |
 | `StaleLayerException` on an edit nobody else made | The `expected` text lost the layer's trailing newline on the way in — a shell `expected=$(cat layer.conf)` strips it, and the comparison is byte for byte | Carry the layer's text without reshaping it: start from `text()`, or read the file in a way that keeps the last byte. |
