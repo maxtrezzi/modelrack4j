@@ -4191,6 +4191,12 @@ The three other documents that name the changed tests were read and need nothing
 config belongs to another block", both still exactly what the tests do. `./run-atomic.sh
 --help` was run and prints what `AGENTS.md` claims for it.
 
+One more stale enumeration sat in the same block: the launcher line offered "swap, chat,
+council" beside `run-atomic.sh`, which is four of the five scripts in the repository root.
+`run-database.sh` arrived with P19 and never reached the list. All five were run with
+`--help` and the line now names all five. The P14 rule — count the list you just wrote before
+naming its size — reaches a list whose size is only implied by it.
+
 #### Verification
 
 `mvn clean install` green across all seven modules; core is 148 tests, unchanged — every

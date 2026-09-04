@@ -168,7 +168,7 @@ mvn -pl modelrack4j-core test -Dtest=LlmRegistryTest                        # si
 mvn -pl modelrack4j-core test -Dtest='LlmRegistryTest#unknownNameThrows'    # single method
 mvn -Pintegration verify                 # provider tests against real APIs (keys from env)
 mvn -pl modelrack4j-core org.pitest:pitest-maven:mutationCoverage   # mutation testing, core only
-./run-atomic.sh                          # run an example (also swap, chat, council; --help each)
+./run-atomic.sh                          # an example (also swap, chat, council, database; --help each)
 ```
 
 Scope `-Dtest=` to a module with `-pl`. Running it from the root across all modules fails
@@ -179,9 +179,8 @@ added.
 `-pl`, a misspelled or renamed method prints `Tests run: 0` and `BUILD SUCCESS`, so a session
 reads the green and concludes the test passed. The example above named
 `LlmRegistryTest#reloadSwapsAtomically` from the first guidance commit on 2026-07-26 until
-P36 ran it, and no such method has ever existed. Check
-the run reports the test count you expected, and prefer copying a method name out of the file
-to typing one from memory.
+P36 ran it, and no such method has ever existed. Check that the run reports the test count you
+expected, and prefer copying a method name out of the file to typing one from memory.
 
 Integration tests are skipped by default and require real API keys from the environment;
 everything else must pass offline with no keys (that is what `FakeProviderFactory` in core
