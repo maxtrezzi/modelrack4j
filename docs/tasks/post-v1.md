@@ -2696,7 +2696,8 @@ behaviour, it belongs here rather than in the ADR.
 
 ### P24 — `watch(true)` cannot see file-backed layers given through `sources(...)`
 
-**Status:** Not started
+**Status:** Done — at least one file layer, the rest ignored; ADR-0050 ·
+**Settled:** the argument below was put to the owner on 2026-09-03 and answered
 
 An application that both writes a configuration layer and wants hand edits to keep working
 needs `store()` and hot reload at once. The two are configured through builder methods that
@@ -2721,17 +2722,71 @@ watched.** No error, no log line, and the symptom is the one this library exists
 edits to a file that never reach the application. The manual's troubleshooting table names the
 exception but not this consequence.
 
-**The work, if it is taken:** let `watch(true)` accept layers from `sources(...)`, watching the
-`FileBacked` ones and ignoring the rest, and keep the current exception only for the case it
-was written for — a registry whose layers are *all* unwatchable. `Builder.build()` already
-knows which sources are `FileBacked`, so nothing new has to be discovered.
+**The work, as taken:** `watch(true)` accepts layers from `sources(...)`, watching the
+`FileBacked` ones and ignoring the rest, and the exception is kept for the case it was written
+for — a registry whose layers are *all* unwatchable.
 
-**The argument against**, which should be answered before any code moves: a registry mixing a
-database row with a file would then be "watched" in a way that covers only half its layers,
-and a caller who reads `watch(true)` as "changes reach me" would be half right — arguably worse
-than an exception that forces the question. If that argument wins, the item closes as a
-documentation change instead: a troubleshooting row for the silent drift, next to the row that
-already explains the exception.
+**The argument against** was that a registry mixing a database row with a file would then be
+"watched" in a way that covers only half its layers, and a caller who reads `watch(true)` as
+"changes reach me" would be half right — arguably worse than an exception that forces the
+question. It was put to the owner and it lost, on a point the entry had missed: refusing the
+mixed case does not make the row watchable. It sends the caller to
+`FileChangeNotifier.of(...)`, which watches exactly the same half, and adds a second path list
+that can silently drift out of step with the first.
+
+#### The decision, and the fact it turned on
+
+The owner's question was whether `watch(true)` is called only when files are present, or
+whether that is unpredictable at design time — because if it is predictable, the rule is
+simply *at least one file layer, and the rest does not count*.
+
+It is predictable, and statically so. At `build()` the layer list is complete and validated,
+and each layer either implements `FileBacked` — `FileConfigSource` and
+`WritableFileConfigSource`, what `ConfigSource.ofFile` and `ofWritableFile` return — or it does
+not. `ConfigLoader.parse` already makes exactly this test, to choose between `parseFile` and
+`parseString`. Nothing about a layer's kind changes after `build()`, so counting files is a
+read of the list rather than a forecast. **The rule stands: `watch(true)` requires at least one
+file layer; the rest is ignored.**
+
+#### What was found
+
+**The code had been stricter than the ADR it came from.** ADR-0042's Decision section says
+`watch(true)` "without file **sources**" fails at `build()` — a statement about layers. The
+implementation tested `watchableFiles`, a builder field only `configFiles(...)` fills and
+`sources(...)` cleared, which is a statement about which method the caller happened to call.
+Nobody had to decide to make the mixed case work: ADR-0042 had already said it. The only
+genuinely open question was the one the owner answered.
+
+So ADR-0050 amends ADR-0042 rather than reversing it, and the field is gone: `configFiles(...)`
+and `sources(...)` are now exactly equivalent.
+
+**The limit this deliberately keeps.** `FileBacked` is package-private, so an application's own
+`ConfigSource` that reads a file cannot declare itself one, and `watch(true)` will not see it.
+The way through already exists and is documented — `notifier(FileChangeNotifier.of(...))`.
+Making the interface public, or adding a path-shaped method to `ConfigSource`, would put the
+filesystem back into the interface ADR-0042 removed it from, and is not taken here.
+
+**The same branch also carries [P31](#p31--a-layer-answers-for-itself-instead-of-being-recognised),**
+which removes the `instanceof` this entry's fix had just made the second of two. The owner
+asked for it here rather than on a branch of its own, because it finishes the same thought.
+
+**Verification.** `ConfigSourceTest` went from 23 tests to 26: the refusal now also asserts
+that the message names the layers, and three cases were added — every layer a file through
+`sources(...)`, a mixed registry where the file is watched and the row is asserted *not* to be,
+and the case P24 exists for, one registry that stores a writable layer and picks up a hand edit
+of another. `mvn clean install` is green at 145 core tests.
+
+PIT on core: 200 mutants, 197 killed, 1 survived, 1 `NO_COVERAGE`, 1 timed out. The two that
+are not killed are the two already known — the equivalent `Optional.empty()` in
+`LlmRegistry.reload` from P27, and the deliberate cleanup branch in
+`WritableFileConfigSource.stage` — so this change added no survivor and no uncovered line.
+
+The end-to-end case was also run outside the test suite, against the real `openai` provider
+with an unused key: one registry built from `ofFile` plus `ofWritableFile` with `watch(true)`,
+a `store()` that published without firing a listener, then a hand edit of the base file that
+arrived as `onReload updated=[SL]`. Both free examples still run — `AtomicSnapshot`, which
+uses `configFiles(...)` with `watch(true)`, and `DatabaseSource`, which uses `sources(...)`
+with no watching at all.
 
 ---
 
@@ -3363,3 +3418,83 @@ go stale.
   billing. The council's **partial** round still needs a working key and was not run — the same
   gap P28 recorded.
 
+\n
+---
+
+### P31 — A layer answers for itself, instead of being recognised
+
+**Status:** Done — two type tests became one, at a boundary; ADR-0051 ·
+**Branch:** carried by P24's branch, at the owner's request — it finishes the same thought
+
+#### Why it came up
+
+P24 fixed `chooseNotifier` by giving it an `instanceof FileBacked`. That was the right fix for
+the defect and it made the codebase's second copy of the same test — `ConfigLoader.parse` has
+had one since ADR-0042. The owner read the hierarchy afterwards, said `instanceof` is a design
+smell and that this one was the ugly kind, and asked for alternatives.
+
+#### What was rejected, and why it is worth recording
+
+The first instinct — a public `MonitorableConfigSource`, so a layer declares that it can be
+watched — is the idea ADR-0042 already refused **twice**, in two forms: an address on the
+interface (`Optional<Path>`, then `Optional<URI>`) puts the filesystem back where that ADR had
+just removed it from, and a notifier per source undoes ADR-0013's single watch service over the
+deduplicated parent directories. Neither argument has aged.
+
+Full polymorphism on `ConfigSource` — `parse`, `watchTarget`, `stage` on the public interface —
+removes all three tests and takes the SPI from two methods to five, with
+`com.typesafe.config.ConfigParseOptions` in it, so every application-written source would have
+to implement HOCON parsing. On a published artifact that is the worse trade.
+
+And Java 17 does not sell the elegant version: a `sealed` type plus an exhaustive pattern
+`switch` is Java 21. The project already owns that scar — `MemoryConfig` is `sealed` and
+`SnapshotLoader` still ends its chain with a throwing default, because nothing checks it.
+
+#### What was done
+
+The repetition is removable without any of that: ask once, at the boundary every layer already
+passes through, and keep the answer. An internal `sealed Layer` (`FileLayer`, `TextLayer`) is
+built in `Builder.build()`, and `ConfigLoader`, `SnapshotLoader` and `LlmRegistry` carry
+`List<Layer>` and call methods. `FileBacked` is now `sealed` and read in exactly one place.
+
+**Two of the three `instanceof` became one.** `StagedWrite.prepare` keeps its own, deliberately:
+it asks whether a *writable* target is a file, which is the other axis, and folding it in would
+need a third `Layer` variant that exists only to throw for a read-only file layer. An
+unreachable branch is worse than a localised factory, and PIT would have reported it as an
+uncovered line for the life of the project.
+
+**The public API does not change**, so there is no CHANGELOG entry. That is deliberate, not an
+omission.
+
+#### Verification
+
+`mvn clean install` green, core still at 145 tests — no test changed, which is the useful
+signal: the behaviour is identical and the existing suite already covered every path through
+the new types.
+
+PIT on core: **205 mutants, 202 killed**, one survived and one `NO_COVERAGE`. Both are the two
+already known — the equivalent `Optional.empty()` in `LlmRegistry.reload` and the deliberate
+cleanup branch in `WritableFileConfigSource.stage`. `Layer`, `FileLayer` and `TextLayer`
+contribute **9 mutants, all killed**, so the new code arrived covered by the existing suite.
+
+The total moved from 200 to 205, which is **not** the number the new types added: the refactor
+also deleted mutable code where the two `instanceof` used to be. An earlier draft of this
+paragraph took the difference of the totals for the count of new mutants and said five. It is
+nine, counted per class in `mutations.xml`.
+
+**A mistake worth recording, because it cost a wrong report first.**
+`org.pitest:pitest-maven:mutationCoverage` does **not** compile: it mutates whatever
+`target/classes` already holds. The first run on this branch was made after checking out two
+other branches and running `mvn test` on one of them, so it silently measured *that* branch's
+code — 198 mutants, no `Layer` at all, and a `ConfigAccessException.class` from a branch this
+one does not contain. Nothing in PIT's output says which source tree it read. Build first, then
+run it, and check that a class you expect is in the report.
+
+**The count, measured rather than asserted.** `grep -rn instanceof --include=*.java */src/main`,
+with comment lines dropped, gives **nine** expressions in production code. Two of them are the
+subject of this entry — `Layer.of` and `StagedWrite.prepare` — and before the change those two
+were three, spread over `ConfigLoader.parse`, `Builder.chooseNotifier` and `StagedWrite.prepare`.
+The other seven are unrelated and untouched: two in `MemoryConfig`, four in `SnapshotLoader`
+(one `ConfigObject` cast and three over `MemoryConfig`'s sealed variants), and one in
+`ConfigWatcher` over a `WatchEvent` context. So the number that moved is three to two, and the
+difference that matters is that neither survivor sits at a use site.

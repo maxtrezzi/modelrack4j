@@ -411,7 +411,8 @@ registry.reload();   // nothing watches a database row, so you say when
 ```
 
 Files and other sources mix in one list, in the same order. `reload()` returns what changed,
-or nothing when the configuration turns out to be the same. See the
+or nothing when the configuration turns out to be the same. `watch(true)` still works here:
+it watches the layers that are files — `basePath` above — and leaves the row to you. See the
 [reference](docs/manual/part-2-reference.md#configuration-that-is-not-a-file).
 
 ### Writing a layer back

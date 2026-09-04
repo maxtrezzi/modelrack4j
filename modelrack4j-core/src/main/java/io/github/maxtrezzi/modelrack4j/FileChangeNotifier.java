@@ -32,9 +32,11 @@ import java.util.Objects;
  * an interface.
  *
  * <p>Built for you by {@link LlmRegistry.Builder#watch(boolean)}, which is the usual way to
- * get one. Construct it yourself when the layers were given through
- * {@link LlmRegistry.Builder#sources(java.util.List)} — a file layer under a database layer,
- * say — and the file half should still be watched.
+ * get one, and which covers the file layers of
+ * {@link LlmRegistry.Builder#sources(java.util.List)} as well as those of
+ * {@link LlmRegistry.Builder#configFiles(java.util.List)}. Construct it yourself only for a
+ * file the registry cannot recognise as one: a {@link ConfigSource} of your own that reads a
+ * file, which cannot say so because {@code FileBacked} is not public.
  *
  * @implNote One instance covers the whole list, sharing a single watch service and a single
  *     daemon thread across the deduplicated set of parent directories. One notifier per file

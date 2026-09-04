@@ -266,10 +266,10 @@ LlmRegistry registry = LlmRegistry.builder()
 |---|---|
 | `configFiles(List<Path>)` | The layers, as files, lowest precedence first. At least one. |
 | `sources(List<ConfigSource>)` | The layers, from anywhere: see *[Configuration that is not a file](#configuration-that-is-not-a-file)*. Replaces `configFiles`; the last of the two calls wins. |
-| `watch(boolean)` | Off by default. On, the registry starts one daemon thread and watches the files given to `configFiles`. |
+| `watch(boolean)` | Off by default. On, the registry starts one daemon thread and watches the layers that are files, whichever of the two methods above supplied them. Layers that are not files are ignored; at least one must be a file. |
 | `notifier(ChangeNotifier)` | Something of your own that tells the registry when the configuration changed. Cannot be combined with `watch(true)`. |
 | `debounce(Duration)` | How long the files must be quiet before a reload runs. Must be positive. |
-| `build()` | Parses, validates and builds everything, then starts the notifier if there is one. Throws `ConfigValidationException` if no layer was given, two layers share an id, any layer or block is invalid, or `watch(true)` was set without files to watch. Throws `UncheckedIOException` if a directory cannot be watched. |
+| `build()` | Parses, validates and builds everything, then starts the notifier if there is one. Throws `ConfigValidationException` if no layer was given, two layers share an id, any layer or block is invalid, or `watch(true)` was set and no layer is a file. Throws `UncheckedIOException` if a directory cannot be watched. |
 
 `build()` is all-or-nothing: one bad block means no registry, not a registry missing one name.
 
@@ -332,9 +332,13 @@ correctly. A source that reads its text once and keeps it will never report a ch
 in it, because it is written to the log. Two sources of one registry must have different ids,
 and `build()` refuses them if they do not.
 
-**Nothing watches these layers.** The library can watch files, because the operating system
-tells it when a file changes. It cannot know when a database row changes. You have two ways
-to tell it.
+**A layer that is not a file is not watched.** The library can watch files, because the
+operating system tells it when a file changes. It cannot know when a database row changes.
+
+`watch(true)` is still allowed in the example above, and it watches `basePath`. It watches
+every layer that is a file and ignores the others, and it only refuses to start when no layer
+is a file at all. So a mixed configuration is watched over its file half, and you have two
+ways to tell the registry about the rest.
 
 ### Asking for a reload
 
@@ -379,15 +383,25 @@ right notifier, and the two cannot both be set.
 
 The one the library ships is `FileChangeNotifier`, described under
 [The watcher](#the-watcher). `watch(true)` builds it for you, and that is the usual way to get
-one. Build it yourself when the layers came through `sources(...)` and the file half of them
-should still be watched:
+one — including for layers passed to `sources(...)`.
+
+Build it yourself only for a file the library cannot recognise as one: your own `ConfigSource`
+that reads a file. `watch(true)` sees the file layers this library made,
+`ConfigSource.ofFile(...)` and `ConfigSource.ofWritableFile(...)`, and it cannot see inside
+an implementation you wrote.
 
 ```java
+ConfigSource own = new MyFileSource(ownPath);   // your class, reading a file
+
 LlmRegistry.builder()
-        .sources(List.of(ConfigSource.ofFile(basePath), row))
-        .notifier(FileChangeNotifier.of(List.of(basePath), Duration.ofMillis(300)))
+        .sources(List.of(ConfigSource.ofFile(basePath), own))
+        .notifier(FileChangeNotifier.of(List.of(basePath, ownPath), Duration.ofMillis(300)))
         .build();
 ```
+
+Keep the two lists in step. Nothing compares the paths you pass to `sources(...)` with the
+paths you pass to `FileChangeNotifier.of(...)`, so a path you forget in the second list is a
+layer that is never reloaded, with no error and no log line.
 
 | Method | Contract |
 |---|---|
@@ -412,10 +426,14 @@ WritableConfigSource userLayer = ConfigSource.ofWritableFile(Path.of("user.conf"
 
 LlmRegistry registry = LlmRegistry.builder()
         .sources(List.of(ConfigSource.ofFile(basePath), userLayer))
+        .watch(true)                                 // both layers are files, so both are watched
         .build();
 
 Optional<ReloadChange> change = registry.store(userLayer, newText);
 ```
+
+`watch(true)` and `store` work together: the registry saves the change your application made,
+and still picks up an edit someone makes in an editor.
 
 It validates the whole configuration against the new text, applies it, and only then stores
 it. A text that would not load is refused, with nothing written and nothing changed. If
@@ -651,8 +669,9 @@ eligible for garbage collection when nothing references them.
 ## The watcher
 
 The watcher is `FileChangeNotifier`, the `ChangeNotifier` the library ships for layers held in
-files. `watch(true)` builds one over the files given to `configFiles(...)`; everything below
-describes what that one does, and none of it applies to a layer that is not a file.
+files. `watch(true)` builds one over the layers that are files, whether they were given to
+`configFiles(...)` or to `sources(...)`; everything below describes what that one does, and
+none of it applies to a layer that is not a file.
 
 `WatchService` registers on **directories**, not files, so the watcher registers the
 deduplicated set of parent directories and filters events by filename.
@@ -923,7 +942,7 @@ Deliberate and permanent:
 | `is not shaped like a GLM key` | `api-key` on GLM is not `id.secret`, or its secret half is under 16 bytes | GLM signs a token with the two halves instead of sending the key, so a wrong shape fails before any call. Copy the key again in full. |
 | `` `temperature` is deprecated for this model `` | A non-default `temperature` on a model that rejects one, such as `claude-sonnet-5` | Remove the key. The model then uses its own sampling settings. |
 | `UnknownConfigurationException` at runtime | The name was removed from the configuration while running | Catch it and re-read `names()`, or keep the block. The exception's `configurationName()` gives the name that was asked for. |
-| `watch(true) watches configuration files, and this registry has none` | `watch(true)` with layers given through `sources(...)` | There is nothing to watch. Call `reload()` when the configuration changes, or pass a `ChangeNotifier`. |
+| `watch(true) watches configuration files, and none of these layers is one` | `watch(true)` where no layer is a file — every one is a database row, or your own `ConfigSource` | There is nothing the library can watch. Call `reload()` when the configuration changes, or pass a `ChangeNotifier`. One file layer among the others is enough to watch that file. |
 | `Configuration sources must have distinct ids` | Two layers with the same id — often one file listed twice | Remove the repeat. File ids are the absolute path, so two spellings of one file count as one. |
 | An `include` in a layer adds nothing, and nothing is logged | The layer is not a file, so the include is looked up on the classpath, and a HOCON include that finds nothing is not an error | Includes work in file layers. For a layer from a database, assemble the text before handing it over. |
 | `StaleLayerException` on an edit nobody else made | The `expected` text lost the layer's trailing newline on the way in — a shell `expected=$(cat layer.conf)` strips it, and the comparison is byte for byte | Carry the layer's text without reshaping it: start from `text()`, or read the file in a way that keeps the last byte. |

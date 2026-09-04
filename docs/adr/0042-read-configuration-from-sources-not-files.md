@@ -1,6 +1,6 @@
 # ADR-0042: Read configuration from sources, not files, and let the application ask for a reload
 
-- **Status:** Accepted — the write half widened by ADR-0044
+- **Status:** Accepted — the write half widened by ADR-0044, the watch condition amended by ADR-0050
 - **Date:** 2026-08-31
 - **Supersedes:** —
 - **Amends:** —

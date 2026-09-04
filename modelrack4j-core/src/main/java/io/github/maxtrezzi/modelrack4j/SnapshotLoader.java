@@ -55,11 +55,11 @@ final class SnapshotLoader {
     /** Root path holding the named blocks. */
     static final String ROOT_PATH = "llm";
 
-    private final List<ConfigSource> sources;
+    private final List<Layer> layers;
     private final Map<String, ProviderFactory> factories;
 
-    SnapshotLoader(List<ConfigSource> sources) {
-        this.sources = ConfigSources.validated(sources);
+    SnapshotLoader(List<Layer> layers) {
+        this.layers = List.copyOf(layers);
         this.factories = discoverFactories();
     }
 
@@ -73,7 +73,7 @@ final class SnapshotLoader {
      *     any provider rejects or fails to build its configuration
      */
     Map<String, LlmBundle> load(Map<String, LlmBundle> previous) {
-        return load(previous, sources);
+        return load(previous, layers);
     }
 
     /**
@@ -87,7 +87,7 @@ final class SnapshotLoader {
      * @throws ConfigValidationException if any layer is unreadable, any block is invalid, or
      *     any provider rejects or fails to build its configuration
      */
-    Map<String, LlmBundle> load(Map<String, LlmBundle> previous, List<ConfigSource> layers) {
+    Map<String, LlmBundle> load(Map<String, LlmBundle> previous, List<Layer> layers) {
         Config resolved = ConfigLoader.load(layers);
         if (!resolved.hasPath(ROOT_PATH)) {
             throw new ConfigValidationException(
