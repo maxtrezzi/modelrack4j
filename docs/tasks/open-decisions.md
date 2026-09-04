@@ -163,7 +163,9 @@ from the provider modules and their paid `*IT.java` suites is that a person type
 The owner took the first option below. `ConfigSource` keeps `id()` and `text()`,
 `storeIfUnchanged` keeps its signature, and there is no `version()`, no `storeIfVersion` and no
 digest-taking overload. An application that wants an `ETag` derives one from `text()` and keeps
-the digest to itself.
+the digest to itself — and because that is the argument the decision rests on, the recipe is now
+in the reference rather than only in the ADR
+([P32](post-v1.md#p32--the-recipe-d5s-argument-rests-on)).
 
 **The framing below contains a false premise, and it is worth recording rather than editing
 away.** The entry says the caller "has to ship the entire previous document, encoded, in a

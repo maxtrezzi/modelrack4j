@@ -462,7 +462,10 @@ public final class LlmRegistry implements AutoCloseable {
      * @implNote The layer is read again inside the reload lock rather than trusting anything
      *     read earlier, so the comparison and the write cannot be separated by another
      *     writer. That read is I/O for a file layer, which is why it happens once and only
-     *     for this method.
+     *     for this method. This is also why the library offers no version token: a caller
+     *     that wants a short condition — an HTTP {@code ETag}, say — derives it from
+     *     {@link ConfigSource#text()} and passes that same text here, and the re-read closes
+     *     the gap the token cannot (ADR-0052). The reference manual carries the recipe.
      */
     public Optional<ReloadChange> storeIfUnchanged(
             WritableConfigSource target, String expected, String text) {
