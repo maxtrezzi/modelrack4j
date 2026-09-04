@@ -165,7 +165,7 @@ so its `No pinentry` says nothing about what is available.
 mvn clean install                        # full build, all modules
 mvn -pl modelrack4j-core -am test        # build core and its deps, run core tests
 mvn -pl modelrack4j-core test -Dtest=LlmRegistryTest                        # single class
-mvn -pl modelrack4j-core test -Dtest='LlmRegistryTest#reloadSwapsAtomically' # single method
+mvn -pl modelrack4j-core test -Dtest='LlmRegistryTest#unknownNameThrows'    # single method
 mvn -Pintegration verify                 # provider tests against real APIs (keys from env)
 mvn -pl modelrack4j-core org.pitest:pitest-maven:mutationCoverage   # mutation testing, core only
 ./run-atomic.sh                          # run an example (also swap, chat, council; --help each)
@@ -174,6 +174,14 @@ mvn -pl modelrack4j-core org.pitest:pitest-maven:mutationCoverage   # mutation t
 Scope `-Dtest=` to a module with `-pl`. Running it from the root across all modules fails
 in every module that does not contain the named test unless `-DfailIfNoTests=false` is
 added.
+
+**A `-Dtest=` method name that does not exist is a silent no-op, not an error.** Scoped with
+`-pl`, a misspelled or renamed method prints `Tests run: 0` and `BUILD SUCCESS`, so a session
+reads the green and concludes the test passed. The example above named
+`LlmRegistryTest#reloadSwapsAtomically` from the first guidance commit on 2026-07-26 until
+P36 ran it, and no such method has ever existed. Check
+the run reports the test count you expected, and prefer copying a method name out of the file
+to typing one from memory.
 
 Integration tests are skipped by default and require real API keys from the environment;
 everything else must pass offline with no keys (that is what `FakeProviderFactory` in core

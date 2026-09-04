@@ -4150,6 +4150,47 @@ Two things looked like findings and were not, both checked before being written 
 would change nothing, and `ConfigSourceTest:490` asserts a shutdown inside its `try`, which is
 the correct place.
 
+#### The documentation pass, which found the one defect the code review could not
+
+Re-reading `AGENTS.md` end to end after editing it — the P19 rule, that a diff hides the
+lines describing what you changed — turned up a command that had never worked. The Build and
+test block gave this as its example of running a single method:
+
+```bash
+mvn -pl modelrack4j-core test -Dtest='LlmRegistryTest#reloadSwapsAtomically'
+```
+
+**No method of that name has ever existed in this repository.** It arrived with the first
+guidance commit on 2026-07-26 and survived the move to `AGENTS.md` in P23. What makes it
+worth an entry is the failure mode rather than the typo: scoped with `-pl`, a `-Dtest=`
+method name that matches nothing does not fail.
+
+    [INFO] Tests run: 0, Failures: 0, Errors: 0, Skipped: 0
+    [INFO] BUILD SUCCESS
+
+A session that followed the line would read the green and conclude the test passed. The
+command now names `LlmRegistryTest#unknownNameThrows`, which was run and reports one test, and
+the paragraph under the block says that a name matching nothing is a silent no-op.
+
+`CONTRIBUTING.md` already said "a test that cannot fail is worse than no test" and told a
+contributor to break the code and confirm the test catches it. That is right and covers the
+single-threaded case; it does not cover the one above, where the assertion runs on a thread
+whose failure never reaches the test. It gained one line for that, in the user-facing
+register.
+
+**`docs/tasks/milestones.md` was checked and deliberately left alone.** Its M1 table says
+`LayeredResolutionTest` has 6 tests and `LlmRegistryTest` 18, against 7 and 25 today. That
+table is the record of what M1 built, under a heading that says so and with a note explaining
+one later growth — editing it to today's counts would misdescribe the milestone rather than
+correct it. The same reading applies to ADR-0038's "four tests in `ReloadTest` pin the
+behaviour", which is still true and, being an accepted ADR, frozen anyway.
+
+The three other documents that name the changed tests were read and need nothing:
+`milestones.md` describes `rapidWritesCollapseIntoOneReload` as "five writes, one reload" and
+`getIsSafeDuringReload` as "four reader threads across ten reloads never see a bundle whose
+config belongs to another block", both still exactly what the tests do. `./run-atomic.sh
+--help` was run and prints what `AGENTS.md` claims for it.
+
 #### Verification
 
 `mvn clean install` green across all seven modules; core is 148 tests, unchanged — every
