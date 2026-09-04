@@ -630,8 +630,8 @@ component participates, including `description`.
 | `UncheckedIOException` | Watching was requested and a directory cannot be watched. |
 | `StaleLayerException` | `storeIfUnchanged()` on a layer that no longer holds the text the change was based on. Carries that layer's current text, to apply the change to instead. Unchecked. |
 
-Those five are the library's own, and they are thrown identically whichever provider a block
-names. **Everything a model call throws belongs to the provider instead**, and those types are
+Those five are the exceptions this library throws, and they arrive identically whichever
+provider a block names. Four of them are its own types; `UncheckedIOException` is the JDK's. **Everything a model call throws belongs to the provider instead**, and those types are
 not portable between providers.
 
 All four providers were called against their live API in

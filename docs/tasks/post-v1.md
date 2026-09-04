@@ -3693,7 +3693,56 @@ the split exists.
 
 #### Verification
 
-`mvn clean install` green, core at 145 tests, unchanged: the message text is not asserted
-anywhere, which is exactly why the defect survived. `build/check-docs.py` reported only the two
-expected cross-branch items while this branch waited on P24's and D5's ADR numbers, and is
-clean now that both have merged.
+`mvn clean install` green, core at 148 tests — unchanged by this item, which adds none: the
+message text is not asserted anywhere, which is exactly why the defect survived.
+`build/check-docs.py` reported only the two expected cross-branch items while this branch
+waited on P24's and D5's ADR numbers, and is clean now that both have merged.
+
+#### Checked again before merging, 2026-09-04
+
+Four things were run over the whole branch, on the machine this repository records:
+AMD Ryzen 7 7840HS, Temurin 25.0.3.
+
+**Mutation testing on core: 205 mutants, 202 killed, 1 timed out, 1 survived, 1 uncovered,
+2 minutes 50 seconds.** The same three that are not killed as
+[P31](#p31--a-layer-answers-for-itself-instead-of-being-recognised) recorded, at the line
+numbers this branch moved them to: the equivalent `Optional.empty()` in `LlmRegistry.reload`
+(341), the timeout in `Builder.chooseNotifier` (798), and the deliberate cleanup branch in
+`WritableFileConfigSource.stage` (142). `ConfigAccessException` produces no mutants at all —
+it declares constructors and no logic. The report was checked for a class this branch wrote
+before its numbers were believed, which is [P31](#p31--a-layer-answers-for-itself-instead-of-being-recognised)'s
+lesson: `ConfigLoader.load`'s mutants sit at lines 87, 88 and 96, where this branch's catch
+block put them, and not at main's.
+
+**All five examples were run.** `AtomicSnapshot` and `DatabaseSource` cost nothing;
+`ProviderSwap`, `ConsoleChat` and `ThreeModelCouncil` made real calls. The council answered
+from all three configured models in one round, with moderation on `CR` alone, streaming on
+`SH` alone and memory on `SL` alone — the capability matrix, observed rather than asserted.
+`ConsoleChat`'s `/tools` was driven to the end: the `@Tool` method ran
+(`[tool called: now() -> …]`) and the model used its result, which is
+[P21](#p21--what-the-library-leaves-available-said-out-loud)'s claim about `AiServices`
+demonstrated rather than described.
+
+**`mvn -Pintegration verify`: four tests, four providers, all passing.** So the four
+configured identifiers still exist upstream — `gpt-5-mini`, `claude-sonnet-4-6`,
+`gemini-3.6-flash`, `glm-5.3` — and `examples.conf`'s `gpt-5.1` and `claude-sonnet-5` answered
+through the examples. **This also settles what
+[P25](#p25--a-malformed-glm-key-fails-before-the-call-past-the-exception-guarantee) left open:**
+that entry could not check whether a real GLM key satisfies the `id.secret` rule with a secret
+of at least 16 bytes, because `ZHIPU_API_KEY` was not on the shell it ran from. `GlmProviderIT`
+passed with the real key, so the check refuses no working credential.
+
+**The documentation was checked by running it, not by reading it.** The four failures the
+tutorial prints in sections 6 and 7 were reproduced from a probe and match the printed text —
+moderation on Anthropic, token-window on Anthropic, an unset mandatory substitution, and a
+block with `model-name` deleted, all `ConfigValidationException`. A separate probe deleted a
+watched file and called `reload()`: `ConfigAccessException` naming the path, the `WARN` the
+README promises, and the previous configuration still live afterwards. One thing to know about
+that message — Typesafe's `ConfigException.IO.getMessage()` already begins with the path, so
+interpolating the cause puts the path in three times. It is verbose rather than wrong, and
+trimming an upstream prefix is a decision rather than a fix.
+
+**One defect found, in the reference's exceptions table.** *"Those five are the library's
+own"* — four are. `java.io.UncheckedIOException` is the JDK's, and it has been in that table
+since before this branch, which raised the count from four to five and carried the wording
+with it. Corrected here: the sentence now says the library throws five and owns four.
