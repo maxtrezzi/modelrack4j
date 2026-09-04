@@ -69,8 +69,12 @@ record FileConfigSource(Path file) implements FileBacked {
         try {
             return Files.readString(file, StandardCharsets.UTF_8);
         } catch (IOException e) {
+            // e rather than e.getMessage(): the message of an IOException over a path is
+            // often just that path again, so the type is the only part that says what
+            // happened. "…: java.nio.file.AccessDeniedException: /etc/app.conf" beats
+            // "…: /etc/app.conf".
             throw new ConfigAccessException(
-                    "Cannot read configuration file " + file + ": " + e.getMessage(), e);
+                    "Cannot read configuration file " + file + ": " + e, e);
         }
     }
 }

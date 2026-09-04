@@ -3633,3 +3633,67 @@ because another writer stored between the two lines. Output:
 That second case is the one the paragraph describes, and it is the reason the `catch` stays.
 
 No code changed beyond the javadoc, so there is no CHANGELOG entry.
+
+---
+
+### P33 — The messages D6 leaves a user, and where they are looked up
+
+**Status:** Done — three troubleshooting rows, and a message that named no cause ·
+**Raised by:** [D6](open-decisions.md#d6--cannot-store-is-not-your-configuration-is-invalid) ·
+**Branch:** carried by D6's branch
+
+[P30](#p30--configaccessexception-the-implementation-of-d6) gave the library a second exception
+type. This entry is what that owed a reader: the messages it produces, in the table where a
+reader looks a message up.
+
+#### What was missing
+
+The Troubleshooting table in `docs/manual/part-2-reference.md` had **no row for a layer that
+cannot be read or written** — not before D6 and not after it. Every other failure the library
+can produce has one. A user whose configuration file is missing, or whose store meets a
+read-only directory, found the type described in the Exceptions section and nothing in the
+table they actually consult when they hold a message.
+
+Checked and found needing nothing: the tutorial, which shows four failures and all four are
+about text; the examples, where only `DatabaseSource` catches `ConfigValidationException` and
+both of its catches surround a deliberately invalid provider name; and `README.md`, which names
+no exception type at all.
+
+#### The defect the probe found
+
+Running the failures to capture their real text — rather than quoting them from the source —
+showed one that says nothing:
+
+    Cannot write the configuration beside /…/locked/app.conf: /…/locked/.modelrack4j-staged-3961….conf
+
+`e.getMessage()` on an `IOException` over a path is usually **just that path again**, and here
+that path is the staged temporary file, which the user never asked for and cannot act on. The
+message named a random hidden filename and no cause. All three write and read sites had the
+same shape. They now interpolate `e` rather than `e.getMessage()`:
+
+    Cannot write the configuration beside /…/locked/app.conf: java.nio.file.AccessDeniedException: /…/locked/.modelrack4j-staged-3961….conf
+
+**This was only visible by running it.** The source reads `+ e.getMessage()`, which looks
+correct, and no test asserted on the tail of the message.
+
+#### A second thing the probe settled
+
+The message a user meets at `build()` is **not** the one in `FileConfigSource`. A file layer is
+parsed with `parseFile` and never through `text()`, so a missing file surfaces from
+`ConfigLoader` as `Configuration source … cannot be read`, while
+`Configuration file does not exist or is not readable` appears only when the application calls
+`text()` itself. The table says both, and which is which — writing only the second would have
+sent a reader looking for a string the library never printed to them.
+
+#### What was added
+
+Three rows: the unreadable layer, the store that cannot write, and the migration symptom —
+something escaping a `catch (ConfigValidationException)` that used to catch it, with the reason
+the split exists.
+
+#### Verification
+
+`mvn clean install` green, core at 145 tests, unchanged: the message text is not asserted
+anywhere, which is exactly why the defect survived. `build/check-docs.py` reported only the two
+expected cross-branch items while this branch waited on P24's and D5's ADR numbers, and is
+clean now that both have merged.

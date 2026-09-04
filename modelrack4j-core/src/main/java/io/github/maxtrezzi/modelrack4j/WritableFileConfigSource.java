@@ -127,8 +127,11 @@ record WritableFileConfigSource(Path file) implements WritableConfigSource, File
             staged = null;   // handed over: the caller discards it from here on
             return prepared;
         } catch (IOException e) {
+            // e rather than e.getMessage(): an IOException over a path usually carries
+            // only that path, and here that path is the staged temporary file, which tells
+            // the reader nothing. The type is what names the cause.
             throw new ConfigAccessException(
-                    "Cannot write the configuration beside " + file + ": " + e.getMessage(), e);
+                    "Cannot write the configuration beside " + file + ": " + e, e);
         } finally {
             // Reached only when the file was created and then not handed over — a failing
             // write, most often a full disk. The caller never receives the path in that
@@ -251,7 +254,7 @@ record WritableFileConfigSource(Path file) implements WritableConfigSource, File
             }
         } catch (IOException e) {
             throw new ConfigAccessException(
-                    "Cannot replace the configuration file " + file + ": " + e.getMessage(), e);
+                    "Cannot replace the configuration file " + file + ": " + e, e);
         }
     }
 
