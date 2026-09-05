@@ -38,6 +38,13 @@ import java.util.Objects;
  * }
  * }</pre>
  *
+ * <p><strong>It is not always somebody else.</strong> The comparison is on the text,
+ * character for character, so an {@code expected} that was reshaped on the way in is refused
+ * although the layer never moved. A shell {@code $(cat layer.conf)} drops the final newline,
+ * and an HTTP client that trims a response body does the same. Pass
+ * {@link ConfigSource#text()} on as you received it, and this exception stays what it says it
+ * is: a lost race.
+ *
  * <p>It is deliberately not a {@link ConfigValidationException}: a caller that catches
  * validation failures wants to report them to a person, and a lost race is something the
  * program can handle by itself.
@@ -59,7 +66,9 @@ public final class StaleLayerException extends RuntimeException {
         super("The layer '" + Objects.requireNonNull(layerId, "layerId") + "' has changed"
                 + " since the text this store was based on was read, so storing now would"
                 + " erase somebody else's change. Apply your change to the layer's current"
-                + " text and try again.");
+                + " text and try again. The comparison is character for character and"
+                + " includes the final newline, so an expected text that lost that newline"
+                + " on the way here is refused even when nothing else about it changed.");
         this.layerId = layerId;
         this.current = Objects.requireNonNull(current, "current");
     }

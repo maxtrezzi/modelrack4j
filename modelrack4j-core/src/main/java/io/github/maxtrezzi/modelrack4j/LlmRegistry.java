@@ -102,6 +102,18 @@ public final class LlmRegistry implements AutoCloseable {
     private static final Duration DEFAULT_DEBOUNCE = Duration.ofMillis(300);
 
     private final List<Layer> layers;
+
+    /**
+     * The same layers as {@link #layers}, unwrapped for the public types that report them.
+     *
+     * @implNote Held rather than derived. The list is fixed at {@code build()} — a reload
+     *     re-reads the same layers rather than replacing them — and three places want it: the
+     *     {@link #sources()} accessor, every {@link ReloadFailure}, and {@link
+     *     #requireOwnLayer(WritableConfigSource)} on every store. Deriving it allocated a list
+     *     per call for a value that cannot change.
+     */
+    private final List<ConfigSource> sources;
+
     private final SnapshotLoader loader;
 
     /**
@@ -135,6 +147,7 @@ public final class LlmRegistry implements AutoCloseable {
     private LlmRegistry(List<Layer> layers, SnapshotLoader loader,
             Map<String, LlmBundle> bundles) {
         this.layers = layers;
+        this.sources = Layer.sourcesOf(layers);
         this.loader = loader;
         this.bundles = bundles;
     }
@@ -189,6 +202,38 @@ public final class LlmRegistry implements AutoCloseable {
      */
     public LlmSnapshot snapshot() {
         return new LlmSnapshot(bundles);
+    }
+
+    /**
+     * Returns the configuration layers this registry was built from, lowest precedence first.
+     *
+     * <p>The list is exactly what {@link Builder#sources(List)} or
+     * {@link Builder#configFiles(List)} was given, in the same order, and it never changes: a
+     * reload re-reads the same layers rather than replacing them. Use it to find the layer to
+     * store into, instead of carrying the reference alongside the registry:
+     *
+     * <pre>{@code
+     * WritableConfigSource userLayer = registry.sources().stream()
+     *         .filter(WritableConfigSource.class::isInstance)
+     *         .map(WritableConfigSource.class::cast)
+     *         .findFirst()
+     *         .orElseThrow();
+     * }</pre>
+     *
+     * <p><strong>A writable layer found here is still written through
+     * {@link #store(WritableConfigSource, String)}</strong>, never through its own
+     * {@link WritableConfigSource#write(String)}. Writing it directly stores text that
+     * nothing validated, and leaves this registry serving the previous configuration until
+     * something reloads it — at which point a broken text fails with no caller to tell.
+     *
+     * @return the layers, lowest precedence first, unmodifiable
+     * @implNote The same list {@link ReloadFailure#sources()} already hands to a failure
+     *     listener. Having it only there made the layers reachable on the one path an
+     *     application is least likely to have written, which is why it is also a method
+     *     (ADR-0054).
+     */
+    public List<ConfigSource> sources() {
+        return sources;
     }
 
     /**
@@ -328,8 +373,7 @@ public final class LlmRegistry implements AutoCloseable {
                 log.warn(
                         "modelrack4j reload rejected; the previous configuration stays live: {}",
                         e.getMessage(), e);
-                notify(failureListeners,
-                        new ReloadFailure(Layer.sourcesOf(layers), e), "failure");
+                notify(failureListeners, new ReloadFailure(sources, e), "failure");
                 throw e;
             }
 
@@ -394,7 +438,9 @@ public final class LlmRegistry implements AutoCloseable {
      *     or if the text does not parse or does not validate
      * @throws ConfigAccessException if the text validates but cannot be stored, or if
      *     another layer cannot be read while it is validated. The previous configuration is
-     *     back in place and no listener ran.
+     *     back in place and no listener ran. For a file layer this means the layer's
+     *     <em>directory</em> could not be written; see
+     *     {@link ConfigSource#ofWritableFile(Path)}.
      * @throws RuntimeException whatever the layer's own
      *     {@link WritableConfigSource#write(String)} threw, or a provider's builder. The
      *     previous configuration is back in place and no listener ran.
@@ -461,7 +507,9 @@ public final class LlmRegistry implements AutoCloseable {
      *     or if the text does not parse or does not validate
      * @throws ConfigAccessException if the text validates but cannot be stored, or if
      *     another layer cannot be read while it is validated. The previous configuration is
-     *     back in place and no listener ran.
+     *     back in place and no listener ran. For a file layer this means the layer's
+     *     <em>directory</em> could not be written; see
+     *     {@link ConfigSource#ofWritableFile(Path)}.
      * @throws RuntimeException whatever the layer's own
      *     {@link WritableConfigSource#write(String)} threw, or a provider's builder. The
      *     previous configuration is back in place and no listener ran.
@@ -526,7 +574,6 @@ public final class LlmRegistry implements AutoCloseable {
      * @throws ConfigValidationException if it is not one of this registry's sources
      */
     private void requireOwnLayer(WritableConfigSource target) {
-        List<ConfigSource> sources = Layer.sourcesOf(layers);
         if (!sources.contains(target)) {
             throw new ConfigValidationException("The layer '" + target.id() + "' is not one of"
                     + " this registry's configuration sources, so it cannot be stored through"

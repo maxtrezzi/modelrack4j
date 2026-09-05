@@ -4334,3 +4334,300 @@ real artifacts from Central.
 finding was an assertion that did not hold, not a case that was missing. `ReloadTest` is 21
 tests in 6.59 s. No production code and no public API changed, so there is no CHANGELOG
 entry.
+
+---
+
+### P37 — What a failed store tells you, and the layers the registry would not name
+
+**Status:** Done — three findings from the consuming application, all reproduced before they
+were fixed; ADR-0054 ·
+**Raised by:** the consuming application, which re-ran the seven awkward points behind P24–P26
+and D5–D6 against a local build of `main` at `68f6695` and reported what was still awkward ·
+**Branch:** `task/p37-what-a-failed-store-tells-you`
+
+Three of the seven earlier points were confirmed fixed from that application's own code —
+`sources(...)` with `watch(true)` builds and publishes a reload (P24), a failed write and an
+invalid text are two unrelated exception types (D6), and a malformed GLM key is refused at load
+time in both wordings (P25). What follows is what the same run found instead.
+
+#### A store fails on the directory, and nothing said so
+
+Measured before anything was changed, by driving `WritableFileConfigSource.write` twice:
+
+| The layer | Result |
+|---|---|
+| file `r--r--r--`, directory writable | **stored** |
+| file `rw-r--r--`, directory `r-xr-xr-x` | `ConfigAccessException` |
+
+That is correct and it is the point of the design — `stage()` writes beside the target and
+`commit()` renames onto it, so a reader never sees half a write — but **nothing public said
+it.** The reasoning lived in an `@implNote` on a package-private class.
+`ConfigSource.ofWritableFile` said nothing, and the reference said the opposite:
+
+> If storing itself fails — a read-only file, a database that is down — …
+
+A read-only file does not make a store fail. The sentence was written for
+[P20](#p20--writing-a-configuration-layer-back) and has been wrong since; it is the
+P19 pattern again, prose that describes a mechanism it was not checked against.
+
+The consequence reported was smaller than the one that matters. The application hit it while
+writing a test that had to make a store fail, and `chmod 444` on the file did not. The larger
+case is a deployment that mounts its configuration directory read-only: nothing refuses that
+at `build()`, and it surfaces at the first `store()`.
+
+#### The message named a file the caller had never seen
+
+[P33](#p33--the-messages-d6-leaves-a-user-and-where-they-are-looked-up) had already fixed half
+of this. It changed `e.getMessage()` to `e`, because an `IOException` over a path is usually
+just that path again, and got:
+
+    Cannot write the configuration beside /…/conf/runtime.conf: java.nio.file.AccessDeniedException: /…/conf/.modelrack4j-staged-1016….conf
+
+The half it left is that nothing said what the second path *is*. It is the staged temporary
+file: the caller never asked for it, it is deleted on the way out of the failure, and the word
+`beside` was the only hint that the directory is the thing that could not be written. The
+message now carries the fact instead of hinting at it:
+
+    Cannot write the configuration /…/conf/runtime.conf: the new text is written to a temporary
+    file in /…/conf and then moved onto the target, so storing needs that directory to be
+    writable, not only the file. The failure below names that temporary file rather than your
+    configuration: java.nio.file.AccessDeniedException: /…/conf/.modelrack4j-staged-8428….conf
+
+A Java review of this branch caught the first draft of that sentence saying the staged file
+"has been removed again". It is removed on every path that created it — but the read-only
+directory, which is the case the message exists for, fails *inside* `createTempFile`, so the
+path in the cause was never a file at all. Written to be true of both.
+
+`commitStaged` had the same defect on a different axis, and it was not reported — it was found
+by reading the other message beside it. It named the *configured* path, and a write follows a
+symbolic link rather than replacing it
+([ADR-0024](../adr/0024-watch-the-symlink-s-directory-not-its-real-path.md)), so the file that
+failed is not always the file that was named. That is not a corner: a target mounted read-only
+behind a link is the deployment the link-following exists for. A `describeReplacedFile`
+helper now names
+both when they differ.
+
+#### `StaleLayerException` did not say what it compares
+
+[ADR-0052](../adr/0052-no-version-token-the-expected-text-is-the-token.md) decided that the
+expected text *is* the token, and [P32](#p32--the-recipe-d5s-argument-rests-on) wrote the
+recipe. Both are intact. What the report adds is where a reader meets the consequence: an
+HTTP client whose `before=$(curl …/config)` drops the layer's final newline gets a `409` on
+every attempt, and the exception it holds says somebody else wrote the layer, which nobody
+did.
+
+The fact was already documented in three places — the `storeIfUnchanged` javadoc, the
+reference's ETag recipe, and a troubleshooting row — and in none of them is it where an
+operator is looking. The message now ends by saying the comparison is character for character
+and includes the final newline. `StaleLayerException`'s own class javadoc gained the same
+point, because its opening sentence — *somebody else wrote the layer in the meantime* — is not
+true in this case.
+
+#### The registry would not name its own layers
+
+The application keeps its `WritableConfigSource` reference beside the registry, because there
+was no way to ask for it back. That is a field holding something the registry already has, and
+it is the first thing anyone writing this code meets.
+
+The argument for withholding it was already void: `ReloadFailure` is a public record whose
+first component is `List<ConfigSource>`, so every layer, writable ones included, was being
+handed to any failure listener. `LlmRegistry.sources()` is
+[ADR-0054](../adr/0054-the-registry-reports-its-own-layers.md), and a test asserts the two
+report the same list so they cannot drift.
+
+#### Two points from the same report that produced no work
+
+- **The upstream GLM defect is still there**, verified by the application against
+  `langchain4j-community-zhipu-ai` at the current beta: `AuthorizationUtils.generateToken`
+  splits the key and takes element `[1]` with no length check, `RetryUtils` treats the
+  resulting `ArrayIndexOutOfBoundsException` as retryable, and it is thrown four times.
+  P25 listed an upstream issue as its item 3 and the owner declined it on 2026-09-03. Asked
+  again on 2026-09-05 with that evidence, and declined again. This library's own defence —
+  refusing the key shape at load time — is unaffected and is what makes the upstream state
+  survivable.
+- `model-name` is still unvalidated and `ConfigSource` still has no `version()`, both by
+  decision (P2, [ADR-0052](../adr/0052-no-version-token-the-expected-text-is-the-token.md)),
+  and the report confirms the rejected-reload `WARN` still prints the field, the value and the
+  available providers and never a credential.
+
+#### What a Java review of the branch changed
+
+Two things beyond the message wording above.
+
+`Layer.sourcesOf(layers)` was called on **three** paths — the new accessor, every
+`ReloadFailure`, and `requireOwnLayer` on every store — and each call built a fresh list from
+a field that cannot change: the layers are fixed at `build()` and a reload re-reads the same
+ones. It is now unwrapped once, in the constructor, into a `sources` field the three paths
+share. `Layer.sourcesOf` has one call site again.
+
+`describe` was renamed `describeReplacedFile`. The old name said nothing about what it
+answers, on a method whose entire job is to answer one narrow question.
+
+#### Verification
+
+`mvn clean install` green. Core is at **155 tests**, up from 148: four for `sources()` — the
+order, the list being unmodifiable, the javadoc example run end to end, and equality with
+`ReloadFailure.sources()` — one that pins the read-only file still being stored, and two on
+the new message text. **Three tests assert on the text of the two messages this entry
+changed**, counting the read-only directory test that already existed. That text was asserted
+nowhere before, which is what P33 recorded as missing and as the reason its own defect had
+survived.
+
+The change was seen to break something before the tests were written for it. Editing the
+source alone turned the suite red at `Tests run: 148, Failures: 1` — the existing read-only
+directory test, which asserted `Cannot write the configuration beside` and nothing further.
+Four fragments are asserted that no earlier version could produce: `temporary file in …`,
+`needs that directory to be writable`, `includes the final newline` and `(resolved to …`. The
+table above is a probe run against the old classes, before anything was edited.
+
+`build/check-docs.py` clean at 54 ADRs and 69 tracked markdown files.
+
+**PIT on core, after the branch had stopped moving: 208 mutants, 205 killed, 1 survived,
+1 timed out, 1 uncovered, 2 minutes 49 seconds.** Run twice, the second time on a rebuild of
+the source as it is committed, and identical both times down to the three line numbers. Three more mutants than the 205
+[P36](#p36--housekeeping-a-test-that-raced-its-own-listener-and-the-first-read-of-five-merged-branches)
+recorded, and all three of the new ones are killed. The report carries two mutants in
+`describeReplacedFile` and two in `sources`, which is also what says it ran against this
+branch's classes rather than another build's — `mutationCoverage` compiles nothing and mutates
+whatever `target/classes` already holds. The three that are not killed are the same three by
+identity. All three line numbers have moved since
+[P29](#p29--a-global-check-and-the-eight-things-it-found) last recorded them, which is what a
+line number is worth:
+
+| Status | Where | P29's line | What it is |
+|---|---|---|---|
+| `SURVIVED` | `LlmRegistry.reload` 385 | 339 | `Optional.empty()` replaced by `Optional.empty()` — the equivalent mutant P27 identified |
+| `TIMED_OUT` | `LlmRegistry$Builder.chooseNotifier` 845 | 760 | returning `null` starts no notifier, so the watch tests wait out Awaitility's ceiling: detected, not as a failure |
+| `NO_COVERAGE` | `WritableFileConfigSource.stage` 149 | 139 | the cleanup branch, which needs a filesystem that fails between `createTempFile` and `writeString`. Untested on purpose |
+
+**`mvn -Pintegration verify`: green, all four providers answered a live call.** This had not
+run since [P34](#p34--langchain4j-1200-and-the-jar-the-aggregate-started-bringing) took the
+library to LangChain4j `1.20.0`, and P34 says so — it claimed nothing about the live APIs. It
+is the only check that a configured model identifier still exists
+([P6](#p6--the-integration-tests-against-live-apis)), and two of the four names are outside
+upstream's enums, so nothing else could have caught a retirement:
+
+| Provider | `model-name` | Answered in |
+|---|---|---|
+| OpenAI | `gpt-5-mini` | 3.73 s |
+| Anthropic | `claude-sonnet-4-6` | 1.77 s |
+| Gemini | `gemini-3.6-flash` | 3.12 s |
+| GLM | `glm-5.3` | 3.57 s |
+
+Four paid calls, one per provider. Keys came from the git-ignored `.env`, which is where this
+machine keeps them — they are in no shell profile, so an integration run needs them exported
+first.
+
+---
+
+### P38 — Running the examples and reading the manual against them
+
+**Status:** Done — five examples run, four defects in the manual, all of them prose that was
+true when it was written ·
+**Raised by:** the owner, who asked for the examples and the documentation to be checked ·
+**Branch:** carried by P37's branch, which had not been pushed
+
+#### The five examples
+
+All five were run, not inspected. `--help` on each was read against
+`build/run-example.sh` end to end first.
+
+| Example | Run | Result |
+|---|---|---|
+| `AtomicSnapshot` | free | 114 million sample pairs, **1 torn pair through two `get()` calls, 0 through `snapshot()`**. A second run tore neither way and said so, which is the behaviour the README describes: the `get()` window is narrow, not absent, and only the `snapshot()` column is guaranteed |
+| `DatabaseSource` | free | all six steps, including the rejected `store()` that leaves the row unwritten where the rejected `reload()` does not |
+| `ProviderSwap` | 2 calls | `claude-sonnet-5` then `gpt-5.1`, same call site |
+| `ThreeModelCouncil` | 3 calls | all three members answered under one `snapshot()` |
+| `ConsoleChat` | one session | menu, a moderated turn on `CR`, `/tools` running the `@Tool` clock through an `AiServices` proxy, `/menu`, `/exit`. Not counted in requests: a moderated turn is two calls and the tool turn is a round trip |
+
+**This is the only check that `examples.conf`'s model names still exist.** The four
+integration tests use different identifiers — `gpt-5-mini`, `claude-sonnet-4-6`,
+`gemini-3.6-flash`, `glm-5.3` — so `claude-sonnet-5` and `gpt-5.1` are covered by nothing else.
+Both answered. `javap` also re-confirms the file's own comment at `1.20.0`: `GPT_5_1` is in
+`OpenAiChatModelName` and `AnthropicChatModelName` still has no `CLAUDE_SONNET_5`.
+
+Standard error was captured separately for each: **empty in all five**. An earlier run appeared
+to show SLF4J no-provider warnings coming from an example; capturing the streams apart shows
+they came from a `mvn install` the launcher ran, and `tail` had cut the line that says so.
+
+#### The completeness audit, re-run
+
+[P29](#p29--a-global-check-and-the-eight-things-it-found) dated its audit *"true on
+2026-08-31, and stops being true the next time the API grows"*. P37 grew it. Re-run against
+the built classes: **20 public types, 63 public members, 2 that no document mentions.**
+
+They are the same two, and they stay open for the same reason: `LlmConfig.fromBlock` and
+`MemoryConfig.unknownType` are accidental API surface with no caller outside the package, so
+documenting them would make the accident permanent and narrowing them is an API change wanting
+its own item. `LlmRegistry.sources()`, the member that grew the surface, is documented in the
+API table, in the *Storing a layer back* section and in the README.
+
+#### Four defects, all of them true on the day they were written
+
+**The tutorial printed a line the program has not printed since P21.** Step 3 showed
+
+    /menu for the menu, /exit to quit.
+
+and running the command the page prints gives
+
+    /menu for the menu, /tools to answer through an AiService with a tool, /exit to quit.
+
+`/tools` was added in [P21](#p21--what-the-library-leaves-available-said-out-loud), which also
+added the sentence *further down the same page* telling the reader to type it. The transcript
+above it was never re-run. `docs/manual/README.md` promises *"every output block is a real
+capture"*, which that block had stopped being.
+
+**The council snippet showed the shape the paragraph under it argues against.** Step 9 quoted
+
+```java
+for (String name : registry.names()) {
+    LlmBundle bundle = registry.get(name);
+```
+
+then explained that a council must not see half of one configuration and half of another. The
+snippet is P3's, and was accurate the day it was written.
+`ThreeModelCouncil` has taken one `snapshot()` per round since
+[P27](#p27--a-review-of-all-seven-modules-the-examples-and-the-manual), whose sixth finding was
+that the example named after the council round did not use it, and the snippet is exactly the
+code
+[ADR-0038](../adr/0038-snapshot-gives-callers-the-atomicity-the-swap-already-has.md) says does
+*not* get that guarantee — two `get()` calls can straddle a swap. The snippet now matches the
+example, and the paragraph says which line is the load-bearing one.
+
+**Two sections of the reference disagreed about a threading guarantee.** *Reload semantics*
+said listeners run *"on the watcher thread"* — written in [P3](#p3--the-manual) and true then,
+when the watcher was the only reloader. *Threading and lifecycle* says *"on the thread that
+caused the reload — the watcher thread, or the caller of `reload()`"*, corrected by
+[P19](#p19--configuration-sources-and-a-reload-the-application-can-ask-for) when it made
+`reload()` public. P19 fixed one and not the other. The same section's opening sentence still
+named the debounce as the only trigger; it now names all three, and says that a `store()` runs
+no listener at all.
+
+**`id()`'s list of where it is printed was three releases out of date.** *"The library only
+prints it, in parse errors and in `ReloadFailure`"* was written in P19. Since then `id()`
+appears in `StaleLayerException.layerId()`, in the refusal of a `store` into a foreign layer,
+and in the `watch(true)` refusal that lists the layers. Replaced with the rule rather than a
+list, so it does not rot again the same way.
+
+#### Checked and found correct
+
+Verified by running or by reading the code the text describes, not by grepping for its words:
+
+- **Step 4's transcript, live.** A second block appended to the watched file while the console
+  ran produced `  [config reloaded: updated=[] added=[SH] removed=[]]` and a two-model menu,
+  character for character as the page has them. No request was sent.
+- Step 6's three refusal messages, against `SnapshotLoader` and `ConfigLoader`.
+- Step 7's `[config rejected, still running the previous one: …]`, against `ConsoleChat`.
+- The five `--help` texts against `build/run-example.sh`, including the two P18 defects: the
+  council's one-file wording and the free-example line that names both free examples.
+- `README.md` and `docs/manual/README.md` end to end. The `0.1.0` in every dependency snippet
+  is correct and stays until `0.2.0` is on Central.
+
+#### Verification
+
+`build/check-docs.py` clean. No source changed, so the build is untouched.
+
+Four of the runs sent requests: `ProviderSwap` twice at two requests each, one council round at
+three, and one `ConsoleChat` session — a moderated question on `CR`, then a `/tools` turn whose
+tool call is a second round trip. The two `ConsoleChat` runs that checked the tutorial's step 3
+and step 4 sent nothing, because neither asked a question.

@@ -111,6 +111,18 @@ public interface ConfigSource {
      * of {@link LlmRegistry#store(WritableConfigSource, String)}. Use it for the layer that
      * holds choices your application's users make; leave the layers you ship read-only.
      *
+     * <p><strong>Storing needs a writable directory, not only a writable file.</strong> The
+     * new text is written to a temporary file beside the target and then moved onto it, so
+     * that no reader ever sees the layer half written. Two things follow: a read-only file in
+     * a writable directory is still stored, and a writable file in a read-only directory is
+     * not. Nothing checks this when the registry is built — it is
+     * {@link LlmRegistry#store(WritableConfigSource, String)} that then throws
+     * {@link ConfigAccessException} on the first attempt to write.
+     *
+     * <p>When the path is a symbolic link, the write follows it: the link stays a link and
+     * the file it points at is replaced. A link into a read-only mount therefore fails to
+     * store, which is the honest outcome rather than a silent replacement of the link.
+     *
      * @param file the file to read and write, as UTF-8
      * @return a writable source over that file
      * @throws NullPointerException if the file is null
