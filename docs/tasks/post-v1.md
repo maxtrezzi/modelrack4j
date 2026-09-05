@@ -4481,3 +4481,35 @@ Four fragments are asserted that no earlier version could produce: `temporary fi
 table above is a probe run against the old classes, before anything was edited.
 
 `build/check-docs.py` clean at 54 ADRs and 69 tracked markdown files.
+
+**PIT on core, after the branch had stopped moving: 208 mutants, 205 killed, 1 survived,
+1 timed out, 1 uncovered, 2 minutes 48 seconds.** Three more mutants than
+[P36](#p36--housekeeping-a-test-that-raced-its-own-listener-and-the-first-read-of-five-merged-branches)'s
+205, and all three of the new ones are killed — the report carries three mutants in
+`describeReplacedFile` and two in `sources`, which is also what says it ran against this
+branch's classes rather than another build's. The three that are not killed are the same three
+by identity, with two of them moved by the lines this branch added:
+
+| Status | Where | Was |
+|---|---|---|
+| `SURVIVED` | `LlmRegistry.reload` line 385 | `Optional.empty()` replaced by `Optional.empty()` — the equivalent mutant P27 identified; line 339 before this branch |
+| `TIMED_OUT` | `LlmRegistry$Builder.chooseNotifier` line 845 | the same one P34 and P36 recorded |
+| `NO_COVERAGE` | `WritableFileConfigSource.stage` line 149 | the cleanup branch that needs a filesystem failing between `createTempFile` and `writeString`, left untested on purpose |
+
+**`mvn -Pintegration verify`: green, all four providers answered a live call.** This had not
+run since [P34](#p34--langchain4j-1200-and-the-jar-the-aggregate-started-bringing) took the
+library to LangChain4j `1.20.0`, and P34 says so — it claimed nothing about the live APIs. It
+is the only check that a configured model identifier still exists
+([P6](#p6--the-integration-tests-against-live-apis)), and two of the four names are outside
+upstream's enums, so nothing else could have caught a retirement:
+
+| Provider | `model-name` | Answered in |
+|---|---|---|
+| OpenAI | `gpt-5-mini` | 3.73 s |
+| Anthropic | `claude-sonnet-4-6` | 1.77 s |
+| Gemini | `gemini-3.6-flash` | 3.12 s |
+| GLM | `glm-5.3` | 3.57 s |
+
+Four paid calls, one per provider. Keys came from the git-ignored `.env`, which is where this
+machine keeps them — they are in no shell profile, so an integration run needs them exported
+first.
