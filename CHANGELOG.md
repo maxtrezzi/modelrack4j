@@ -32,6 +32,14 @@ will not be held back for a major bump until the API settles at `1.0.0`.
   message, sooner
   ([ADR-0048](docs/adr/0048-providers-report-capabilities-core-enforces-them.md)).
 
+- **`LlmRegistry.sources()`**, the layers the registry was built from, lowest precedence first
+  and unmodifiable. It gives an application its writable layer back instead of making it carry
+  that reference beside the registry. The same list was already on `ReloadFailure.sources()`,
+  which is the one path an application is least likely to have written. Write a layer found
+  this way through `store(...)`, never through its own `write(String)`: writing it directly
+  stores text that nothing validated, and leaves the registry serving the previous
+  configuration until something reloads it.
+
 ### Changed
 
 - **Breaking: a layer that cannot be read or written now throws `ConfigAccessException`, not
@@ -69,6 +77,25 @@ will not be held back for a major bump until the API settles at `1.0.0`.
   neither of them a `LangChain4jException`, and neither mentioning a key. Both limits are read
   off the provider's own code, so a key this check refuses could never have completed a call
   ([ADR-0049](docs/adr/0049-validate-a-credentials-shape-when-the-provider-requires-it.md)).
+
+- **A store that cannot write a file layer now says that the *directory* is what it could not
+  write.** The message was `Cannot write the configuration beside <file>: <cause>`, and the
+  cause named the temporary file the write goes through — a path the caller never saw and
+  which has been removed again by the time the message is read. It now names the directory,
+  says that storing needs *that* to be writable rather than the file, and says what the path
+  in the cause is. Making the file itself read-only has always left a store working, because
+  the new text is written beside the target and moved onto it; the reference now states that.
+  Only code asserting on the exact string is affected.
+- **A commit that fails on a path reached through a symbolic link now names the file the
+  write replaces.** `Cannot replace the configuration file <link>` sent the reader to look at
+  the permissions of the link while the failure was on the file it resolves to — which is the
+  read-only mounted target this library follows links for in the first place. The message now
+  adds `(resolved to <path>, which is the file a write replaces)` when the two differ.
+- **`StaleLayerException` says what its comparison includes.** The message adds that the
+  comparison is character for character and includes the final newline. A refusal nobody
+  caused — an `expected` that came back from a shell `$(cat layer.conf)`, or from an HTTP
+  client that trimmed the body — then explains itself instead of looking like a fault in the
+  check. `layerId()` and `current()` are unchanged.
 
 - **Built against LangChain4j 1.20.0** (community modules at `1.20.0-beta30`), up from
   `1.19.0`. Nothing in this library's API changes. One thing reaches your classpath: the

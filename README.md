@@ -428,9 +428,10 @@ Nothing is written and nothing changes if the text would not load; if saving its
 the previous configuration comes back and the call throws. A store raises no reload event —
 the caller already knows what changed, and is given it as the return value. The target has to
 be a `WritableConfigSource`, which is the interface above plus a `write(String)` method;
-`ConfigSource.ofWritableFile(path)` gives you one for a file. Where more than one writer is
-possible, `storeIfUnchanged(layer, base, newText)` refuses instead of erasing somebody else's
-change. See [Storing a layer back](docs/manual/part-2-reference.md#storing-a-layer-back).
+`ConfigSource.ofWritableFile(path)` gives you one for a file, and `registry.sources()` hands
+the layers back, so you can find your writable layer instead of carrying the reference beside
+the registry. Where more than one writer is possible, `storeIfUnchanged(layer, base, newText)`
+refuses instead of erasing somebody else's change. See [Storing a layer back](docs/manual/part-2-reference.md#storing-a-layer-back).
 
 ## Hot reload
 

@@ -192,6 +192,38 @@ public final class LlmRegistry implements AutoCloseable {
     }
 
     /**
+     * Returns the configuration layers this registry was built from, lowest precedence first.
+     *
+     * <p>The list is exactly what {@link Builder#sources(List)} or
+     * {@link Builder#configFiles(List)} was given, in the same order, and it never changes: a
+     * reload re-reads the same layers rather than replacing them. Use it to find the layer to
+     * store into, instead of carrying the reference alongside the registry:
+     *
+     * <pre>{@code
+     * WritableConfigSource userLayer = registry.sources().stream()
+     *         .filter(WritableConfigSource.class::isInstance)
+     *         .map(WritableConfigSource.class::cast)
+     *         .findFirst()
+     *         .orElseThrow();
+     * }</pre>
+     *
+     * <p><strong>A writable layer found here is still written through
+     * {@link #store(WritableConfigSource, String)}</strong>, never through its own
+     * {@link WritableConfigSource#write(String)}. Writing it directly stores text that
+     * nothing validated, and leaves this registry serving the previous configuration until
+     * something reloads it — at which point a broken text fails with no caller to tell.
+     *
+     * @return the layers, lowest precedence first, unmodifiable
+     * @implNote The same list {@link ReloadFailure#sources()} already hands to a failure
+     *     listener. Having it only there made the layers reachable on the one path an
+     *     application is least likely to have written, which is why it is also a method
+     *     (ADR-0054).
+     */
+    public List<ConfigSource> sources() {
+        return Layer.sourcesOf(layers);
+    }
+
+    /**
      * Returns every configured name, in sorted order.
      *
      * @return an unmodifiable snapshot of the names currently held
@@ -394,7 +426,9 @@ public final class LlmRegistry implements AutoCloseable {
      *     or if the text does not parse or does not validate
      * @throws ConfigAccessException if the text validates but cannot be stored, or if
      *     another layer cannot be read while it is validated. The previous configuration is
-     *     back in place and no listener ran.
+     *     back in place and no listener ran. For a file layer this means the layer's
+     *     <em>directory</em> could not be written; see
+     *     {@link ConfigSource#ofWritableFile(Path)}.
      * @throws RuntimeException whatever the layer's own
      *     {@link WritableConfigSource#write(String)} threw, or a provider's builder. The
      *     previous configuration is back in place and no listener ran.
@@ -461,7 +495,9 @@ public final class LlmRegistry implements AutoCloseable {
      *     or if the text does not parse or does not validate
      * @throws ConfigAccessException if the text validates but cannot be stored, or if
      *     another layer cannot be read while it is validated. The previous configuration is
-     *     back in place and no listener ran.
+     *     back in place and no listener ran. For a file layer this means the layer's
+     *     <em>directory</em> could not be written; see
+     *     {@link ConfigSource#ofWritableFile(Path)}.
      * @throws RuntimeException whatever the layer's own
      *     {@link WritableConfigSource#write(String)} threw, or a provider's builder. The
      *     previous configuration is back in place and no listener ran.

@@ -297,14 +297,15 @@ watcher unchanged. Four consequences that look like tidying and are not:
   internals carry `List<Layer>`. **The fix for a third such question is a method on `Layer`,
   never a marker on `ConfigSource`:** an address on the public interface is what ADR-0042
   refused twice, and a notifier per source undoes ADR-0013. `Layer.sourcesOf` unwraps where a
-  public type needs the source back — `ReloadFailure`, and `requireOwnLayer`'s message.
+  public type needs the source back — `ReloadFailure`, `LlmRegistry.sources()` and
+  `requireOwnLayer`'s message.
   `StagedWrite.prepare` keeps its own `instanceof`, on purpose: it asks whether a *writable*
   target is a file, which is a different axis, and folding it in would buy an unreachable
   branch.
 
 **A layer the application owns can be written back (P20).** `store(target, text)` stages the
 text, validates the whole configuration against the staged copy, publishes, and only then
-stores — and puts the previous snapshot back if storing fails. Five things about it are
+stores — and puts the previous snapshot back if storing fails. Six things about it are
 load-bearing:
 
 - **The order is the contract, and it is why the method exists at all.** Writing first and
@@ -329,6 +330,18 @@ load-bearing:
 - **The registry stores text, never an `LlmConfig`.** An application holds resolved values,
   so an API that took one back would write the resolved secret into the layer. Measured in
   P20: `api-key = ${?HOME}` in the layer, `/home/...` from `config.apiKey()`.
+- **A file store needs a writable *directory*, not a writable file, and the messages have to
+  say what failed (P37).** `stage()` writes beside the target and `commit()` renames onto it,
+  so `chmod 444` on the file leaves a store working — measured — while a read-only directory
+  refuses it. That is now in `ConfigSource.ofWritableFile`'s javadoc and in the reference,
+  whose own sentence had said a read-only *file* makes a store fail. P33 fixed half of the
+  message: it interpolates `e` rather than `e.getMessage()`, because an `IOException` over a
+  path carries only that path and here that path is the staged temporary file. The half it
+  left is that nothing said what that path *was*, so a reader was handed a hidden filename
+  that no longer exists. `stage()` now names the directory and says it is what needs write
+  permission; `commitStaged` goes through `describe`, which adds the resolved path when it
+  differs from the configured one, because that is the file a write replaces and, in a
+  read-only mount behind a link, the one that failed.
 - **ADR-0042's include hazard has a write-side twin, and the check compares directories
   rather than testing for a symlink.** A staged file sits beside its destination so an
   include resolves during validation the way it will resolve afterwards — but the layer is

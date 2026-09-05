@@ -284,6 +284,7 @@ LlmRegistry registry = LlmRegistry.builder()
 | `get(String name)` | The current bundle. Throws `UnknownConfigurationException` if the name is not configured *now*. |
 | `snapshot()` | The current generation, held still, as an `LlmSnapshot`. Every lookup on it belongs to that one generation. |
 | `names()` | The configured names, sorted. |
+| `sources()` | The layers the registry was built from, lowest precedence first, unmodifiable. The list never changes: a reload re-reads the same layers. Use it to find the layer to write instead of keeping the reference beside the registry — but write it through [`store()`](#storing-a-layer-back), never through its own `write(String)`. |
 | `onReload(Consumer<ReloadChange>)` | Registers a listener for successful reloads. |
 | `onReloadFailure(Consumer<ReloadFailure>)` | Registers a listener for rejected ones. |
 | `reload()` | Re-reads every layer now. Returns `Optional<ReloadChange>` — empty when nothing changed. Throws if the new configuration is rejected; the old one stays live. |
@@ -441,8 +442,15 @@ and still picks up an edit someone makes in an editor.
 
 It validates the whole configuration against the new text, applies it, and only then stores
 it. A text that would not load is refused, with nothing written and nothing changed. If
-storing itself fails — a read-only file, a database that is down — the previous configuration
-comes back and the call throws.
+storing itself fails — a directory that cannot be written, a database that is down — the
+previous configuration comes back and the call throws.
+
+**For a file layer, it is the directory that has to be writable, not the file.** The new text
+is written to a temporary file beside the target and then moved onto it, so that no reader
+ever sees the layer half written. A file that is itself read-only is therefore still stored;
+a writable file in a read-only directory is not. Nothing checks this when the registry is
+built, so a deployment that mounts the configuration read-only finds out at the first
+`store()`, as a `ConfigAccessException`.
 
 **Only a `WritableConfigSource` can be the target.** Whether a layer can be read says nothing
 about whether it can be written, so a base layer you ship stays read-only because you never
@@ -465,7 +473,7 @@ already live, and publishes nothing.
 |---|---|
 | `store(WritableConfigSource, String)` | Validates, applies, stores. Returns what changed, or empty when the new text means what was already live — a text that only reformats is stored, and reported as no change. A text that does not validate throws `ConfigValidationException`; a layer that cannot be written throws `ConfigAccessException`, and both leave the previous configuration live. |
 | `storeIfUnchanged(WritableConfigSource, String, String)` | The same, but only while the layer still holds the text passed as `expected`. Otherwise throws `StaleLayerException`, which carries the text the layer holds now. |
-| `ConfigSource.ofWritableFile(Path)` | A file layer that can also be written. It writes through a temporary file beside the file it will replace, so a reader never sees half a write; it follows a symbolic link instead of replacing it; and it keeps the permissions the file already had. |
+| `ConfigSource.ofWritableFile(Path)` | A file layer that can also be written. It writes through a temporary file beside the file it will replace, so a reader never sees half a write — which is why the **directory** is what needs write permission, not the file. It follows a symbolic link instead of replacing it, and it keeps the permissions the file already had. |
 | `WritableConfigSource.write(String)` | What the library calls to store the text. Implement it for a layer of your own: make it one statement, make sure it stores nothing at all if it throws, and throw `ConfigAccessException` when the medium fails. |
 
 #### More than one writer
@@ -989,7 +997,7 @@ Deliberate and permanent:
 | `UnknownConfigurationException` at runtime | The name was removed from the configuration while running | Catch it and re-read `names()`, or keep the block. The exception's `configurationName()` gives the name that was asked for. |
 | `watch(true) watches configuration files, and none of these layers is one` | `watch(true)` where no layer is a file — every one is a database row, or your own `ConfigSource` | There is nothing the library can watch. Call `reload()` when the configuration changes, or pass a `ChangeNotifier`. One file layer among the others is enough to watch that file. |
 | `Configuration source … cannot be read` | A layer's file is missing or unreadable, at `build()` or at any reload. Calling `text()` on the source yourself says `Configuration file does not exist or is not readable` instead | Check the path and the permissions. This is a `ConfigAccessException`, not a validation failure: nothing was found wrong with the text, because the text could not be read. |
-| `Cannot write the configuration beside …`, `Cannot replace the configuration file …` | A `store` could not write the layer — the directory is not writable, the disk is full. The cause is named after the last colon, for example `java.nio.file.AccessDeniedException` | The previous configuration is still live and the layer still holds its old text; nothing was half-applied. Also a `ConfigAccessException`. |
+| `Cannot write the configuration …`, `Cannot replace the configuration file …` | A `store` could not write the layer — the directory is not writable, the disk is full. The message names that directory; the cause after the last colon, for example `java.nio.file.AccessDeniedException`, names the temporary file the write goes through, which has been removed again by the time you read it | The previous configuration is still live and the layer still holds its old text; nothing was half-applied. Also a `ConfigAccessException`. Making the **file** writable does not help — it is the directory that is written. |
 | Something escapes a `catch (ConfigValidationException)` that used to catch it | A layer that cannot be reached now throws `ConfigAccessException`, which is deliberately not a subclass | Catch both types where you want the previous behaviour. The split is what lets an application answer `400` for a text it cannot accept and `503` for a disk it cannot write. |
 | `Configuration sources must have distinct ids` | Two layers with the same id — often one file listed twice | Remove the repeat. File ids are the absolute path, so two spellings of one file count as one. |
 | An `include` in a layer adds nothing, and nothing is logged | The layer is not a file, so the include is looked up on the classpath, and a HOCON include that finds nothing is not an error | Includes work in file layers. For a layer from a database, assemble the text before handing it over. |

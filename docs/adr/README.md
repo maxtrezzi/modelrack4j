@@ -106,6 +106,7 @@ by number, since the numbering only reflects the order of the original appendix.
 | [0051](0051-layer-answers-for-itself-adapted-at-the-boundary.md) | A layer answers for itself, adapted at the boundary | Accepted |
 | [0052](0052-no-version-token-the-expected-text-is-the-token.md) | No version token — the expected text is the token | Accepted |
 | [0053](0053-a-separate-exception-for-a-layer-that-cannot-be-reached.md) | A separate exception for a layer that cannot be reached | Accepted |
+| [0054](0054-the-registry-reports-its-own-layers.md) | The registry reports its own layers | Accepted |
 | [0030](0030-one-timeout-in-the-schema.md) | One `timeout` in the schema; providers map it onto their own client | Accepted |
 | [0018](0018-manage-langchain4j-versions-via-bom.md) | Manage LangChain4j versions by importing its BOM | Accepted — the BOM import set amended by ADR-0022 |
 | [0022](0022-glm-via-the-community-module-and-its-bom.md) | Take GLM from the community module, and import its BOM alongside the main one | Accepted |

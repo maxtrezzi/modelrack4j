@@ -4334,3 +4334,131 @@ real artifacts from Central.
 finding was an assertion that did not hold, not a case that was missing. `ReloadTest` is 21
 tests in 6.59 s. No production code and no public API changed, so there is no CHANGELOG
 entry.
+
+---
+
+### P37 — What a failed store tells you, and the layers the registry would not name
+
+**Status:** Done — three findings from the consuming application, all reproduced before they
+were fixed; ADR-0054 ·
+**Raised by:** the consuming application, which re-ran the seven awkward points behind P24–P26
+and D5–D6 against a local build of `main` at `68f6695` and reported what was still awkward ·
+**Branch:** `task/p37-what-a-failed-store-tells-you`
+
+Three of the seven earlier points were confirmed fixed from that application's own code —
+`sources(...)` with `watch(true)` builds and publishes a reload (P24), a failed write and an
+invalid text are two unrelated exception types (D6), and a malformed GLM key is refused at load
+time in both wordings (P25). What follows is what the same run found instead.
+
+#### A store fails on the directory, and nothing said so
+
+Measured before anything was changed, by driving `WritableFileConfigSource.write` twice:
+
+| The layer | Result |
+|---|---|
+| file `r--r--r--`, directory writable | **stored** |
+| file `rw-r--r--`, directory `r-xr-xr-x` | `ConfigAccessException` |
+
+That is correct and it is the point of the design — `stage()` writes beside the target and
+`commit()` renames onto it, so a reader never sees half a write — but **nothing public said
+it.** The reasoning lived in an `@implNote` on a package-private class.
+`ConfigSource.ofWritableFile` said nothing, and the reference said the opposite:
+
+> If storing itself fails — a read-only file, a database that is down — …
+
+A read-only file does not make a store fail. The sentence was written for
+[P20](#p20--writing-a-configuration-layer-back) and has been wrong since; it is the
+P19 pattern again, prose that describes a mechanism it was not checked against.
+
+The consequence reported was smaller than the one that matters. The application hit it while
+writing a test that had to make a store fail, and `chmod 444` on the file did not. The larger
+case is a deployment that mounts its configuration directory read-only: nothing refuses that
+at `build()`, and it surfaces at the first `store()`.
+
+#### The message named a file the caller had never seen
+
+[P33](#p33--the-messages-d6-leaves-a-user-and-where-they-are-looked-up) had already fixed half
+of this. It changed `e.getMessage()` to `e`, because an `IOException` over a path is usually
+just that path again, and got:
+
+    Cannot write the configuration beside /…/conf/runtime.conf: java.nio.file.AccessDeniedException: /…/conf/.modelrack4j-staged-1016….conf
+
+The half it left is that nothing said what the second path *is*. It is the staged temporary
+file: the caller never asked for it, it is deleted on the way out of the failure, and the word
+`beside` was the only hint that the directory is the thing that could not be written. The
+message now carries the fact instead of hinting at it:
+
+    Cannot write the configuration /…/conf/runtime.conf: the new text is written to a temporary
+    file in /…/conf and then moved onto the target, so storing needs that directory to be
+    writable, not only the file. The failure below names that temporary file, which has been
+    removed again: java.nio.file.AccessDeniedException: /…/conf/.modelrack4j-staged-7192….conf
+
+`commitStaged` had the same defect on a different axis, and it was not reported — it was found
+by reading the other message beside it. It named the *configured* path, and a write follows a
+symbolic link rather than replacing it
+([ADR-0024](../adr/0024-watch-the-symlink-s-directory-not-its-real-path.md)), so the file that
+failed is not always the file that was named. That is not a corner: a target mounted read-only
+behind a link is the deployment the link-following exists for. A `describe` helper now names
+both when they differ.
+
+#### `StaleLayerException` did not say what it compares
+
+[ADR-0052](../adr/0052-no-version-token-the-expected-text-is-the-token.md) decided that the
+expected text *is* the token, and [P32](#p32--the-recipe-d5s-argument-rests-on) wrote the
+recipe. Both are intact. What the report adds is where a reader meets the consequence: an
+HTTP client whose `before=$(curl …/config)` drops the layer's final newline gets a `409` on
+every attempt, and the exception it holds says somebody else wrote the layer, which nobody
+did.
+
+The fact was already documented in three places — the `storeIfUnchanged` javadoc, the
+reference's ETag recipe, and a troubleshooting row — and in none of them is it where an
+operator is looking. The message now ends by saying the comparison is character for character
+and includes the final newline. `StaleLayerException`'s own class javadoc gained the same
+point, because its opening sentence — *somebody else wrote the layer in the meantime* — is not
+true in this case.
+
+#### The registry would not name its own layers
+
+The application keeps its `WritableConfigSource` reference beside the registry, because there
+was no way to ask for it back. That is a field holding something the registry already has, and
+it is the first thing anyone writing this code meets.
+
+The argument for withholding it was already void: `ReloadFailure` is a public record whose
+first component is `List<ConfigSource>`, so every layer, writable ones included, was being
+handed to any failure listener. `LlmRegistry.sources()` is
+[ADR-0054](../adr/0054-the-registry-reports-its-own-layers.md), and a test asserts the two
+report the same list so they cannot drift.
+
+#### Two points from the same report that produced no work
+
+- **The upstream GLM defect is still there**, verified by the application against
+  `langchain4j-community-zhipu-ai` at the current beta: `AuthorizationUtils.generateToken`
+  splits the key and takes element `[1]` with no length check, `RetryUtils` treats the
+  resulting `ArrayIndexOutOfBoundsException` as retryable, and it is thrown four times.
+  P25 listed an upstream issue as its item 3 and the owner declined it on 2026-09-03. Asked
+  again on 2026-09-05 with that evidence, and declined again. This library's own defence —
+  refusing the key shape at load time — is unaffected and is what makes the upstream state
+  survivable.
+- `model-name` is still unvalidated and `ConfigSource` still has no `version()`, both by
+  decision (P2, [ADR-0052](../adr/0052-no-version-token-the-expected-text-is-the-token.md)),
+  and the report confirms the rejected-reload `WARN` still prints the field, the value and the
+  available providers and never a credential.
+
+#### Verification
+
+`mvn clean install` green. Core is at **155 tests**, up from 148: four for `sources()` — the
+order, the list being unmodifiable, the javadoc example run end to end, and equality with
+`ReloadFailure.sources()` — one that pins the read-only file still being stored, and two on
+the new message text. **Three tests assert on the text of the two messages this entry
+changed**, counting the read-only directory test that already existed. That text was asserted
+nowhere before, which is what P33 recorded as missing and as the reason its own defect had
+survived.
+
+The change was seen to break something before the tests were written for it. Editing the
+source alone turned the suite red at `Tests run: 148, Failures: 1` — the existing read-only
+directory test, which asserted `Cannot write the configuration beside` and nothing further.
+Four fragments are asserted that no earlier version could produce: `temporary file in …`,
+`needs that directory to be writable`, `includes the final newline` and `(resolved to …`. The
+table above is a probe run against the old classes, before anything was edited.
+
+`build/check-docs.py` clean at 54 ADRs and 69 tracked markdown files.

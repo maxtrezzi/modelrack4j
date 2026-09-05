@@ -127,11 +127,16 @@ record WritableFileConfigSource(Path file) implements WritableConfigSource, File
             staged = null;   // handed over: the caller discards it from here on
             return prepared;
         } catch (IOException e) {
-            // e rather than e.getMessage(): an IOException over a path usually carries
-            // only that path, and here that path is the staged temporary file, which tells
-            // the reader nothing. The type is what names the cause.
+            // e rather than e.getMessage(): an IOException over a path usually carries only
+            // that path, and here that path is the staged temporary file — a name the caller
+            // has never seen and which no longer exists by the time it reads this. The type
+            // is what names the cause, and the sentence before it says what the path is.
             throw new ConfigAccessException(
-                    "Cannot write the configuration beside " + file + ": " + e, e);
+                    "Cannot write the configuration " + file + ": the new text is written to"
+                            + " a temporary file in " + directory + " and then moved onto the"
+                            + " target, so storing needs that directory to be writable, not"
+                            + " only the file. The failure below names that temporary file,"
+                            + " which has been removed again: " + e, e);
         } finally {
             // Reached only when the file was created and then not handed over — a failing
             // write, most often a full disk. The caller never receives the path in that
@@ -236,6 +241,26 @@ record WritableFileConfigSource(Path file) implements WritableConfigSource, File
     }
 
     /**
+     * Names the file a write replaces, adding the resolved path when it is a different one.
+     *
+     * @param destination the path the staged file is moved onto
+     * @return the configured path, and the path it resolves to when the two differ
+     * @implNote A write follows symbolic links instead of replacing them (see
+     *     {@link #destination()}), so the file that failed is not always the file the layer
+     *     was configured with. Naming only the configured path sends the reader to look at
+     *     the permissions of the link, in exactly the deployment where a failure here is
+     *     expected: a target mounted read-only, which is what ADR-0024 exists for. It says
+     *     "resolved to" rather than naming a symbolic link, because the link can be any
+     *     directory on the way and not the file itself.
+     */
+    private String describe(Path destination) {
+        return destination.equals(file.toAbsolutePath().normalize())
+                ? file.toString()
+                : file + " (resolved to " + destination + ", which is the file a write"
+                        + " replaces)";
+    }
+
+    /**
      * Moves a staged file onto the destination it was prepared for.
      *
      * @param prepared the file returned by {@link #stage(String)}
@@ -254,7 +279,8 @@ record WritableFileConfigSource(Path file) implements WritableConfigSource, File
             }
         } catch (IOException e) {
             throw new ConfigAccessException(
-                    "Cannot replace the configuration file " + file + ": " + e, e);
+                    "Cannot replace the configuration file " + describe(prepared.destination())
+                            + ": " + e, e);
         }
     }
 

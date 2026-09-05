@@ -103,6 +103,80 @@ class ConfigSourceTest {
     }
 
     @Test
+    @DisplayName("sources() gives back the layers that were supplied, in the same order")
+    void sourcesAreReportedInPrecedenceOrder() {
+        ConfigSource base = ConfigSource.of("row#base", block("SL", "from-base"));
+        ConfigSource over = ConfigSource.of("row#over", block("SL", "from-over"));
+
+        try (LlmRegistry registry = LlmRegistry.builder().sources(List.of(base, over))
+                .build()) {
+            // Lowest precedence first, which is the order sources(...) documents and the
+            // order the winning value proves: the last layer is the one that wins.
+            assertThat(registry.sources()).containsExactly(base, over);
+            assertThat(registry.get("SL").config().modelName()).isEqualTo("from-over");
+        }
+    }
+
+    @Test
+    @DisplayName("sources() hands back a list a caller cannot change under the registry")
+    void sourcesCannotBeModified() {
+        ConfigSource row = ConfigSource.of("row#1", block("SL", "m"));
+
+        try (LlmRegistry registry = LlmRegistry.builder().sources(List.of(row)).build()) {
+            List<ConfigSource> reported = registry.sources();
+
+            assertThatThrownBy(() -> reported.add(ConfigSource.of("row#2", "")))
+                    .isInstanceOf(UnsupportedOperationException.class);
+            assertThat(registry.sources()).containsExactly(row);
+        }
+    }
+
+    @Test
+    @DisplayName("the writable layer can be found through sources() and stored through")
+    void theWritableLayerIsReachableFromTheRegistry() throws IOException {
+        Path file = dir.resolve("runtime.conf");
+        Files.writeString(file, block("SL", "before"), StandardCharsets.UTF_8);
+        ConfigSource base = ConfigSource.of("row#base", block("SH", "fixed"));
+
+        try (LlmRegistry registry = LlmRegistry.builder()
+                .sources(List.of(base, ConfigSource.ofWritableFile(file)))
+                .build()) {
+            // The example in sources()'s javadoc, run: an application that did not keep the
+            // reference alongside the registry can still find the layer it may write.
+            WritableConfigSource writable = registry.sources().stream()
+                    .filter(WritableConfigSource.class::isInstance)
+                    .map(WritableConfigSource.class::cast)
+                    .findFirst()
+                    .orElseThrow();
+
+            registry.store(writable, block("SL", "after"));
+
+            assertThat(registry.get("SL").config().modelName()).isEqualTo("after");
+            assertThat(registry.get("SH").config().modelName()).isEqualTo("fixed");
+        }
+    }
+
+    @Test
+    @DisplayName("a failure listener is handed the same layers sources() reports")
+    void aFailureReportsTheSameLayers() {
+        MutableSource row = new MutableSource("row#1", block("SL", "m"));
+        List<ReloadFailure> failures = new ArrayList<>();
+
+        try (LlmRegistry registry = LlmRegistry.builder().sources(List.of(row)).build()) {
+            registry.onReloadFailure(failures::add);
+            row.store("llm { SL { provider = nope } }");
+
+            assertThatThrownBy(registry::reload).isInstanceOf(ConfigValidationException.class);
+
+            // ReloadFailure carried the layers before sources() existed, on the one path an
+            // application is least likely to have written. The two must not drift apart.
+            assertThat(failures).singleElement()
+                    .extracting(ReloadFailure::sources)
+                    .isEqualTo(registry.sources());
+        }
+    }
+
+    @Test
     @DisplayName("reload() publishes what the source now says, and reports what changed")
     void manualReloadPublishesTheNewText() {
         MutableSource row = new MutableSource("row#1", block("SL", "before"));

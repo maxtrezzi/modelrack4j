@@ -370,7 +370,14 @@ class ConfigStoreTest {
                     assertThatThrownBy(() -> registry.store(target, LAYER_WITH_SECOND_MODEL))
                             .isInstanceOf(ConfigAccessException.class)
                             .isNotInstanceOf(ConfigValidationException.class)
-                            .hasMessageContaining("Cannot write the configuration beside");
+                            // The message has to name the directory and say that it is what
+                            // needs write permission. The cause names the staged file, which
+                            // by now has been removed again and which the caller has never
+                            // seen, so on its own it sends the reader nowhere.
+                            .hasMessageContaining("Cannot write the configuration " + file)
+                            .hasMessageContaining("temporary file in " + locked)
+                            .hasMessageContaining(
+                                    "needs that directory to be writable, not only the file");
 
                     assertThat(registry.get("SL").config().modelName()).isEqualTo("first");
                 } finally {
@@ -700,6 +707,35 @@ class ConfigStoreTest {
         }
 
         @Test
+        @DisplayName("a read-only file in a writable directory is still stored")
+        void store_ontoAReadOnlyFile_succeedsBecauseTheDirectoryIsWhatIsWritten()
+                throws IOException {
+            Path file = writeLayer("app.conf", LAYER);
+            Assumptions.assumeTrue(
+                    Files.getFileAttributeView(file, PosixFileAttributeView.class) != null,
+                    "POSIX permissions are not a concept on this filesystem");
+            Assumptions.assumeFalse("root".equals(System.getProperty("user.name")),
+                    "root ignores the permissions this test relies on");
+            // Staging writes beside the target and the commit renames onto it, so what a
+            // store needs is write permission on the directory. Taking it away from the file
+            // changes nothing. This is asserted rather than left implicit because
+            // ConfigSource.ofWritableFile now tells a reader exactly this.
+            Files.setPosixFilePermissions(file, PosixFilePermissions.fromString("r--r--r--"));
+            WritableConfigSource target = ConfigSource.ofWritableFile(file);
+
+            try (LlmRegistry registry = registryOver(target)) {
+                registry.store(target, LAYER_WITH_SECOND_MODEL);
+
+                assertThat(registry.get("SL").config().modelName()).isEqualTo("second");
+            }
+
+            assertThat(read(file)).isEqualTo(LAYER_WITH_SECOND_MODEL);
+            assertThat(PosixFilePermissions.toString(Files.getPosixFilePermissions(file)))
+                    .as("and the file it replaced was read-only, so the new one is too")
+                    .isEqualTo("r--r--r--");
+        }
+
+        @Test
         @DisplayName("a successful store leaves no staged file behind")
         void store_leavesNoStagedFile() throws IOException {
             Path file = writeLayer("app.conf", LAYER);
@@ -867,6 +903,30 @@ class ConfigStoreTest {
                         .isInstanceOf(StaleLayerException.class);
 
                 assertThat(row.writes).hasValue(0);
+            }
+        }
+
+        @Test
+        @DisplayName("an expected text that lost its final newline is refused, and says why")
+        void storeIfUnchanged_withoutTheFinalNewline_saysWhatTheComparisonIncludes()
+                throws IOException {
+            Path file = writeLayer("app.conf", LAYER);
+            WritableConfigSource target = ConfigSource.ofWritableFile(file);
+
+            try (LlmRegistry registry = registryOver(target)) {
+                // What a shell $(cat app.conf) hands back, and what an HTTP client trimming a
+                // response body hands back: the same configuration, one byte shorter. Nobody
+                // wrote the layer, so the message has to explain a refusal that otherwise
+                // looks like a race with nobody in it.
+                String trimmed = target.text().stripTrailing();
+                assertThat(trimmed).isNotEqualTo(target.text());
+
+                assertThatThrownBy(() ->
+                        registry.storeIfUnchanged(target, trimmed, LAYER_WITH_SECOND_MODEL))
+                        .isInstanceOf(StaleLayerException.class)
+                        .hasMessageContaining("includes the final newline");
+
+                assertThat(read(file)).isEqualTo(LAYER);
             }
         }
 
@@ -1069,6 +1129,28 @@ class ConfigStoreTest {
             assertThatThrownBy(() -> target.write(LAYER))
                     .isInstanceOf(ConfigAccessException.class)
                     .hasMessageContaining("Cannot replace");
+
+            assertThat(stagedFilesUnder(dir)).isEmpty();
+        }
+
+        @Test
+        @DisplayName("a failed move names the file the link points at, not only the link")
+        void write_whenTheMoveFails_namesTheFileAWriteReplaces() throws IOException {
+            // A write follows a symbolic link, so the file that failed is not the file the
+            // layer was configured with. Naming only the link sends the reader to check the
+            // permissions of the wrong path — in the deployment ADR-0024 exists for, where a
+            // read-only target is exactly how this fails.
+            Path real = Files.createDirectory(dir.resolve("real"));
+            Path occupied = Files.createDirectory(real.resolve("app.conf"));
+            Files.writeString(occupied.resolve("inside.txt"), "x", StandardCharsets.UTF_8);
+            Path link = dir.resolve("link.conf");
+            Files.createSymbolicLink(link, occupied);
+            WritableConfigSource target = ConfigSource.ofWritableFile(link);
+
+            assertThatThrownBy(() -> target.write(LAYER))
+                    .isInstanceOf(ConfigAccessException.class)
+                    .hasMessageContaining("Cannot replace the configuration file " + link)
+                    .hasMessageContaining("(resolved to " + link.toRealPath());
 
             assertThat(stagedFilesUnder(dir)).isEmpty();
         }
