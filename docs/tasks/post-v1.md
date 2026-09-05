@@ -4390,15 +4390,21 @@ message now carries the fact instead of hinting at it:
 
     Cannot write the configuration /…/conf/runtime.conf: the new text is written to a temporary
     file in /…/conf and then moved onto the target, so storing needs that directory to be
-    writable, not only the file. The failure below names that temporary file, which has been
-    removed again: java.nio.file.AccessDeniedException: /…/conf/.modelrack4j-staged-7192….conf
+    writable, not only the file. The failure below names that temporary file rather than your
+    configuration: java.nio.file.AccessDeniedException: /…/conf/.modelrack4j-staged-8428….conf
+
+A Java review of this branch caught the first draft of that sentence saying the staged file
+"has been removed again". It is removed on every path that created it — but the read-only
+directory, which is the case the message exists for, fails *inside* `createTempFile`, so the
+path in the cause was never a file at all. Written to be true of both.
 
 `commitStaged` had the same defect on a different axis, and it was not reported — it was found
 by reading the other message beside it. It named the *configured* path, and a write follows a
 symbolic link rather than replacing it
 ([ADR-0024](../adr/0024-watch-the-symlink-s-directory-not-its-real-path.md)), so the file that
 failed is not always the file that was named. That is not a corner: a target mounted read-only
-behind a link is the deployment the link-following exists for. A `describe` helper now names
+behind a link is the deployment the link-following exists for. A `describeReplacedFile`
+helper now names
 both when they differ.
 
 #### `StaleLayerException` did not say what it compares
@@ -4443,6 +4449,19 @@ report the same list so they cannot drift.
   decision (P2, [ADR-0052](../adr/0052-no-version-token-the-expected-text-is-the-token.md)),
   and the report confirms the rejected-reload `WARN` still prints the field, the value and the
   available providers and never a credential.
+
+#### What a Java review of the branch changed
+
+Two things beyond the message wording above.
+
+`Layer.sourcesOf(layers)` was called on **three** paths — the new accessor, every
+`ReloadFailure`, and `requireOwnLayer` on every store — and each call built a fresh list from
+a field that cannot change: the layers are fixed at `build()` and a reload re-reads the same
+ones. It is now unwrapped once, in the constructor, into a `sources` field the three paths
+share. `Layer.sourcesOf` has one call site again.
+
+`describe` was renamed `describeReplacedFile`. The old name said nothing about what it
+answers, on a method whose entire job is to answer one narrow question.
 
 #### Verification
 

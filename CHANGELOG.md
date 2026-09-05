@@ -80,10 +80,10 @@ will not be held back for a major bump until the API settles at `1.0.0`.
 
 - **A store that cannot write a file layer now says that the *directory* is what it could not
   write.** The message was `Cannot write the configuration beside <file>: <cause>`, and the
-  cause named the temporary file the write goes through — a path the caller never saw and
-  which has been removed again by the time the message is read. It now names the directory,
-  says that storing needs *that* to be writable rather than the file, and says what the path
-  in the cause is. Making the file itself read-only has always left a store working, because
+  cause named the temporary file the write goes through — a path the caller never saw, and
+  one that was never even created when the directory is what refused. It now names the
+  directory, says that storing needs *that* to be writable rather than the file, and says what
+  the path in the cause is. Making the file itself read-only has always left a store working, because
   the new text is written beside the target and moved onto it; the reference now states that.
   Only code asserting on the exact string is affected.
 - **A commit that fails on a path reached through a symbolic link now names the file the

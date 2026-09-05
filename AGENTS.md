@@ -296,9 +296,10 @@ watcher unchanged. Four consequences that look like tidying and are not:
   `Builder.build()`, into an internal `sealed Layer` (`FileLayer`, `TextLayer`), and the
   internals carry `List<Layer>`. **The fix for a third such question is a method on `Layer`,
   never a marker on `ConfigSource`:** an address on the public interface is what ADR-0042
-  refused twice, and a notifier per source undoes ADR-0013. `Layer.sourcesOf` unwraps where a
-  public type needs the source back — `ReloadFailure`, `LlmRegistry.sources()` and
-  `requireOwnLayer`'s message.
+  refused twice, and a notifier per source undoes ADR-0013. `Layer.sourcesOf` unwraps for the
+  public types that report a source back — `LlmRegistry.sources()`, `ReloadFailure` and
+  `requireOwnLayer`'s message — and is called **once**, in the registry's constructor, because
+  the layers are fixed at `build()`.
   `StagedWrite.prepare` keeps its own `instanceof`, on purpose: it asks whether a *writable*
   target is a file, which is a different axis, and folding it in would buy an unreachable
   branch.
@@ -339,9 +340,11 @@ load-bearing:
   path carries only that path and here that path is the staged temporary file. The half it
   left is that nothing said what that path *was*, so a reader was handed a hidden filename
   that no longer exists. `stage()` now names the directory and says it is what needs write
-  permission; `commitStaged` goes through `describe`, which adds the resolved path when it
-  differs from the configured one, because that is the file a write replaces and, in a
-  read-only mount behind a link, the one that failed.
+  permission; `commitStaged` goes through
+  `describeReplacedFile`, which adds the resolved path when it differs from the configured
+  one, because that is the file a write replaces and, in a read-only mount behind a link, the
+  one that failed. Neither message claims the staged file was cleaned up: when
+  `createTempFile` is what failed, the path in the cause is a name that was never created.
 - **ADR-0042's include hazard has a write-side twin, and the check compares directories
   rather than testing for a symlink.** A staged file sits beside its destination so an
   include resolves during validation the way it will resolve afterwards — but the layer is

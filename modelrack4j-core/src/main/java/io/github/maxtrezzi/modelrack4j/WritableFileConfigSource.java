@@ -129,14 +129,16 @@ record WritableFileConfigSource(Path file) implements WritableConfigSource, File
         } catch (IOException e) {
             // e rather than e.getMessage(): an IOException over a path usually carries only
             // that path, and here that path is the staged temporary file — a name the caller
-            // has never seen and which no longer exists by the time it reads this. The type
-            // is what names the cause, and the sentence before it says what the path is.
+            // has never seen. The type is what names the cause, and the sentence before it
+            // says what the path is. It does not say the file was removed again: when
+            // createTempFile is what failed, which is the read-only directory case, the path
+            // in the failure is a candidate name that was never created.
             throw new ConfigAccessException(
                     "Cannot write the configuration " + file + ": the new text is written to"
                             + " a temporary file in " + directory + " and then moved onto the"
                             + " target, so storing needs that directory to be writable, not"
-                            + " only the file. The failure below names that temporary file,"
-                            + " which has been removed again: " + e, e);
+                            + " only the file. The failure below names that temporary file"
+                            + " rather than your configuration: " + e, e);
         } finally {
             // Reached only when the file was created and then not handed over — a failing
             // write, most often a full disk. The caller never receives the path in that
@@ -251,9 +253,12 @@ record WritableFileConfigSource(Path file) implements WritableConfigSource, File
      *     the permissions of the link, in exactly the deployment where a failure here is
      *     expected: a target mounted read-only, which is what ADR-0024 exists for. It says
      *     "resolved to" rather than naming a symbolic link, because the link can be any
-     *     directory on the way and not the file itself.
+     *     directory on the way and not the file itself. It resolves nothing of its own: the
+     *     path it is given is the one {@link #stage(String)} already worked out and carried
+     *     on the {@code StagedFile}, and resolving again here could name a path the failed
+     *     move never touched.
      */
-    private String describe(Path destination) {
+    private String describeReplacedFile(Path destination) {
         return destination.equals(file.toAbsolutePath().normalize())
                 ? file.toString()
                 : file + " (resolved to " + destination + ", which is the file a write"
@@ -279,7 +284,7 @@ record WritableFileConfigSource(Path file) implements WritableConfigSource, File
             }
         } catch (IOException e) {
             throw new ConfigAccessException(
-                    "Cannot replace the configuration file " + describe(prepared.destination())
+                    "Cannot replace the configuration file " + describeReplacedFile(prepared.destination())
                             + ": " + e, e);
         }
     }

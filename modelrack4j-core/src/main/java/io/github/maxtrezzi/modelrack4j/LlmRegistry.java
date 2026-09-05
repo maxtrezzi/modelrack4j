@@ -102,6 +102,18 @@ public final class LlmRegistry implements AutoCloseable {
     private static final Duration DEFAULT_DEBOUNCE = Duration.ofMillis(300);
 
     private final List<Layer> layers;
+
+    /**
+     * The same layers as {@link #layers}, unwrapped for the public types that report them.
+     *
+     * @implNote Held rather than derived. The list is fixed at {@code build()} — a reload
+     *     re-reads the same layers rather than replacing them — and three places want it: the
+     *     {@link #sources()} accessor, every {@link ReloadFailure}, and {@link
+     *     #requireOwnLayer(WritableConfigSource)} on every store. Deriving it allocated a list
+     *     per call for a value that cannot change.
+     */
+    private final List<ConfigSource> sources;
+
     private final SnapshotLoader loader;
 
     /**
@@ -135,6 +147,7 @@ public final class LlmRegistry implements AutoCloseable {
     private LlmRegistry(List<Layer> layers, SnapshotLoader loader,
             Map<String, LlmBundle> bundles) {
         this.layers = layers;
+        this.sources = Layer.sourcesOf(layers);
         this.loader = loader;
         this.bundles = bundles;
     }
@@ -220,7 +233,7 @@ public final class LlmRegistry implements AutoCloseable {
      *     (ADR-0054).
      */
     public List<ConfigSource> sources() {
-        return Layer.sourcesOf(layers);
+        return sources;
     }
 
     /**
@@ -360,8 +373,7 @@ public final class LlmRegistry implements AutoCloseable {
                 log.warn(
                         "modelrack4j reload rejected; the previous configuration stays live: {}",
                         e.getMessage(), e);
-                notify(failureListeners,
-                        new ReloadFailure(Layer.sourcesOf(layers), e), "failure");
+                notify(failureListeners, new ReloadFailure(sources, e), "failure");
                 throw e;
             }
 
@@ -562,7 +574,6 @@ public final class LlmRegistry implements AutoCloseable {
      * @throws ConfigValidationException if it is not one of this registry's sources
      */
     private void requireOwnLayer(WritableConfigSource target) {
-        List<ConfigSource> sources = Layer.sourcesOf(layers);
         if (!sources.contains(target)) {
             throw new ConfigValidationException("The layer '" + target.id() + "' is not one of"
                     + " this registry's configuration sources, so it cannot be stored through"

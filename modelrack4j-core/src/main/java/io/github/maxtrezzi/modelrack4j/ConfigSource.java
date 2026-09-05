@@ -113,11 +113,11 @@ public interface ConfigSource {
      *
      * <p><strong>Storing needs a writable directory, not only a writable file.</strong> The
      * new text is written to a temporary file beside the target and then moved onto it, so
-     * that no reader ever sees the layer half written. Two things follow, and both have been
-     * measured: a read-only file in a writable directory is still stored, and a writable file
-     * in a read-only directory is not. Nothing checks this when the registry is built — it is
+     * that no reader ever sees the layer half written. Two things follow: a read-only file in
+     * a writable directory is still stored, and a writable file in a read-only directory is
+     * not. Nothing checks this when the registry is built — it is
      * {@link LlmRegistry#store(WritableConfigSource, String)} that then throws
-     * {@link ConfigAccessException}.
+     * {@link ConfigAccessException} on the first attempt to write.
      *
      * <p>When the path is a symbolic link, the write follows it: the link stays a link and
      * the file it points at is replaced. A link into a read-only mount therefore fails to
