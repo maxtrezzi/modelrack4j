@@ -4513,3 +4513,113 @@ upstream's enums, so nothing else could have caught a retirement:
 Four paid calls, one per provider. Keys came from the git-ignored `.env`, which is where this
 machine keeps them — they are in no shell profile, so an integration run needs them exported
 first.
+
+---
+
+### P38 — Running the examples and reading the manual against them
+
+**Status:** Done — five examples run, four defects in the manual, all of them prose that was
+true when it was written ·
+**Raised by:** the owner, who asked for the examples and the documentation to be checked ·
+**Branch:** carried by P37's branch, which had not been pushed
+
+#### The five examples
+
+All five were run, not inspected. `--help` on each was read against
+`build/run-example.sh` end to end first.
+
+| Example | Run | Result |
+|---|---|---|
+| `AtomicSnapshot` | free | 114 million sample pairs, **1 torn pair through two `get()` calls, 0 through `snapshot()`** — the guarantee it exists to show, seen |
+| `DatabaseSource` | free | all six steps, including the rejected `store()` that leaves the row unwritten where the rejected `reload()` does not |
+| `ProviderSwap` | 2 calls | `claude-sonnet-5` then `gpt-5.1`, same call site |
+| `ThreeModelCouncil` | 3 calls | all three members answered under one `snapshot()` |
+| `ConsoleChat` | 3 calls | menu, a moderated turn on `CR`, `/tools` running the `@Tool` clock through an `AiServices` proxy, `/menu`, `/exit` |
+
+**This is the only check that `examples.conf`'s model names still exist.** The four
+integration tests use different identifiers — `gpt-5-mini`, `claude-sonnet-4-6`,
+`gemini-3.6-flash`, `glm-5.3` — so `claude-sonnet-5` and `gpt-5.1` are covered by nothing else.
+Both answered. `javap` also re-confirms the file's own comment at `1.20.0`: `GPT_5_1` is in
+`OpenAiChatModelName` and `AnthropicChatModelName` still has no `CLAUDE_SONNET_5`.
+
+Standard error was captured separately for each: **empty in all five**. An earlier run appeared
+to show SLF4J no-provider warnings coming from an example; capturing the streams apart shows
+they came from a `mvn install` the launcher ran, and `tail` had cut the line that says so.
+
+#### The completeness audit, re-run
+
+[P29](#p29--a-global-check-and-the-eight-things-it-found) dated its audit *"true on
+2026-08-31, and stops being true the next time the API grows"*. P37 grew it. Re-run against
+the built classes: **20 public types, 63 public members, 2 that no document mentions.**
+
+They are the same two, and they stay open for the same reason: `LlmConfig.fromBlock` and
+`MemoryConfig.unknownType` are accidental API surface with no caller outside the package, so
+documenting them would make the accident permanent and narrowing them is an API change wanting
+its own item. `LlmRegistry.sources()`, the member that grew the surface, is documented in the
+API table, in the *Storing a layer back* section and in the README.
+
+#### Four defects, all of them true on the day they were written
+
+**The tutorial printed a line the program has not printed since P21.** Step 3 showed
+
+    /menu for the menu, /exit to quit.
+
+and running the command the page prints gives
+
+    /menu for the menu, /tools to answer through an AiService with a tool, /exit to quit.
+
+`/tools` was added in [P21](#p21--what-the-library-leaves-available-said-out-loud), which also
+added the sentence *further down the same page* telling the reader to type it. The transcript
+above it was never re-run. `docs/manual/README.md` promises *"every output block is a real
+capture"*, which that block had stopped being.
+
+**The council snippet showed the shape the paragraph under it argues against.** Step 9 quoted
+
+```java
+for (String name : registry.names()) {
+    LlmBundle bundle = registry.get(name);
+```
+
+then explained that a council must not see half of one configuration and half of another. The
+snippet is P3's, and was accurate the day it was written.
+`ThreeModelCouncil` has taken one `snapshot()` per round since
+[P27](#p27--a-review-of-all-seven-modules-the-examples-and-the-manual), whose sixth finding was
+that the example named after the council round did not use it, and the snippet is exactly the
+code
+[ADR-0038](../adr/0038-snapshot-gives-callers-the-atomicity-the-swap-already-has.md) says does
+*not* get that guarantee — two `get()` calls can straddle a swap. The snippet now matches the
+example, and the paragraph says which line is the load-bearing one.
+
+**Two sections of the reference disagreed about a threading guarantee.** *Reload semantics*
+said listeners run *"on the watcher thread"* — written in [P3](#p3--the-manual) and true then,
+when the watcher was the only reloader. *Threading and lifecycle* says *"on the thread that
+caused the reload — the watcher thread, or the caller of `reload()`"*, corrected by
+[P19](#p19--configuration-sources-and-a-reload-the-application-can-ask-for) when it made
+`reload()` public. P19 fixed one and not the other. The same section's opening sentence still
+named the debounce as the only trigger; it now names all three, and says that a `store()` runs
+no listener at all.
+
+**`id()`'s list of where it is printed was three releases out of date.** *"The library only
+prints it, in parse errors and in `ReloadFailure`"* was written in P19. Since then `id()`
+appears in `StaleLayerException.layerId()`, in the refusal of a `store` into a foreign layer,
+and in the `watch(true)` refusal that lists the layers. Replaced with the rule rather than a
+list, so it does not rot again the same way.
+
+#### Checked and found correct
+
+Verified by running or by reading the code the text describes, not by grepping for its words:
+
+- **Step 4's transcript, live.** A second block appended to the watched file while the console
+  ran produced `  [config reloaded: updated=[] added=[SH] removed=[]]` and a two-model menu,
+  character for character as the page has them. No request was sent.
+- Step 6's three refusal messages, against `SnapshotLoader` and `ConfigLoader`.
+- Step 7's `[config rejected, still running the previous one: …]`, against `ConsoleChat`.
+- The five `--help` texts against `build/run-example.sh`, including the two P18 defects: the
+  council's one-file wording and the free-example line that names both free examples.
+- `README.md` and `docs/manual/README.md` end to end. The `0.1.0` in every dependency snippet
+  is correct and stays until `0.2.0` is on Central.
+
+#### Verification
+
+`build/check-docs.py` clean. Nothing in `src/main` changed, so the build is untouched. Eight
+paid calls in total, all of them to run an example.

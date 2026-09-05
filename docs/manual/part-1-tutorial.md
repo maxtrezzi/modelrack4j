@@ -147,7 +147,7 @@ Type `1`, then ask it something:
 
 ```
 chatting with SL — my first model (no memory configured: each turn is independent)
-/menu for the menu, /exit to quit.
+/menu for the menu, /tools to answer through an AiService with a tool, /exit to quit.
 
 you> what is a HOCON substitution?
 SL> <the model's answer>
@@ -440,8 +440,9 @@ three requests.
 Look at what the code does *not* do:
 
 ```java
-for (String name : registry.names()) {
-    LlmBundle bundle = registry.get(name);
+LlmSnapshot round = registry.snapshot();
+for (String name : round.names()) {
+    LlmBundle bundle = round.get(name);
     ...
 }
 ```
@@ -450,9 +451,13 @@ There is no `if (provider.equals("openai"))` anywhere. The names come from the f
 capabilities come from the bundle, and adding a fourth model to the council is an edit to
 `examples.conf` — not a recompile.
 
-This is also why one reload has to swap every bundle at once. If `SL` and `SH` are answering
-the same question and a reload updated them one at a time, there would be a window where the
-council was running half of one configuration and half of another.
+**The first line is the one to copy.** One reload swaps every bundle at once, but a caller
+only gets that if it reads the configuration once. `registry.get(name)` reads the live
+configuration on every call, so a council calling it once per member could have a reload land
+mid-round and leave one model answering under a configuration its partners never saw.
+`snapshot()` takes the current generation and holds it still, so every member of the round
+belongs to the same one. Part 2 explains
+[what a reload guarantees](part-2-reference.md#reload-semantics).
 
 ---
 

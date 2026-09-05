@@ -332,10 +332,13 @@ Three things to know about writing one.
 **`text()` is called again on every reload.** A source that runs its query each time works
 correctly. A source that reads its text once and keeps it will never report a change.
 
-**`id()` is a label, not an address.** The library only prints it, in parse errors and in
-`ReloadFailure`. Give it something a person reading a log can recognise. Do not put a secret
-in it, because it is written to the log. Two sources of one registry must have different ids,
-and `build()` refuses them if they do not.
+**`id()` is a label, not an address.** The library never resolves it — it prints it, wherever
+it has to say which layer it is talking about: a parse error, a layer it could not read,
+`ReloadFailure`, the refusal when `watch(true)` finds no file among the layers, the refusal of
+a `store` into a layer that is not this registry's, and `StaleLayerException.layerId()`. Give
+it something a person reading a log can recognise. Do not put a secret in it, because it is
+written to the log. Two sources of one registry must have different ids, and `build()` refuses
+them if they do not.
 
 **A layer that is not a file is not watched.** The library can watch files, because the
 operating system tells it when a file changes. It cannot know when a database row changes.
@@ -682,7 +685,9 @@ genuine LangChain4j objects.
 
 ## Reload semantics
 
-A reload runs when a watched file has been quiet for the debounce period. It then:
+A reload runs when a watched file has been quiet for the debounce period, when your code
+calls [`reload()`](#asking-for-a-reload), and as the first half of a
+[`store()`](#storing-a-layer-back). Whichever started it, it then:
 
 1. re-parses every layer, merges, resolves once;
 2. parses each named block into an `LlmConfig`;
@@ -705,8 +710,10 @@ A reload runs when a watched file has been quiet for the debounce period. It the
   nothing and notifies nobody. It is not a heartbeat.
 - **Listeners cannot break reloading.** An exception from a listener is caught and logged; the
   other listeners still run, and so do later reloads.
-- **Listeners run after the swap**, on the watcher thread, so `get()` inside one already sees
-  the new snapshot.
+- **Listeners run after the swap**, so `get()` inside one already sees the new snapshot. They
+  run on whichever thread started the reload — the watcher thread, or your own caller of
+  `reload()`; see [Threading and lifecycle](#threading-and-lifecycle). A `store()` runs none of
+  them at all: its caller made the change and is given it back.
 
 **Names appearing and disappearing.** A name added to the file appears in the registry; a name
 removed from it is removed, and `get()` on it then throws. Long-running code holding a name
