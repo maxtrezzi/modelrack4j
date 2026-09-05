@@ -283,9 +283,8 @@ record WritableFileConfigSource(Path file) implements WritableConfigSource, File
                         StandardCopyOption.REPLACE_EXISTING);
             }
         } catch (IOException e) {
-            throw new ConfigAccessException(
-                    "Cannot replace the configuration file " + describeReplacedFile(prepared.destination())
-                            + ": " + e, e);
+            throw new ConfigAccessException("Cannot replace the configuration file "
+                    + describeReplacedFile(prepared.destination()) + ": " + e, e);
         }
     }
 

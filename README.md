@@ -431,7 +431,8 @@ be a `WritableConfigSource`, which is the interface above plus a `write(String)`
 `ConfigSource.ofWritableFile(path)` gives you one for a file, and `registry.sources()` hands
 the layers back, so you can find your writable layer instead of carrying the reference beside
 the registry. Where more than one writer is possible, `storeIfUnchanged(layer, base, newText)`
-refuses instead of erasing somebody else's change. See [Storing a layer back](docs/manual/part-2-reference.md#storing-a-layer-back).
+refuses instead of erasing somebody else's change. See
+[Storing a layer back](docs/manual/part-2-reference.md#storing-a-layer-back).
 
 ## Hot reload
 

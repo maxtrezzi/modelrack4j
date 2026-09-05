@@ -41,7 +41,8 @@ capability behind a lookup that can fail at runtime, for no gain.
 **Immutability makes the accessor honest.** The layers are fixed at `build()`: a reload
 re-reads the same sources rather than replacing them. So the list is a property of the
 registry, not a snapshot of changing state, and returning it needs none of the generation
-reasoning that [ADR-0038](0038-snapshot-gives-callers-the-atomicity-the-swap-already-has.md) applies to
+reasoning that
+[ADR-0038](0038-snapshot-gives-callers-the-atomicity-the-swap-already-has.md) applies to
 bundles.
 
 ## Decision

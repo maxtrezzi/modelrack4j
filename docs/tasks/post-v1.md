@@ -4483,18 +4483,22 @@ table above is a probe run against the old classes, before anything was edited.
 `build/check-docs.py` clean at 54 ADRs and 69 tracked markdown files.
 
 **PIT on core, after the branch had stopped moving: 208 mutants, 205 killed, 1 survived,
-1 timed out, 1 uncovered, 2 minutes 48 seconds.** Three more mutants than
-[P36](#p36--housekeeping-a-test-that-raced-its-own-listener-and-the-first-read-of-five-merged-branches)'s
-205, and all three of the new ones are killed — the report carries three mutants in
+1 timed out, 1 uncovered, 2 minutes 49 seconds.** Run twice, the second time on a rebuild of
+the source as it is committed, and identical both times down to the three line numbers. Three more mutants than the 205
+[P36](#p36--housekeeping-a-test-that-raced-its-own-listener-and-the-first-read-of-five-merged-branches)
+recorded, and all three of the new ones are killed. The report carries two mutants in
 `describeReplacedFile` and two in `sources`, which is also what says it ran against this
-branch's classes rather than another build's. The three that are not killed are the same three
-by identity, with two of them moved by the lines this branch added:
+branch's classes rather than another build's — `mutationCoverage` compiles nothing and mutates
+whatever `target/classes` already holds. The three that are not killed are the same three by
+identity. All three line numbers have moved since
+[P29](#p29--a-global-check-and-the-eight-things-it-found) last recorded them, which is what a
+line number is worth:
 
-| Status | Where | Was |
-|---|---|---|
-| `SURVIVED` | `LlmRegistry.reload` line 385 | `Optional.empty()` replaced by `Optional.empty()` — the equivalent mutant P27 identified; line 339 before this branch |
-| `TIMED_OUT` | `LlmRegistry$Builder.chooseNotifier` line 845 | the same one P34 and P36 recorded |
-| `NO_COVERAGE` | `WritableFileConfigSource.stage` line 149 | the cleanup branch that needs a filesystem failing between `createTempFile` and `writeString`, left untested on purpose |
+| Status | Where | P29's line | What it is |
+|---|---|---|---|
+| `SURVIVED` | `LlmRegistry.reload` 385 | 339 | `Optional.empty()` replaced by `Optional.empty()` — the equivalent mutant P27 identified |
+| `TIMED_OUT` | `LlmRegistry$Builder.chooseNotifier` 845 | 760 | returning `null` starts no notifier, so the watch tests wait out Awaitility's ceiling: detected, not as a failure |
+| `NO_COVERAGE` | `WritableFileConfigSource.stage` 149 | 139 | the cleanup branch, which needs a filesystem that fails between `createTempFile` and `writeString`. Untested on purpose |
 
 **`mvn -Pintegration verify`: green, all four providers answered a live call.** This had not
 run since [P34](#p34--langchain4j-1200-and-the-jar-the-aggregate-started-bringing) took the
@@ -4530,11 +4534,11 @@ All five were run, not inspected. `--help` on each was read against
 
 | Example | Run | Result |
 |---|---|---|
-| `AtomicSnapshot` | free | 114 million sample pairs, **1 torn pair through two `get()` calls, 0 through `snapshot()`** — the guarantee it exists to show, seen |
+| `AtomicSnapshot` | free | 114 million sample pairs, **1 torn pair through two `get()` calls, 0 through `snapshot()`**. A second run tore neither way and said so, which is the behaviour the README describes: the `get()` window is narrow, not absent, and only the `snapshot()` column is guaranteed |
 | `DatabaseSource` | free | all six steps, including the rejected `store()` that leaves the row unwritten where the rejected `reload()` does not |
 | `ProviderSwap` | 2 calls | `claude-sonnet-5` then `gpt-5.1`, same call site |
 | `ThreeModelCouncil` | 3 calls | all three members answered under one `snapshot()` |
-| `ConsoleChat` | 3 calls | menu, a moderated turn on `CR`, `/tools` running the `@Tool` clock through an `AiServices` proxy, `/menu`, `/exit` |
+| `ConsoleChat` | one session | menu, a moderated turn on `CR`, `/tools` running the `@Tool` clock through an `AiServices` proxy, `/menu`, `/exit`. Not counted in requests: a moderated turn is two calls and the tool turn is a round trip |
 
 **This is the only check that `examples.conf`'s model names still exist.** The four
 integration tests use different identifiers — `gpt-5-mini`, `claude-sonnet-4-6`,
@@ -4621,5 +4625,9 @@ Verified by running or by reading the code the text describes, not by grepping f
 
 #### Verification
 
-`build/check-docs.py` clean. Nothing in `src/main` changed, so the build is untouched. Eight
-paid calls in total, all of them to run an example.
+`build/check-docs.py` clean. No source changed, so the build is untouched.
+
+Four of the runs sent requests: `ProviderSwap` twice at two requests each, one council round at
+three, and one `ConsoleChat` session — a moderated question on `CR`, then a `/tools` turn whose
+tool call is a second round trip. The two `ConsoleChat` runs that checked the tutorial's step 3
+and step 4 sent nothing, because neither asked a question.
