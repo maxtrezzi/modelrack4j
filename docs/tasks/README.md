@@ -115,13 +115,14 @@ Phase 0 gates everything else; nothing below M0 should start before its blockers
 | [P36](post-v1.md#p36--housekeeping-a-test-that-raced-its-own-listener-and-the-first-read-of-five-merged-branches) | Housekeeping: a test that raced its own listener, and the first read of five merged branches | **Done** — six `ReloadTest` tests read a listener's counter after waiting on the registry, which publishes before it announces; a Java review of the test tree then found the concurrency test that defends ADR-0038 could not fail when it detected a torn bundle; the combined read of `#50`–`#54` found nothing to correct; the version was still the published `0.1.0` and is now `0.2.0-SNAPSHOT` |
 | [P37](post-v1.md#p37--what-a-failed-store-tells-you-and-the-layers-the-registry-would-not-name) | What a failed store tells you, and the layers the registry would not name | **Done** — the consuming application re-ran the seven awkward points against a build of `main`: a store fails on the *directory* and nothing public said so, while the reference said a read-only file makes one fail; two `ConfigAccessException` messages named a path the caller had never seen; `StaleLayerException` did not say that its comparison includes the final newline; and `LlmRegistry.sources()` now reports the layers `ReloadFailure` was already handing out (ADR-0054) |
 | [P38](post-v1.md#p38--running-the-examples-and-reading-the-manual-against-them) | Running the examples and reading the manual against them | **Done** — all five examples run, which is also the only check that `examples.conf`'s model names still exist; the tutorial printed a ConsoleChat line the program stopped printing at P21 and a council snippet using the two-`get()` shape ADR-0038 argues against; the reference gave two different answers for which thread a listener runs on, and an out-of-date list of where `id()` is printed |
+| [P39](post-v1.md#p39--a-relative-configuration-path-loses-its-sibling-includes) | A relative configuration path loses its sibling includes | **Found, not fixed** — `Path.of("app.conf")` has no parent, so `parseFile` resolves `include "sibling.conf"` to nothing; an optional key would go missing with no error at all, and the watcher and the write path are unaffected because both absolutise first |
 | [D1](open-decisions.md#d1--glm-route-if-no-maintained-module-exists) | GLM route if no maintained module | **Closed** — never became live |
 | [D2](open-decisions.md#d2--repository-visibility) | Repository visibility | **Settled** — public, not released; ADR-0034 |
 | [D3](open-decisions.md#d3--token-window-memory-on-a-remote-estimator) | Token-window memory on a remote estimator | **Settled** — opt-in flag |
 | [D4](open-decisions.md#d4--mutation-testing-in-ci) | Mutation testing in CI | **Settled** — never, in any form; ADR-0043 |
 | [D5](open-decisions.md#d5--a-version-token-for-optimistic-concurrency) | A version token for optimistic concurrency | **Settled** — no token; the `ETag` pattern already works on the current signature; ADR-0052 |
 | [D6](open-decisions.md#d6--cannot-store-is-not-your-configuration-is-invalid) | "Cannot store" is not "your configuration is invalid" | **Settled** — `ConfigAccessException`, standalone, covering reads as well as writes; ADR-0053 |
-| [D7](open-decisions.md#d7--custom-properties-on-a-configuration-block) | Custom properties on a configuration block | **Needs decision** — six questions; the load-bearing one is whether the value type refuses a nested object, which is what puts the owner's "simple cases only" bound in the code rather than in the manual |
+| [D7](open-decisions.md#d7--custom-properties-on-a-configuration-block) | Custom properties on a configuration block | **Needs decision** — the shape is agreed: the block is carried as text and an optional caller handler turns it into an object, which dissolves three of the six original questions; no ADR yet, and the severity of an unknown key is still open |
 
 **Phase 0 is complete except for one measurement, and M0 is done — the build is green.** Tasks 0.1–0.7 are
 done; Task 0.8 is done on Linux and open only on the macOS latency figure, which qualifies
@@ -191,8 +192,16 @@ implemented in [P30](post-v1.md#p30--configaccessexception-the-implementation-of
 
 **[D7](open-decisions.md#d7--custom-properties-on-a-configuration-block) is the open one.**
 Raised by the owner on 2026-09-06: whether a configuration block may carry a few application
-values that the library never reads. Six questions, none settled, and no code depends on it
-yet.
+values that the core never interprets. Two discussions the same day: the first produced six
+questions, the second replaced the design three of them were about. The block is now carried as
+**text**, with an optional caller-supplied handler turning it into whatever object the
+application wants, so the library provides no reading mechanism for values it does not own. The
+entry carries worked examples and the shapes that were rejected. No ADR yet, and no code depends
+on it.
+
+A second question was spun out of the same discussion and left without a number, because taking
+one is the owner's call: whether a key the library's own schema does not know should be an
+error rather than ignored in silence, as it is today.
 
 One thing waits on hardware rather than on a decision: the macOS half of
 [Task 0.8](phase-0-verification.md#task-08--watch-strategy-spike). The README states that gap

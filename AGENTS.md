@@ -271,12 +271,18 @@ dedicated regression test; keep it.
 carries "how do I learn this changed" separately, and `FileChangeNotifier` wraps the existing
 watcher unchanged. Four consequences that look like tidying and are not:
 
-- **A file layer is parsed with `parseFile`, everything else with `parseString`, and the
-  `instanceof` in `ConfigLoader.parse` is load-bearing.** `include "sibling.conf"` resolves
-  relative to the file containing it, and only `parseFile` knows which file that is. Give the
-  same bytes to `parseString` and the includer falls back to the classpath — and because an
-  include is allow-missing by default, the included block then **disappears with no error**.
-  P19 shipped that regression and a review caught it; there is now a regression test.
+- **A file layer is parsed with `parseFile`, everything else with `parseString`, and which one
+  a layer gets is decided once by `Layer.of` — not in `ConfigLoader.parse`, which only adds the
+  origin description.** `include "sibling.conf"` resolves relative to the file containing it,
+  and only `parseFile` knows which file that is. Give the same bytes to `parseString` and the
+  includer resolves against the process's working directory or the classpath instead — and
+  because an include is allow-missing by default, the included block then **disappears with no
+  error**. P19 shipped that regression and a review caught it; there is now a regression test.
+  Two traps around this, both measured on 2026-09-06. The failure **hides in development**: with
+  the working directory set to the directory holding the configuration, `parseString` finds the
+  sibling and everything looks fine, so it has to be reproduced from an unrelated working
+  directory. And `parseFile` is not enough on its own — a path with no parent, `Path.of("app.conf")`,
+  gives `new File(...).getParentFile() == null` and loses the include as well, which is P39.
 - **`LlmRegistry.reload()` is public, and the `synchronized (reloadLock)` around the
   compare-then-swap is not removable.** The watcher thread is no longer the only writer: an
   application can reload too, and two reloads at once would both read the same snapshot and

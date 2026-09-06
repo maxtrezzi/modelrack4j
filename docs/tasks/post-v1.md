@@ -4631,3 +4631,60 @@ Four of the runs sent requests: `ProviderSwap` twice at two requests each, one c
 three, and one `ConsoleChat` session — a moderated question on `CR`, then a `/tools` turn whose
 tool call is a second round trip. The two `ConsoleChat` runs that checked the tutorial's step 3
 and step 4 sent nothing, because neither asked a question.
+
+---
+
+### P39 — A relative configuration path loses its sibling includes
+
+**Status:** Found, not fixed — reported from a probe written for D7's discussion ·
+**Raised by:** measuring how HOCON text becomes an object, while answering a question about
+whether the two parse paths could be collapsed into one
+
+A `Path` with no parent — `Path.of("app.conf")`, not `Path.of("conf/app.conf")` — passed to
+`LlmRegistry.Builder.configFiles(...)` or to `ConfigSource.ofFile(...)` makes
+`include "sibling.conf"` resolve to nothing.
+
+Proved against the library, with the same two files in both runs:
+
+```
+>>> RELATIVO: ConfigValidationException: ... No configuration setting found for key 'model-name'
+>>> ASSOLUTO: model-name = dal-fratello
+```
+
+**The chain.** `ConfigSource.ofFile(file)` keeps the path exactly as given;
+`Layer.of` hands it to `FileLayer`; `FileLayer.parse:45` calls
+`ConfigFactory.parseFile(file.toFile(), ...)`; and `new File("app.conf").getParentFile()` is
+`null`, so Typesafe Config has no directory against which to resolve a relative include.
+
+**Why it is worse than the run above suggests.** Here it surfaced as an error only because
+`model-name` is a required key. Had the included file carried an **optional** key, it would have
+gone missing with no error at all: an include is allow-missing by default. That is ADR-0042's
+hazard — the one P19 shipped and a review caught — arriving through a different door. P19's
+regression test, `ConfigSourceTest`'s *"a file layer still resolves an include relative to
+itself"* at line 268, cannot catch it: it builds its paths with `dir.resolve(...)` from a
+`@TempDir`, which is absolute.
+
+**The record is already inconsistent with itself.** `FileConfigSource.id():47` returns
+`file.toAbsolutePath().normalize().toString()`, so the source reports an absolute path while
+parsing through a relative one.
+
+**What is not affected**, checked rather than assumed:
+
+- The watcher. `ConfigWatcher:153` takes `getParent()` of a path already made absolute.
+- The write path. `WritableFileConfigSource.destination()` returns `toRealPath()` or
+  `toAbsolutePath().normalize()` in every branch.
+
+So it is the parse path alone.
+
+**The fix is one line** — absolutise and normalise in `ConfigSource.ofFile`, and in
+`ofWritableFile` for the same reason — plus a regression test that uses a relative path with no
+parent, which is the case no existing test covers. Whether `id()` should then stop normalising
+separately is worth a look at the same time: with the path already normalised the two would
+agree by construction rather than by both doing the same thing.
+
+One comment goes with it. `ConfigSourceTest:278-280` says that parsing the text instead "looks
+on the classpath, finds nothing, and drops SH in silence". Measured: the includer resolves
+against the process's working directory as well, so with the working directory set to the
+directory holding the configuration it *does* find the sibling and the test's premise would not
+hold. The silence is real; the "finds nothing" depends on where the process was started.
+
