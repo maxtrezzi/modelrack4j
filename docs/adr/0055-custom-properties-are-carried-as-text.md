@@ -59,9 +59,12 @@ and the library interprets none of it.
    `ConfigRenderOptions.concise()`, which produces JSON. An absent sub-block renders as `{}`.
 2. That text is a component of `LlmConfig`, so the per-name reload diff stays a value
    comparison and needs no cooperation from the application.
-3. A caller may register **one handler** on the builder, a functional interface whose single
-   method takes the text and returns an object, declared `throws Exception` because binding a
-   configuration is I/O-shaped in every library a caller is likely to reach for.
+3. A caller may register **one handler** on the builder: a generic functional interface
+   `CustomPropertiesHandler<T>` whose single method takes the `LlmConfig` and returns a `T`,
+   declared `throws Exception` because binding a configuration is I/O-shaped in every library a
+   caller is likely to reach for. It takes the whole configuration rather than the text alone so
+   that a rule can depend on the block's name and on its provider; the text is read from
+   `config.customPropertiesText()`.
 4. The handler runs in `SnapshotLoader.buildBundle`, beside `factory.validate` and
    `createChatModel`, and its result is a member of `LlmBundle`. **Parsing is validation:** a
    handler that cannot produce its object throws, and the configuration is rejected.
@@ -70,9 +73,15 @@ and the library interprets none of it.
 6. The handler is optional, and it is called even when the sub-block is absent, with `{}`.
 7. `LlmConfig.toString()` never prints the text: `{}` when empty and `***` otherwise.
 
-A caller reads `customPropertiesText()` always, and the parsed object through a class token when
-a handler was registered. Asking for the object without having registered a handler throws, the
-way `get()` on a name that was never configured throws `UnknownConfigurationException`.
+The type parameter travels with the registry: `LlmRegistry.builder()` returns a `Builder<Void>`,
+and `customPropertiesHandler` is a type-changing method returning a `Builder<T>`, so a caller
+declares nothing in advance and reads `registry.get(name).customProperties()` with no cast and no
+class token. `LlmRegistry<T>` and `LlmBundle<T>` are generic; **`LlmConfig` is not**, because the
+record holds the text and the bundle holds the object.
+
+A caller reads `customPropertiesText()` always. A registry built with no handler is an
+`LlmRegistry<Void>`, whose `customProperties()` can only return `null` — the type makes the call
+meaningless rather than an error, so nothing needs to throw.
 
 ## Consequences
 
@@ -105,8 +114,16 @@ provider that parsed the text would be doing the untyped string lookups this lib
 avoid.
 
 **The handler runs under `reloadLock`**, so it must be fast and must not block or perform I/O —
-the contract provider factories already live under. It must not transform the library's own
-configuration: a live `LlmConfig` that differs from the file makes the diff meaningless.
+the contract provider factories already live under. It cannot transform the library's own
+configuration even though it now receives it, because `LlmConfig` is an immutable record and the
+handler returns a `T`: the shape closes off a hazard the earlier `Consumer<LlmConfig>` design
+had to forbid in prose.
+
+**Making `LlmRegistry` generic reaches every declaration of it.** Existing callers keep
+compiling, since a raw type is legal and generics are erased, so this is neither a source nor a
+binary break; what it costs is one pass over the repository's own code and documentation. The
+alternative — a class token at each read — was rejected because it moves a compile-time check to
+run time for the life of the API, to save a one-time edit.
 
 **This is not a data channel.** ADR-0032's warning applies unchanged: a field that must not
 affect the diff does not belong in `LlmConfig` at all, so this is for small stable values that

@@ -4707,12 +4707,19 @@ interpreted by nobody but the application.
   `{}`. Nothing else in the record changes, and the reload diff stays a value comparison.
 - **`LlmConfig.toString()`** prints `{}` when the text is empty and `***` otherwise. It is a
   hand-written override (ADR-0047), so a new component does not appear in it by itself.
-- **A functional interface for the handler**, whose single method takes the text and returns an
-  `Object`, declared `throws Exception`. It cannot be `java.util.function.Function`: measured,
+- **A generic functional interface for the handler**, `CustomPropertiesHandler<T>`, whose single
+  method is `T handle(LlmConfig config) throws Exception`. Two things about that signature were
+  measured rather than chosen. It cannot be `java.util.function.Function`:
   `text -> mapper.readValue(text, X.class)` does not compile against it, because
-  `JsonProcessingException` extends `IOException` and is checked.
+  `JsonProcessingException` extends `IOException` and is checked. And it takes the whole config
+  rather than the text alone, so that a rule can depend on the block's name and on its provider —
+  the text is read from `config.customPropertiesText()`.
 - **`LlmRegistry.Builder.customPropertiesHandler(...)`**, optional, one per registry. A rule that
   applies to one block branches on `config.name()`.
+- **The generic travels with the registry.** `LlmRegistry.builder()` returns `Builder<Void>` and
+  `customPropertiesHandler` returns `Builder<U>`, so a caller declares nothing in advance and
+  reads `registry.get(name).customProperties()` with no cast and no class token. `LlmRegistry<T>`
+  and `LlmBundle<T>` become generic; `LlmConfig` does not.
 - **`SnapshotLoader.buildBundle` calls the handler** after `factory.validate` and before
   `createChatModel`: after, so the provider exists and its own rules have passed; before, so a
   rejected configuration does not first build a model that is discarded. Anything thrown is
@@ -4721,8 +4728,9 @@ interpreted by nobody but the application.
   formality: a rule of the form "an openai block needs `prompt-id`" is violated exactly when the
   sub-block is missing.
 - **`LlmBundle` carries the parsed object** and exposes `customPropertiesText()` — the reading
-  path the owner chose — delegating to the config, plus a class-token accessor for the object
-  that throws when no handler was registered, as `get()` does for an unknown name (ADR-0014).
+  path the owner chose — delegating to the config. No accessor throws for a missing handler: a
+  registry built without one is an `LlmRegistry<Void>`, whose `customProperties()` can only
+  return `null`.
 
 #### What not to do
 
@@ -4734,21 +4742,38 @@ the one mistake in this item that fails silently.
 **Do not give the library accessors over the text** — no `getInt`, no key enumeration, no rule
 about nested objects. That is the two-mechanism shape ADR-0055 rejects.
 
+**Do not implement `customPropertiesHandler` by constructing a fresh `Builder`.** It is a
+type-changing method, so the obvious `return new Builder<>(handler)` compiles and silently drops
+every field already set — the sources, `watch`, `debounce`, the notifier, the listeners. Set the
+field and return `this` behind an unchecked cast instead, so no state can be lost by omission.
+The order in which a caller chains the builder's methods must not matter.
+
 #### Tests worth naming
 
 The empty cases first, because they are where the design is: absent sub-block with a handler
 registered (called with `{}`), absent without one, present without one. Then that an edit to a
 custom property alone rebuilds that bundle and names it in `ReloadChange.updated()`; that a
 handler that throws leaves the previous snapshot live and fires one `onReloadFailure`; that a
-`store()` carrying a bad property writes nothing, on a layer that is not a file as well as on
-one that is; that a key cleared with `= null` in a higher layer behaves; and that
-`LlmConfig.toString()` does not leak a `${?VAR}` substituted into the sub-block.
+handler rule reading `config.provider()` sees the provider it expects; that a `store()` carrying
+a bad property writes nothing, on a layer that is not a file as well as on one that is; that a
+key cleared with `= null` in a higher layer behaves; and that `LlmConfig.toString()` does not
+leak a `${?VAR}` substituted into the sub-block.
+
+One test is about the builder rather than the feature: set `watch`, `debounce` and a listener,
+then register the handler **last**, and assert they all survived.
 
 #### Documentation
 
 The reference gains the key, the tutorial gains a worked example, and the README's *What you
 still write yourself* section is where the boundary is already explained. All of it is
 user-facing prose under ADR-0039.
+
+**The generic reaches further than the feature does.** Measured on 2026-09-06: 132 declarations
+of `LlmRegistry` or `LlmBundle` in Java — 25 in `modelrack4j-core/src/main`, 77 in its tests, 23
+in the examples — and 30 mentions across the README and the two manual parts. Existing callers
+keep compiling, because a raw type is legal and generics are erased, so this is neither a source
+nor a binary break; but every snippet this repository ships should be updated in the same commit,
+or the documentation teaches the raw form.
 
 ---
 

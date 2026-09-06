@@ -278,11 +278,12 @@ they are today. Then, for each named configuration:
    `{"escalate-after":"45s","max-retries":3,"prompt-id":"support-v3","tags":["a","b"]}`.
    Absent means `{}`.
 2. That text is a component of `LlmConfig`, so **the reload diff is a string comparison**.
-3. If the caller registered a handler, it is called with that text in
-   `SnapshotLoader.buildBundle`, beside `factory.validate` and `createChatModel`, and its result
-   is a member of `LlmBundle` — a built object, like the chat model.
+3. If the caller registered a handler, it is called in `SnapshotLoader.buildBundle`, beside
+   `factory.validate` and `createChatModel`, and its result is a member of `LlmBundle` — a built
+   object, like the chat model. It receives the whole `LlmConfig`, so a rule can depend on the
+   block's name and on its provider, and reads the text from `config.customPropertiesText()`.
 4. The caller reads `customPropertiesText()` always, and the parsed object when a handler
-   exists.
+   exists. The handler's type parameter travels with the registry, so that object needs no cast.
 
 **Why this shape rather than an accessor the library provides.** The owner's objection, which
 is the reason the earlier design was dropped: a library that supplies typed accessors for values
@@ -358,11 +359,11 @@ readValue("{}") -> SupportProps[promptId=null, retries=0, tags=null]
 **Without a handler the empty object is still one line away**, in the caller's own type:
 `mapper.readValue(bundle.customPropertiesText(), SupportProps.class)`.
 
-The one case with no object is asking for a parsed object without having registered a handler.
-That is not a state of the configuration but a mistake by the caller — the library has no type
-to build. **It throws**, with the precedent that `get()` on a name that was never configured
-throws `UnknownConfigurationException` (ADR-0014) — and in correct code the throw is
-unreachable, because a caller who registered a handler always has an object.
+The last row needs no exception. A registry built with no handler is an `LlmRegistry<Void>`,
+whose `customProperties()` can only return `null`, so the type system makes the call meaningless
+instead of the library making it an error. An earlier answer in this entry had it throwing, with
+`UnknownConfigurationException` as the precedent; the generic removed the case rather than the
+answer being wrong.
 
 #### Why the text goes in `LlmConfig` and the object in `LlmBundle`
 
@@ -380,6 +381,11 @@ The parsed object then belongs where built objects belong — `LlmBundle` — an
 
 The reading path the owner chose is `registry.get("SL").customPropertiesText()`, so `LlmBundle`
 carries a convenience method delegating to `config().customPropertiesText()`.
+
+The split also decides how far the generic reaches. `LlmRegistry<T>` and `LlmBundle<T>` carry the
+type parameter; **`LlmConfig` does not**, because it holds the text rather than the object. So
+`ProviderFactory`, `ReloadChange` and the listeners are untouched — had the parsed object gone
+into the record, the type parameter would have reached every provider on the classpath.
 
 #### What this looks like in use
 
@@ -404,39 +410,15 @@ llm {
 ```
 
 ```java
-LlmRegistry registry = LlmRegistry.builder()
+LlmRegistry<SupportProps> registry = LlmRegistry.builder()
         .configFiles(List.of(base, local))
-        .customPropertiesHandler(text -> mapper.readValue(text, SupportProps.class))
+        .customPropertiesHandler(config -> mapper.readValue(
+                config.customPropertiesText(), SupportProps.class))
         .build();
 
-SupportProps props = registry.get("SUPPORT").customProperties(SupportProps.class);
+SupportProps props = registry.get("SUPPORT").customProperties();   // no cast, no class token
 String raw         = registry.get("SUPPORT").customPropertiesText();
 ```
-
-**That lambda decides the handler's type, and `java.util.function.Function` cannot hold it.**
-`ObjectMapper.readValue` throws `JsonProcessingException`, which extends `IOException` and is
-checked, so `Function<String, Object>` does not compile — measured:
-
-```
-error: unreported exception JsonProcessingException; must be caught or declared to be thrown
-        Function<String, Object> handler = text -> m.readValue(text, SupportProps.class);
-```
-
-The handler therefore needs its own functional interface declaring `throws Exception`, which
-compiles and runs with the same lambda:
-
-```java
-@FunctionalInterface
-public interface CustomPropertiesHandler {
-    Object handle(String text) throws Exception;
-}
-```
-
-Binding a configuration block is I/O-shaped in almost every library a caller might reach for, so
-forcing a `try`/`catch` into every lambda would be a tax on the normal case rather than on an
-unusual one.
-
-The application's type carries its own rules, and the deserializer enforces them:
 
 ```java
 record SupportProps(@JsonProperty("prompt-id")      String promptId,
@@ -444,13 +426,36 @@ record SupportProps(@JsonProperty("prompt-id")      String promptId,
                     @JsonProperty("escalate-after") String escalateAfter) {}
 ```
 
-A handler that needs more than binding writes it, and throwing is how it rejects:
+**The handler's type is fixed by two measurements.** First, it cannot be
+`java.util.function.Function`: `ObjectMapper.readValue` throws `JsonProcessingException`, which
+extends `IOException` and is checked, so the lambda does not compile against it.
+
+```
+error: unreported exception JsonProcessingException; must be caught or declared to be thrown
+        Function<String, Object> handler = text -> m.readValue(text, SupportProps.class);
+```
+
+Binding a configuration block is I/O-shaped in almost every library a caller might reach for, so
+forcing a `try`/`catch` into every lambda would tax the normal case rather than an unusual one.
+Second, it takes the `LlmConfig` rather than the text alone, because a rule that depends on the
+provider is the reason the owner asked for a caller-supplied rule in the first place, and the
+text alone carries neither the provider nor the block's name:
 
 ```java
-.customPropertiesHandler(text -> {
-    SupportProps p = mapper.readValue(text, SupportProps.class);
-    if (p.maxRetries() < 0) {
-        throw new IllegalArgumentException("max-retries must not be negative");
+@FunctionalInterface
+public interface CustomPropertiesHandler<T> {
+    T handle(LlmConfig config) throws Exception;
+}
+```
+
+A handler that needs more than binding writes it, and throwing is how it rejects — this is the
+rule that could not be written when the handler received only the text:
+
+```java
+.customPropertiesHandler(config -> {
+    SupportProps p = mapper.readValue(config.customPropertiesText(), SupportProps.class);
+    if (config.provider().equals("openai") && p.promptId() == null) {
+        throw new IllegalArgumentException("prompt-id is required when the provider is openai");
     }
     return p;
 })
@@ -493,7 +498,7 @@ Unrecognized field "retrys" (class SupportProps), not marked as ignorable
 The library could only have refused *structure*. The application's binder refuses *wrong names*,
 which is what actually goes wrong.
 
-#### The last three answers
+#### The answers taken last
 
 - **The handler is one function, not an interface with two methods.** The `isSecret` half is
   gone: the library holds text it simply never prints, and the application's own object has the
@@ -514,6 +519,18 @@ which is what actually goes wrong.
   What the builder shape buys is the atomicity of *validation*, not just of delivery. The cost
   that does **not** decide it: parsing on every read is microseconds against an LLM call, so
   performance was not the argument either way.
+- **The handler is generic, and the type parameter travels with the registry.** Rather than a
+  class token at each read, `LlmRegistry.builder()` returns a `Builder<Void>` and
+  `customPropertiesHandler` is a type-changing method returning a `Builder<T>`, so a caller
+  declares nothing in advance and reads an object with no cast. One registry therefore binds one
+  custom-properties type, which the owner accepted. It reaches `LlmRegistry` and `LlmBundle` but
+  not `LlmConfig`, so no provider is affected, and existing callers keep compiling because a raw
+  type is legal and generics are erased.
+- **The handler takes the `LlmConfig`, not the text alone.** This corrects the shape as first
+  written: two sentences in this entry already said that a rule "branches on `config.name()`",
+  which the text-only signature made impossible — and it also silently dropped the ability to
+  write a rule that depends on the provider, which is the reason the owner gave for wanting a
+  caller-supplied rule at all. The text is read from `config.customPropertiesText()`.
 
 **Target: 0.2.0**, with [D8](#d8--a-key-the-schema-does-not-know) in the same version.
 
