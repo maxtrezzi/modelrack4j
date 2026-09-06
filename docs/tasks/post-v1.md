@@ -4636,7 +4636,7 @@ and step 4 sent nothing, because neither asked a question.
 
 ### P39 — A relative configuration path loses its sibling includes
 
-**Status:** Found, not fixed — reported from a probe written for D7's discussion ·
+**Status:** Not started — target 0.2.0 ·
 **Raised by:** measuring how HOCON text becomes an object, while answering a question about
 whether the two parse paths could be collapsed into one
 
