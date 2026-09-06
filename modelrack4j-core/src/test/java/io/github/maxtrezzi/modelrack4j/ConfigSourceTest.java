@@ -275,12 +275,57 @@ class ConfigSourceTest {
 
         try (LlmRegistry registry =
                 LlmRegistry.builder().configFiles(List.of(base)).build()) {
-            // Reading the file and parsing the text loses this: the includer then looks on
-            // the classpath, finds nothing, and drops SH in silence because an include is
-            // allow-missing.
+            // Reading the file and parsing the text loses this: the includer then resolves
+            // against the working directory and the classpath instead of the file's own
+            // directory, and drops SH in silence because an include is allow-missing. It
+            // only looks harmless from a working directory that happens to hold extra.conf.
             assertThat(registry.names()).containsExactly("SH", "SL");
             assertThat(registry.get("SH").config().modelName()).isEqualTo("included");
         }
+    }
+
+    @Test
+    @DisplayName("a configured path with no parent directory still resolves an include")
+    void aPathWithNoParentResolvesItsIncludes() throws IOException {
+        // The path has to be relative for this to mean anything, so the files go where a
+        // relative path is resolved from: the working directory. new File("base.conf") has a
+        // null parent, which used to leave parseFile with no directory to resolve against.
+        Path cwd = Path.of(System.getProperty("user.dir"));
+        Path sibling = cwd.resolve("p39-extra.conf");
+        Path base = cwd.resolve("p39-base.conf");
+        // Fail rather than clobber: this is the one test that writes outside its @TempDir,
+        // and the finally below deletes what it finds there.
+        assertThat(base).doesNotExist();
+        assertThat(sibling).doesNotExist();
+        try {
+            Files.writeString(sibling, block("SH", "included"), StandardCharsets.UTF_8);
+            Files.writeString(base, "include \"p39-extra.conf\"\n" + block("SL", "own"),
+                    StandardCharsets.UTF_8);
+
+            try (LlmRegistry registry = LlmRegistry.builder()
+                    .configFiles(List.of(Path.of("p39-base.conf")))
+                    .build()) {
+                assertThat(registry.names()).containsExactly("SH", "SL");
+                assertThat(registry.get("SH").config().modelName()).isEqualTo("included");
+            }
+        } finally {
+            Files.deleteIfExists(base);
+            Files.deleteIfExists(sibling);
+        }
+    }
+
+    @Test
+    @DisplayName("two spellings of one file are one source, and report one id")
+    void twoSpellingsOfOneFileAreOneSource() {
+        ConfigSource plain = ConfigSource.ofFile(Path.of("a.conf"));
+        ConfigSource dotted = ConfigSource.ofFile(Path.of("./a.conf"));
+
+        // Both halves matter together: normalising only inside id() left these reporting one
+        // identity while comparing unequal, so store() through the other spelling was refused
+        // against a list of sources that looked like it contained it.
+        assertThat(dotted).isEqualTo(plain);
+        assertThat(dotted.id()).isEqualTo(plain.id());
+        assertThat(Path.of(plain.id())).isAbsolute();
     }
 
     @Test

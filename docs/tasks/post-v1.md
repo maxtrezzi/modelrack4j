@@ -4636,7 +4636,7 @@ and step 4 sent nothing, because neither asked a question.
 
 ### P39 — A relative configuration path loses its sibling includes
 
-**Status:** Not started — target 0.2.0 ·
+**Status:** Done — the path is made absolute and normalised where it is stored, and a second defect in the same record was found on the way ·
 **Raised by:** measuring how HOCON text becomes an object, while answering a question about
 whether the two parse paths could be collapsed into one
 
@@ -4676,17 +4676,85 @@ parsing through a relative one.
 
 So it is the parse path alone.
 
-**The fix is one line** — absolutise and normalise in `ConfigSource.ofFile`, and in
-`ofWritableFile` for the same reason — plus a regression test that uses a relative path with no
-parent, which is the case no existing test covers. Whether `id()` should then stop normalising
-separately is worth a look at the same time: with the path already normalised the two would
-agree by construction rather than by both doing the same thing.
+#### What was done, and the second defect
 
-One comment goes with it. `ConfigSourceTest:278-280` says that parsing the text instead "looks
-on the classpath, finds nothing, and drops SH in silence". Measured: the includer resolves
-against the process's working directory as well, so with the working directory set to the
-directory holding the configuration it *does* find the sibling and the test's premise would not
-hold. The silence is real; the "finds nothing" depends on where the process was started.
+**The fix is in the constructor, not in the factory method**, and that placement is what the
+second finding decided. The rule itself lives once, in `FileBacked.stored(Path)`, and all three
+file-backed records call it: `FileConfigSource`, `WritableFileConfigSource` and
+`StagedFileSource`, whose path already came from `createTempFile` and was therefore already
+absolute. `file()` can now state that it is absolute and normalised, and `id()` returns the
+stored path.
+
+Looking for where else the un-normalised path leaked found this, measured before the change:
+
+```
+id() uguali?     true
+record uguali?   false
+```
+
+`ConfigSource.ofFile(Path.of("a.conf"))` and `ofFile(Path.of("./a.conf"))` **reported one
+identity and compared unequal.** `id()`'s own javadoc claimed the normalisation was there "so
+that two spellings of one file are recognised as the duplicate layer they are" — but nothing
+compares ids: `requireOwnLayer` uses `sources.contains(target)`, which is record equality. So a
+`store()` spelled the other way was refused against a list of sources that looked like it
+contained the layer. Normalising in the constructor makes the claim true instead of aspirational,
+and lets `id()` become `file.toString()`.
+
+Two regression tests, both confirmed to fail without the change and for the right reason — the
+include one loses `SH` and reports `["SL"]`, not merely a different path string. Full build:
+157 tests in core, up from 155, and every provider module green.
+
+`destination()` in `WritableFileConfigSource` keeps its own resolution, reduced to `file` with a
+comment saying why: the branch that matters is `toRealPath()`, which follows a symbolic link and
+which the constructor deliberately does not do (ADR-0024).
+
+#### What the review changed, and the cost it made explicit
+
+**Normalising is lexical, and it changes which file is opened.** Measured, with `link` a symbolic
+link to `sub/real`:
+
+```
+link/../app.conf   before: sub/app.conf     after: app.conf
+```
+
+Two different files. It is accepted rather than avoided — resolving the link instead is what
+ADR-0024 forbids, since the watcher must register on the link and not on its target, and dropping
+the normalisation would make two spellings two sources again — but nothing said so, which is what
+the review objected to. It is now in `FileBacked.stored`'s `@implNote`, beside the two reasons
+for the rule.
+
+The rule was also written out twice, once in each record, with the second's javadoc pointing at
+the first for the reason. That is the duplication the shared method removes.
+
+**The README's own opening example is the affected shape.** `README.md:20` and `:222` use
+`Path.of("llm.conf")`, and the reference uses `ConfigSource.ofWritableFile(Path.of("user.conf"))`
+— a path with no parent, so the first snippet a reader copies was the one that lost its includes.
+Nothing in those snippets has to change now, but they are the reason to read this defect as
+central rather than marginal. The examples were never affected: the launcher passes
+`modelrack4j-examples/src/main/resources/examples.conf`, which carries directories, and no
+`.conf` under `modelrack4j-examples` contains an `include`.
+
+**`part-2-reference.md:1009` stays true.** It says file ids are the absolute path so two spellings
+count as one, and the duplicate check in `ConfigSources` compares `id()`, which was already
+normalised. What was not true is the same claim applied to the records themselves.
+
+**Mutation testing, run on this tree** — AMD Ryzen 7 7840HS, Temurin 25: 208 mutants, 206 killed,
+line coverage 568/608. Two entries, both answered rather than assumed:
+
+| | |
+|---|---|
+| `SURVIVED` `LlmRegistry.reload:385` | the line is `return Optional.empty();` and the mutator replaces the return value with `Optional.empty` — an equivalent mutant, the same case as P27 |
+| `NO_COVERAGE` `WritableFileConfigSource.stage:155` | the cleanup branch `AGENTS.md` already describes as untested on purpose: it needs a filesystem that fails between `createTempFile` and `writeString` |
+
+The count is 208 against the ~205 `AGENTS.md` describes, which the calls this item adds account
+for. The report was checked to contain `FileConfigSource` before being read, because PIT mutates
+whatever `target/classes` holds and says nothing about which tree that was (P31).
+
+One comment went with it. `ConfigSourceTest` said that parsing the text instead "looks on the
+classpath, finds nothing, and drops SH in silence". Measured: the includer resolves against the
+process's working directory as well, so from a working directory holding the sibling it *does*
+find it. The silence is real; the "finds nothing" depended on where the process was started, and
+the comment now says so.
 
 
 ---
