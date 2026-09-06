@@ -121,6 +121,7 @@ Phase 0 gates everything else; nothing below M0 should start before its blockers
 | [D4](open-decisions.md#d4--mutation-testing-in-ci) | Mutation testing in CI | **Settled** — never, in any form; ADR-0043 |
 | [D5](open-decisions.md#d5--a-version-token-for-optimistic-concurrency) | A version token for optimistic concurrency | **Settled** — no token; the `ETag` pattern already works on the current signature; ADR-0052 |
 | [D6](open-decisions.md#d6--cannot-store-is-not-your-configuration-is-invalid) | "Cannot store" is not "your configuration is invalid" | **Settled** — `ConfigAccessException`, standalone, covering reads as well as writes; ADR-0053 |
+| [D7](open-decisions.md#d7--custom-properties-on-a-configuration-block) | Custom properties on a configuration block | **Needs decision** — six questions; the load-bearing one is whether the value type refuses a nested object, which is what puts the owner's "simple cases only" bound in the code rather than in the manual |
 
 **Phase 0 is complete except for one measurement, and M0 is done — the build is green.** Tasks 0.1–0.7 are
 done; Task 0.8 is done on Linux and open only on the macOS latency figure, which qualifies
@@ -173,13 +174,25 @@ two were wrong about the code and wrong in the project's favour, two forced deci
 [ADR-0036](../adr/0036-claude-md-is-local-only.md), because hiding a file does not stop it
 drifting), and the rest were documentation the code had already outgrown.
 
-**One of the two decisions raised by the first consumer putting `0.1.0` behind HTTP is
-still open.** [D5](open-decisions.md#d5--a-version-token-for-optimistic-concurrency), whether
+**Both decisions raised by the first consumer putting `0.1.0` behind HTTP are now settled.**
+[D5](open-decisions.md#d5--a-version-token-for-optimistic-concurrency), whether
 a layer should have a version token smaller than its whole text, was settled on 2026-09-03: it
 should not, because the `ETag` pattern it was raised for already works on the current
 signature. [D6](open-decisions.md#d6--cannot-store-is-not-your-configuration-is-invalid),
-whether "cannot store" deserves its own exception, is still marked `Needs decision` and is the
-next item.
+whether "cannot store" deserves its own exception, was settled the same day: it does, and it
+covers reads as well as writes
+([ADR-0053](../adr/0053-a-separate-exception-for-a-layer-that-cannot-be-reached.md),
+implemented in [P30](post-v1.md#p30--configaccessexception-the-implementation-of-d6)).
+
+> **Corrected 2026-09-06.** This paragraph said D6 was "still marked `Needs decision` and is
+> the next item" for three days after it was settled, while the decisions table above it
+> already recorded the outcome. It is the drift `AGENTS.md` describes: a sentence that was true
+> when written, falsified by work that updated the table beside it and not the prose.
+
+**[D7](open-decisions.md#d7--custom-properties-on-a-configuration-block) is the open one.**
+Raised by the owner on 2026-09-06: whether a configuration block may carry a few application
+values that the library never reads. Six questions, none settled, and no code depends on it
+yet.
 
 One thing waits on hardware rather than on a decision: the macOS half of
 [Task 0.8](phase-0-verification.md#task-08--watch-strategy-spike). The README states that gap

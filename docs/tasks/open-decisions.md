@@ -3,7 +3,8 @@
 Items waiting on the owner rather than on work. Do not resolve these unilaterally — each
 one closes by writing an ADR (see [ADR-0001](../adr/0001-record-decisions-as-adrs.md)).
 
-**D1 to D6 are all settled**, so this file is a record rather than a queue right now. A new
+**D1 to D6 are settled; [D7](#d7--custom-properties-on-a-configuration-block) is open**, so
+this file is a queue again. A new
 entry here is a question for the owner, not work to pick up, and an entry marked
 `Needs decision` blocks the code that depends on it rather than inviting a guess. Entries stay
 in number order and keep the framing they were decided under, with the outcome at the top.
@@ -247,3 +248,115 @@ gets it wrong for one of the two cases: a read-only file or a full disk reaches 
 
 The rollback behaviour is not in question either way: a failed write already restores the
 previous snapshot before the exception leaves the method.
+
+---
+
+### D7 — Custom properties on a configuration block
+
+**Status:** Needs decision · **Raised by:** the owner on 2026-09-06, wanting two or three
+application values to travel with the connection they belong to
+
+An optional sub-block on each named configuration, holding a small number of values the
+library never reads and surfaces through `LlmConfig`. The owner's framing bounds it — for
+relatively simple cases, with anything structured belonging to the application's own
+configuration — and that bound is what the questions below are mostly about: whether it is
+enforced by the code or only stated in the manual.
+
+**Six questions. The recommendation beside each is what one session argued for on 2026-09-06;
+none of them is a decision.**
+
+| # | Question | Options | Recommended |
+|---|---|---|---|
+| 1 | The value type | `Map<String,String>` scalars-only · `Map<String,Object>` unwrapped · Typesafe `Config` | `Map<String,String>` |
+| 2 | How the keys are read | `keySet()` + explicit NULL skip (refuses lists and objects) · `entrySet()` (absorbs them, flattened) | `keySet()` |
+| 3 | `toString()` | key names only · keys and values | key names only |
+| 4 | A caller-supplied validator | `Consumer<LlmConfig>` · `Consumer<Map<String,String>>` · none | `Consumer<LlmConfig>` |
+| 5 | When | the map and the validator together · the map first | together |
+| 6 | May a `ProviderFactory` read them | yes · no | no |
+
+**Question 1 is the one that decides whether the owner's own bound is real.** Measured against
+`config-1.4.9`: `getString` converts a number, a boolean and `10s` to `"3"`, `"true"` and
+`"10s"`, and **throws `WrongType` on a list or a nested object**, naming the line and the key.
+So a `Map<String,String>` accepts every scalar the owner described and refuses the structured
+case with a usable error, which puts the boundary in the code rather than in a sentence of the
+manual that will later drift.
+
+**Question 2 exists because neither reading is free**, which a probe found rather than
+reasoning:
+
+| | nested object | a key cleared with `= null` in a higher layer |
+|---|---|---|
+| `entrySet()` | flattened silently into `nested.inner` | excluded automatically |
+| `root().keySet()` + `getString` | refused with `WrongType` | throws `ConfigException.Null` |
+
+The null idiom is not hypothetical: it is how `description` is cleared across layers already
+(ADR-0032). `keySet()` with an explicit skip of `NULL`-typed values gets both behaviours
+deliberately, at the cost of one `if` and one test.
+
+**Question 3 is ADR-0047 arriving a second time.** `${?HOME}` was measured resolving inside
+the sub-block, so a custom property holds the credential *after* substitution exactly as
+`apiKey` does. The record is reachable as `registry.get(name).config()`, so a
+`log.info("{}", config)` would print whatever an application put there. The library cannot
+know which values are secret, and printing key names is safe without having to guess.
+
+**Question 4 is the one that restores ADR-0008.** The library cannot validate what it does not
+understand, so `max-retries = "tre"` would load cleanly and fail later at the application's
+`parseInt` — against "invalid configuration is unrepresentable". A caller-supplied validator
+closes that, and the hook point already exists: `SnapshotLoader.buildBundle` runs
+`validateCapabilities(config, factory)` and then `factory.validate(config)`, so the
+application's rule is the third line of a sequence that is already there.
+
+Three properties come with that position and none of them has to be written:
+
+- `SnapshotLoader.load` serves `build()`, `reload()` **and** `store()`, so the application's
+  rules are enforced on the write path too, with the "nothing written, nothing changed"
+  guarantee P20 already tests.
+- A rejected reload swaps nothing, keeps the previous snapshot live, fires one
+  `onReloadFailure` and logs a WARN (ADR-0012, ADR-0031).
+- The carry-over at `SnapshotLoader:118-121` means the validator runs only on blocks actually
+  being built. Placed after `fromBlock` instead, it would run on every block on every reload.
+
+An earlier draft of the argument for this claimed a caller validator would be the first
+application code inside the reload path. Reading the file refuted it: `factory.validate` and
+`createChatModel` are application-supplied code and already run there, with no containment and
+no timeout. So the hazard class is not new, and the contract to write is the one factories
+already live under — pure, fast, no I/O, no blocking, because a reload holds `reloadLock`.
+
+Two things the validator must not become: a transformer, because a live `LlmConfig` that
+differs from the file makes the record-equality diff meaningless; and a per-snapshot rule,
+because these properties are defined as belonging to one connection.
+
+**Question 6 is the quiet one.** Every `ProviderFactory` method takes `LlmConfig`, so a field
+on the record is readable by every provider on the classpath whether or not that was intended.
+It is a plausible extension point — a third-party provider needing a setting the schema lacks
+— and also the way two providers end up naming the same idea differently, which hollows out
+the "typed and validated configuration records rather than string lookups" that ADR-0002 names
+as a differentiator. Worth deciding out loud rather than letting the type system decide it.
+
+**Why this is not the "generic reloadable configuration" ADR-0002 refuses.** The value is not
+storage: an application can already keep its own HOCON file, and unknown keys inside a block
+are already ignored in silence today — `LlmConfig.fromBlock` reads only the paths it knows and
+nothing enumerates the rest, so `llm.SL.mia-cosa = 42` is legal and does nothing right now.
+What is missing is an accessor, and what it buys is **atomicity**: a property inside the block
+is validated, published and rejected in the same swap as the model it belongs to, so a reload
+cannot leave a new prompt template beside an old model. The rule that keeps the boundary
+closed, and that belongs in the ADR: properties that belong to *this model configuration*, not
+to the application at large.
+
+**Smaller choices that follow the six, listed so they are not rediscovered.** The key is
+`custom-properties` in the file, kebab-case like the rest of the schema, and
+`customProperties()` in Java. Absent means an empty map rather than `Optional<Map>`. The field
+is an ordinary record component, so an edit rebuilds that bundle and reports the name in
+`ReloadChange.updated()` — ADR-0032 settled that for `description` and explicitly forbids
+carving a field out of equality. `ConfigSource` and the reload machinery are untouched.
+ADR-0032's closing warning applies directly and should be quoted in the schema documentation:
+a field that must not affect the diff does not belong in `LlmConfig` at all, so this is for
+small stable values and is neither a cache nor a data channel.
+
+**Also considered and withdrawn:** a `CustomProperties` wrapper type with typed accessors
+(`getInt`, `getDuration`, …). It was this session's first recommendation and it did not survive
+the owner narrowing the scope — for two or three scalars it is API surface with no payer, and
+its one real benefit, a single place for redaction, is already `LlmConfig.toString()`.
+Exposing Typesafe `Config` was rejected separately: `LlmConfig.fromBlock(String, Config)` is
+already an accidental leak that P29 and P38 both declined to make permanent, and a second one
+would be deliberate.
