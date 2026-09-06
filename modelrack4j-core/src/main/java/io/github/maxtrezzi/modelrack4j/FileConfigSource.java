@@ -19,7 +19,6 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Objects;
 
 /**
  * A source that reads a file on every call. Backs {@link ConfigSource#ofFile(Path)}.
@@ -31,20 +30,19 @@ import java.util.Objects;
 record FileConfigSource(Path file) implements FileBacked {
 
     FileConfigSource {
-        Objects.requireNonNull(file, "file");
+        file = FileBacked.stored(file);
     }
 
     /**
      * {@inheritDoc}
      *
-     * @implNote The absolute, normalised path, so that two spellings of one file — {@code
-     *     a.conf} and {@code ./a.conf} — are recognised as the duplicate layer they are
-     *     rather than passing as two. It also makes the path in an error message findable
+     * @implNote The path as the record holds it, which the constructor has already made
+     *     absolute and normalised. That is what makes the path in an error message findable
      *     without knowing the working directory the application was started from.
      */
     @Override
     public String id() {
-        return file.toAbsolutePath().normalize().toString();
+        return file.toString();
     }
 
     @Override

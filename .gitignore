@@ -54,3 +54,9 @@ __pycache__/
 
 # OS
 .DS_Store
+
+# Written into the working directory by ConfigSourceTest's parentless-path test, which has to
+# live there because that is where a path with no parent resolves from. Deleted by the test;
+# listed here so an interrupted run cannot leave them staged.
+p39-base.conf
+p39-extra.conf

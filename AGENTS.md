@@ -281,8 +281,14 @@ watcher unchanged. Four consequences that look like tidying and are not:
   Two traps around this, both measured on 2026-09-06. The failure **hides in development**: with
   the working directory set to the directory holding the configuration, `parseString` finds the
   sibling and everything looks fine, so it has to be reproduced from an unrelated working
-  directory. And `parseFile` is not enough on its own — a path with no parent, `Path.of("app.conf")`,
-  gives `new File(...).getParentFile() == null` and loses the include as well, which is P39.
+  directory. And `parseFile` was not enough on its own — a path with no parent, `Path.of("app.conf")`,
+  gives `new File(...).getParentFile() == null` and lost the include as well (P39). Every
+  file-backed record now stores `FileBacked.stored(file)`, so **do not move that back to the
+  factory method or into `id()`**: normalising in `id()` alone is where the bug lived, and it
+  also left two spellings of one path reporting one identity while comparing unequal, so a
+  `store()` through the other spelling was refused. The normalisation is lexical and therefore
+  opens a different file when a `..` follows a symbolic link — measured, accepted, and written
+  in that method's `@implNote`, because resolving the link instead is what ADR-0024 forbids.
 - **`LlmRegistry.reload()` is public, and the `synchronized (reloadLock)` around the
   compare-then-swap is not removable.** The watcher thread is no longer the only writer: an
   application can reload too, and two reloads at once would both read the same snapshot and

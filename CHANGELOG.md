@@ -109,6 +109,16 @@ will not be held back for a major bump until the API settles at `1.0.0`.
 
 ### Fixed
 
+- **A configuration path with no parent directory no longer loses the files it includes.**
+  `configFiles(List.of(Path.of("app.conf")))` — a bare file name, with no directory in front of
+  it — left the parser without a directory to resolve `include "sibling.conf"` against, so the
+  included file was skipped. An include is optional by default, so nothing was reported: a
+  required key from the included file failed later with a confusing message, and an optional one
+  simply took its default. Paths with a directory in them, such as `conf/app.conf`, were never
+  affected, and neither were the file watcher or `store()`. A path is now made absolute where it
+  is stored, which also means two spellings of the same file — `a.conf` and `./a.conf` — are one
+  layer rather than two: before, they reported the same name and still counted as different
+  sources, so `store()` through the second spelling was refused.
 - **`watch(true)` now works with layers given to `sources(...)`.** It watches the layers that
   are files — `ConfigSource.ofFile(...)` and `ConfigSource.ofWritableFile(...)` — and ignores
   the others; it still refuses to start when no layer is a file at all, and the message now

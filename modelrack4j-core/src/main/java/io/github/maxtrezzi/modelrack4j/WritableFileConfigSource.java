@@ -74,12 +74,12 @@ record WritableFileConfigSource(Path file) implements WritableConfigSource, File
     }
 
     WritableFileConfigSource {
-        Objects.requireNonNull(file, "file");
+        file = FileBacked.stored(file);
     }
 
     @Override
     public String id() {
-        return file.toAbsolutePath().normalize().toString();
+        return file.toString();
     }
 
     @Override
@@ -208,7 +208,9 @@ record WritableFileConfigSource(Path file) implements WritableConfigSource, File
             // without ever entering this try — and the catch would then be unreachable.
             return Files.exists(file, LinkOption.NOFOLLOW_LINKS)
                     ? file.toRealPath()
-                    : file.toAbsolutePath().normalize();
+                    // Already absolute and normalised by FileBacked.stored; kept as the
+                    // explicit counterpart of toRealPath, which is the branch that matters.
+                    : file;
         } catch (IOException cannotResolve) {
             // Something is at the path but it cannot be followed to a real file: a symbolic
             // link that points at itself or around a cycle, or one whose target sits behind
@@ -217,7 +219,7 @@ record WritableFileConfigSource(Path file) implements WritableConfigSource, File
             // fails naming the real problem rather than this one.
             log.debug("modelrack4j could not resolve {} to a real path: {}",
                     file, cannotResolve.toString());
-            return file.toAbsolutePath().normalize();
+            return file;
         }
     }
 

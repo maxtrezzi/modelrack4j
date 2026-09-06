@@ -16,7 +16,6 @@
 package io.github.maxtrezzi.modelrack4j;
 
 import java.nio.file.Path;
-import java.util.Objects;
 
 /**
  * The proposed text of a store, staged in a real file beside the layer it will replace, so
@@ -29,7 +28,7 @@ import java.util.Objects;
 record StagedFileSource(String id, Path file) implements FileBacked {
 
     StagedFileSource {
-        Objects.requireNonNull(file, "file");
+        file = FileBacked.stored(file);
         ConfigSources.requireUsableId(id);
     }
 
