@@ -4688,3 +4688,109 @@ against the process's working directory as well, so with the working directory s
 directory holding the configuration it *does* find the sibling and the test's premise would not
 hold. The silence is real; the "finds nothing" depends on where the process was started.
 
+
+---
+
+### P40 — Custom properties, carried as text
+
+**Status:** Not started — target 0.2.0 ·
+**Raised by:** [D7](open-decisions.md#d7--custom-properties-on-a-configuration-block), settled by
+[ADR-0055](../adr/0055-custom-properties-are-carried-as-text.md)
+
+An optional `custom-properties` sub-block on each named configuration, carried as text and
+interpreted by nobody but the application.
+
+#### What to build
+
+- **`LlmConfig` gains one component**, the rendered text of the merged sub-block. `SnapshotLoader`
+  renders it with `ConfigRenderOptions.concise()` before calling `fromBlock`; absent renders as
+  `{}`. Nothing else in the record changes, and the reload diff stays a value comparison.
+- **`LlmConfig.toString()`** prints `{}` when the text is empty and `***` otherwise. It is a
+  hand-written override (ADR-0047), so a new component does not appear in it by itself.
+- **A functional interface for the handler**, whose single method takes the text and returns an
+  `Object`, declared `throws Exception`. It cannot be `java.util.function.Function`: measured,
+  `text -> mapper.readValue(text, X.class)` does not compile against it, because
+  `JsonProcessingException` extends `IOException` and is checked.
+- **`LlmRegistry.Builder.customPropertiesHandler(...)`**, optional, one per registry. A rule that
+  applies to one block branches on `config.name()`.
+- **`SnapshotLoader.buildBundle` calls the handler** after `factory.validate` and before
+  `createChatModel`: after, so the provider exists and its own rules have passed; before, so a
+  rejected configuration does not first build a model that is discarded. Anything thrown is
+  wrapped in `ConfigValidationException` naming the block, with the original as the cause.
+- **The handler is called even when the sub-block is absent**, with `{}`. This is not a
+  formality: a rule of the form "an openai block needs `prompt-id`" is violated exactly when the
+  sub-block is missing.
+- **`LlmBundle` carries the parsed object** and exposes `customPropertiesText()` — the reading
+  path the owner chose — delegating to the config, plus a class-token accessor for the object
+  that throws when no handler was registered, as `get()` does for an unknown name (ADR-0014).
+
+#### What not to do
+
+**Do not put the parsed object in `LlmConfig`.** The reload diff would then depend on whether
+the application implemented `equals`; a class without it compares by identity, so every block
+looks changed on every reload and every model is rebuilt with nothing to warn about it. This is
+the one mistake in this item that fails silently.
+
+**Do not give the library accessors over the text** — no `getInt`, no key enumeration, no rule
+about nested objects. That is the two-mechanism shape ADR-0055 rejects.
+
+#### Tests worth naming
+
+The empty cases first, because they are where the design is: absent sub-block with a handler
+registered (called with `{}`), absent without one, present without one. Then that an edit to a
+custom property alone rebuilds that bundle and names it in `ReloadChange.updated()`; that a
+handler that throws leaves the previous snapshot live and fires one `onReloadFailure`; that a
+`store()` carrying a bad property writes nothing, on a layer that is not a file as well as on
+one that is; that a key cleared with `= null` in a higher layer behaves; and that
+`LlmConfig.toString()` does not leak a `${?VAR}` substituted into the sub-block.
+
+#### Documentation
+
+The reference gains the key, the tutorial gains a worked example, and the README's *What you
+still write yourself* section is where the boundary is already explained. All of it is
+user-facing prose under ADR-0039.
+
+---
+
+### P41 — Reject a key the schema does not know
+
+**Status:** Not started — target 0.2.0, ships with [P40](#p40--custom-properties-carried-as-text) ·
+**Raised by:** [D8](open-decisions.md#d8--a-key-the-schema-does-not-know), settled by
+[ADR-0056](../adr/0056-an-unknown-key-is-an-error.md)
+
+A key inside a named block that the schema does not know makes the configuration invalid,
+reported as one error listing every offending key with its origin.
+
+#### What to build
+
+- **A wrapper that records the paths `fromBlock` asks for.** The known keys are produced by the
+  parse; the unknown ones are the leaf paths it never touched. `hasPath` counts as asking, which
+  is what makes `description` and `moderation.enabled` known without a special case.
+- **Everything under `custom-properties` is known by prefix** (P40).
+- **Enumerate with `entrySet()`**, which yields leaf paths — so a misspelling inside `memory` is
+  reported as `memory.max-mesages` — and which excludes a key cleared with `= null` in a higher
+  layer, so ADR-0032's clearing idiom does not report as unknown.
+- **One `ConfigValidationException` listing every offending key**, each with
+  `origin().description()`. Measured: that gives `base.conf: 6` for a file layer and
+  `db-row:tenant-42: 3` for a text layer, because `ConfigLoader.parse:118` already sets the
+  origin description from `ConfigSource.id()`.
+
+#### What not to do
+
+**Do not declare a `Set<String>` of known keys beside `fromBlock`.** It is the obvious
+implementation and it reintroduces the same silent drift with the sign reversed: add a key to
+the parse, forget the list, and every file using that key is rejected. `modelrack4j-reference.conf`
+cannot serve either — it holds the defaults and deliberately omits the required keys and the ones
+whose absence is meaningful.
+
+#### Tests worth naming
+
+A misspelling at the top level and one nested inside `memory`, in the same block, reported
+together in one message with both origins. A key cleared with `= null` in a higher layer, which
+must not be reported. A key under `custom-properties`, which must not be reported. And the same
+rejection through `reload()` and `store()`, since both go through `SnapshotLoader.load`.
+
+#### Documentation
+
+This breaks configurations that load under `0.1.0`, so it is a CHANGELOG entry under a heading
+that says so, not a bullet among the additions.

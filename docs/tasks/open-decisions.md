@@ -3,8 +3,7 @@
 Items waiting on the owner rather than on work. Do not resolve these unilaterally — each
 one closes by writing an ADR (see [ADR-0001](../adr/0001-record-decisions-as-adrs.md)).
 
-**D1 to D6 are settled; [D7](#d7--custom-properties-on-a-configuration-block) is open**, so
-this file is a queue again. A new
+**D1 to D8 are all settled**, so this file is a record rather than a queue right now. A new
 entry here is a question for the owner, not work to pick up, and an entry marked
 `Needs decision` blocks the code that depends on it rather than inviting a guess. Entries stay
 in number order and keep the framing they were decided under, with the outcome at the top.
@@ -253,8 +252,9 @@ previous snapshot before the exception leaves the method.
 
 ### D7 — Custom properties on a configuration block
 
-**Status:** Shape agreed 2026-09-06, no ADR written — the library carries the block as text and
-never interprets it; what remains open is listed at the end ·
+**Status:** Settled 2026-09-06 — the block is carried as text and the library interprets none
+of it ·
+**Settled by:** [ADR-0055](../adr/0055-custom-properties-are-carried-as-text.md) ·
 **Raised by:** the owner on 2026-09-06, wanting two or three application values to travel with
 the connection they belong to
 
@@ -262,10 +262,10 @@ An optional sub-block on each named configuration, holding values the library **
 interprets**. It is carried as text, and an optional caller-supplied handler turns that text
 into whatever object the application wants.
 
-The entry records two discussions on the same day. The first produced six questions and a
-recommendation beside each. The second answered three of them, then replaced the design the
-other three were about, so those three no longer have anything to decide. The rejected shapes
-are kept at the end, because the reasoning against them is what makes the current shape
+The entry records three discussions on the same day. The first produced six questions with a
+recommendation beside each. The second answered questions 4, 5 and 6. The third replaced the
+design the other three were about, so those three had nothing left to decide. The rejected
+shapes are kept at the end, because the reasoning against them is what makes the current shape
 defensible.
 
 #### The shape
@@ -360,8 +360,9 @@ readValue("{}") -> SupportProps[promptId=null, retries=0, tags=null]
 
 The one case with no object is asking for a parsed object without having registered a handler.
 That is not a state of the configuration but a mistake by the caller — the library has no type
-to build. Recommended: throw, with the precedent that `get()` on a name that was never
-configured throws `UnknownConfigurationException` (ADR-0014).
+to build. **It throws**, with the precedent that `get()` on a name that was never configured
+throws `UnknownConfigurationException` (ADR-0014) — and in correct code the throw is
+unreachable, because a caller who registered a handler always has an object.
 
 #### Why the text goes in `LlmConfig` and the object in `LlmBundle`
 
@@ -411,6 +412,29 @@ LlmRegistry registry = LlmRegistry.builder()
 SupportProps props = registry.get("SUPPORT").customProperties(SupportProps.class);
 String raw         = registry.get("SUPPORT").customPropertiesText();
 ```
+
+**That lambda decides the handler's type, and `java.util.function.Function` cannot hold it.**
+`ObjectMapper.readValue` throws `JsonProcessingException`, which extends `IOException` and is
+checked, so `Function<String, Object>` does not compile — measured:
+
+```
+error: unreported exception JsonProcessingException; must be caught or declared to be thrown
+        Function<String, Object> handler = text -> m.readValue(text, SupportProps.class);
+```
+
+The handler therefore needs its own functional interface declaring `throws Exception`, which
+compiles and runs with the same lambda:
+
+```java
+@FunctionalInterface
+public interface CustomPropertiesHandler {
+    Object handle(String text) throws Exception;
+}
+```
+
+Binding a configuration block is I/O-shaped in almost every library a caller might reach for, so
+forcing a `try`/`catch` into every lambda would be a tax on the normal case rather than on an
+unusual one.
 
 The application's type carries its own rules, and the deserializer enforces them:
 
@@ -469,68 +493,36 @@ Unrecognized field "retrys" (class SupportProps), not marked as ignorable
 The library could only have refused *structure*. The application's binder refuses *wrong names*,
 which is what actually goes wrong.
 
-#### Still open
+#### The last three answers
 
-- **Does the library wrap a handler's exception?** An application will throw
-  `IllegalArgumentException`. Unwrapped, a caller catching `ConfigValidationException` around
-  `build()` misses it and the message does not name the block. Recommended: wrap always, naming
-  the block and keeping the original as the cause, so the block name never depends on how
-  careful the caller was.
-- **The unknown-key question below**, and whether it takes its own number.
-- **Whether any of this lands in 0.2**, which the owner is considering.
+- **The handler is one function, not an interface with two methods.** The `isSecret` half is
+  gone: the library holds text it simply never prints, and the application's own object has the
+  application's own `toString()`, which is not the library's business. What remains is a
+  library-side choice with no caller involved — `LlmConfig.toString()` prints `{}` when the text
+  is empty and `***` otherwise. Printing the key names would mean parsing a text the library has
+  just promised not to interpret.
+- **What the library wraps a handler's exception in: `ConfigValidationException`.** *That* it
+  wraps stopped being a preference once the handler declared `throws Exception`, since a checked
+  exception has to become something the public API declares. The type follows ADR-0053: the
+  library read something and objected. Wrapping unconditionally also keeps the block name out of
+  the caller's hands — unwrapped, a plain `IllegalArgumentException` would carry no block name
+  and would slip past a caller catching `ConfigValidationException` around `build()`.
+- **The handler is registered on the builder, not passed at each read.** Passing it at read time
+  would remove the "no handler registered" case entirely, which is why it was raised. It also
+  removes the reason the feature exists: a handler that runs only when someone reads does not run
+  during a reload, so malformed properties are published and fail later, inside the application.
+  What the builder shape buys is the atomicity of *validation*, not just of delivery. The cost
+  that does **not** decide it: parsing on every read is microseconds against an LLM call, so
+  performance was not the argument either way.
 
-No ADR exists yet. D7 closes by writing one (ADR-0001).
+**Target: 0.2.0**, with [D8](#d8--a-key-the-schema-does-not-know) in the same version.
 
-#### Spun out of this discussion, and not given a number
+#### The question this raised, now D8
 
-**Unknown keys that belong to the library's own schema are a separate question**, recorded here
-rather than as its own entry because taking a number is the owner's call. It is about
-`temperatur`, not about custom properties.
-
-Measured on 2026-09-06 by running it — a throwaway test in core's test scope, since removed —
-against a block named `SL` carrying `temperatur = 0.9`, `timeuot = 30s`,
-`memory.max-mesages = 99` and an invented sub-block containing a list:
-
-```
->>> LOADED. temperature = Optional.empty | timeout = PT1M
-```
-
-The registry builds and `get("SL")` works. Both misspelled values are gone: `temperature` falls
-back to the provider's own default and `timeout` to the 60s in `modelrack4j-reference.conf`.
-There is no exception and no warning, because `LlmConfig.fromBlock` reads only the paths it
-knows and nothing enumerates the rest, so no code is in a position to notice.
-
-The question is whether that becomes an error, a warning, or a builder-level choice. What the
-discussion established:
-
-- **A warning is worse here than elsewhere.** The configuration loads, and then the same warning
-  repeats on every reload for as long as the file is not fixed. With an error the state cannot
-  exist: an unknown key never reaches a live snapshot.
-- **An error fits the reload model.** A rejected reload swaps nothing and keeps the previous
-  snapshot live, so a typo cannot silently degrade a running application.
-- **The order of reversibility favours strict now.** Strict to lenient is not a breaking change;
-  lenient to strict is. `0.x` with one consumer is the cheapest moment there will be.
-- **"A series of" is right even if the severity changes.** One error listing every offending key
-  beats failing on the first, and each key can carry its origin: `origin().description()` was
-  measured returning `base.conf: 6` for a file layer and `db-row:tenant-42: 3` for a text layer
-  parsed with the `setOriginDescription` that `ConfigLoader.parse:118` already passes.
-- **The custom-properties shape strengthens the case.** Jackson refuses an unknown field by
-  default, which is the same rule applied by the party that knows the schema. For the library's
-  own keys, that party is the library.
-- **The honest cost is forward compatibility.** A file written for a later version that adds
-  `top-p`, read by an earlier one, would fail rather than ignore the key.
-- **The implementation risk is a second list that drifts.** `modelrack4j-reference.conf` holds
-  only the defaults and deliberately omits both the required keys and the ones whose absence is
-  meaningful, so it is not a schema and cannot become one without losing its purpose. A declared
-  `Set<String>` beside `fromBlock` is a second copy of the same truth and no test would catch it
-  drifting. The alternative is to let the parse produce the known set — a wrapper that records
-  each path `fromBlock` asks for, so unknown keys are the leaf paths it never touched, and adding
-  a key to `fromBlock` makes it known automatically.
-
-**The scheduling consequence.** Putting a key the library does not know inside a block is legal
-today and does nothing. Making it an error without shipping the custom-properties block in the
-same version removes a capability that exists without providing the declared one that replaces
-it. So strictness in 0.2 requires the block in 0.2; the reverse does not hold.
+Whether a key belonging to the library's own schema should be an error rather than ignored is a
+separate question that this discussion made *answerable*: until the block existed, nothing
+distinguished a misspelling from a value an application had put there deliberately. It is
+recorded as [D8](#d8--a-key-the-schema-does-not-know) and ships in the same version.
 
 #### Smaller choices that follow, listed so they are not rediscovered
 
@@ -606,3 +598,49 @@ that differs from the file makes the record-equality diff meaningless. **A per-s
 seeing every block at once: out of step with the framing, since these properties belong to one
 connection. **A handler named in the configuration file** rather than registered on the builder:
 that means naming a class in a file, which is code-shaped and falls under ADR-0003.
+
+---
+
+### D8 — A key the schema does not know
+
+**Status:** Settled 2026-09-06 — **an error, listing every offending key** ·
+**Settled by:** [ADR-0056](../adr/0056-an-unknown-key-is-an-error.md) ·
+**Raised by:** the owner on 2026-09-06: *"Se carico un file di configurazione che non va bene io
+mi aspetto un errore o una serie di warning con i valori ignorati"*
+
+Today a key inside a named block that the library's schema does not know is ignored in silence.
+Measured by running it — a throwaway test in core's test scope, since removed — against a block
+named `SL` carrying `temperatur = 0.9`, `timeuot = 30s`, `memory.max-mesages = 99` and an
+invented sub-block containing a list:
+
+```
+>>> LOADED. temperature = Optional.empty | timeout = PT1M
+```
+
+The registry builds and `get("SL")` works. Both misspelled values are gone: `temperature` falls
+back to the provider's own default and `timeout` to the 60s in `modelrack4j-reference.conf`.
+There is no exception and no warning, because `LlmConfig.fromBlock` reads only the paths it
+knows and nothing enumerates the rest, so no code is in a position to notice.
+
+**The answer is an error, and the owner's "a series of" survives inside it**: one error listing
+every offending key rather than failing on the first, each with its origin. The reasoning is in
+ADR-0056; four points are worth having here because they are what a reader will question.
+
+- **A warning is worse here than elsewhere, and the reason is reloading rather than taste.** The
+  configuration loads, and the same warning then repeats on every reload for as long as nobody
+  fixes the file. With an error that state cannot exist.
+- **The order of reversibility decides the timing.** Strict to lenient breaks no existing file;
+  lenient to strict breaks every file with a stray key. `0.x` with one consumer is the cheapest
+  moment there will be — and it *is* a break against `0.1.0`, which the CHANGELOG allows.
+- **[D7](#d7--custom-properties-on-a-configuration-block) is what made the question answerable**,
+  and the two ship together. Making an unknown key an error without providing the declared place
+  for application values would remove a capability that exists today without supplying its
+  replacement.
+- **The known keys must be produced by the parse, never declared beside it.** A
+  `Set<String>` next to `fromBlock` is a second copy of the same truth, and the day someone adds
+  a key to the parse and forgets the list, that key becomes unknown and every file using it is
+  rejected — the same silent-drift failure, wearing the opposite sign. `modelrack4j-reference.conf`
+  cannot be that list either: it holds the defaults and deliberately omits both the required keys
+  and the ones whose absence is meaningful.
+
+**Target: 0.2.0.** Implementation is [P41](post-v1.md#p41--reject-a-key-the-schema-does-not-know).

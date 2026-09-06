@@ -116,13 +116,16 @@ Phase 0 gates everything else; nothing below M0 should start before its blockers
 | [P37](post-v1.md#p37--what-a-failed-store-tells-you-and-the-layers-the-registry-would-not-name) | What a failed store tells you, and the layers the registry would not name | **Done** — the consuming application re-ran the seven awkward points against a build of `main`: a store fails on the *directory* and nothing public said so, while the reference said a read-only file makes one fail; two `ConfigAccessException` messages named a path the caller had never seen; `StaleLayerException` did not say that its comparison includes the final newline; and `LlmRegistry.sources()` now reports the layers `ReloadFailure` was already handing out (ADR-0054) |
 | [P38](post-v1.md#p38--running-the-examples-and-reading-the-manual-against-them) | Running the examples and reading the manual against them | **Done** — all five examples run, which is also the only check that `examples.conf`'s model names still exist; the tutorial printed a ConsoleChat line the program stopped printing at P21 and a council snippet using the two-`get()` shape ADR-0038 argues against; the reference gave two different answers for which thread a listener runs on, and an out-of-date list of where `id()` is printed |
 | [P39](post-v1.md#p39--a-relative-configuration-path-loses-its-sibling-includes) | A relative configuration path loses its sibling includes | **Found, not fixed** — `Path.of("app.conf")` has no parent, so `parseFile` resolves `include "sibling.conf"` to nothing; an optional key would go missing with no error at all, and the watcher and the write path are unaffected because both absolutise first |
+| [P40](post-v1.md#p40--custom-properties-carried-as-text) | Custom properties, carried as text | **Not started** — target 0.2.0; the text goes in `LlmConfig` for the diff and the parsed object in `LlmBundle`, because a parsed object in the record would make the reload diff depend on the application's `equals`; ADR-0055 |
+| [P41](post-v1.md#p41--reject-a-key-the-schema-does-not-know) | Reject a key the schema does not know | **Not started** — target 0.2.0, ships with P40; the known keys are produced by the parse rather than declared beside it, and one error lists every offending key with its layer and line; ADR-0056 |
 | [D1](open-decisions.md#d1--glm-route-if-no-maintained-module-exists) | GLM route if no maintained module | **Closed** — never became live |
 | [D2](open-decisions.md#d2--repository-visibility) | Repository visibility | **Settled** — public, not released; ADR-0034 |
 | [D3](open-decisions.md#d3--token-window-memory-on-a-remote-estimator) | Token-window memory on a remote estimator | **Settled** — opt-in flag |
 | [D4](open-decisions.md#d4--mutation-testing-in-ci) | Mutation testing in CI | **Settled** — never, in any form; ADR-0043 |
 | [D5](open-decisions.md#d5--a-version-token-for-optimistic-concurrency) | A version token for optimistic concurrency | **Settled** — no token; the `ETag` pattern already works on the current signature; ADR-0052 |
 | [D6](open-decisions.md#d6--cannot-store-is-not-your-configuration-is-invalid) | "Cannot store" is not "your configuration is invalid" | **Settled** — `ConfigAccessException`, standalone, covering reads as well as writes; ADR-0053 |
-| [D7](open-decisions.md#d7--custom-properties-on-a-configuration-block) | Custom properties on a configuration block | **Needs decision** — the shape is agreed: the block is carried as text and an optional caller handler turns it into an object, which dissolves three of the six original questions; no ADR yet, and the severity of an unknown key is still open |
+| [D7](open-decisions.md#d7--custom-properties-on-a-configuration-block) | Custom properties on a configuration block | **Settled** — carried as text, interpreted by nobody but the application, with an optional caller handler whose parse *is* the validation; ADR-0055 |
+| [D8](open-decisions.md#d8--a-key-the-schema-does-not-know) | A key the schema does not know | **Settled** — an error listing every offending key, not a warning: a warning would repeat on every reload while the bad configuration stayed live; ADR-0056 |
 
 **Phase 0 is complete except for one measurement, and M0 is done — the build is green.** Tasks 0.1–0.7 are
 done; Task 0.8 is done on Linux and open only on the macOS latency figure, which qualifies
@@ -190,14 +193,15 @@ implemented in [P30](post-v1.md#p30--configaccessexception-the-implementation-of
 > already recorded the outcome. It is the drift `AGENTS.md` describes: a sentence that was true
 > when written, falsified by work that updated the table beside it and not the prose.
 
-**[D7](open-decisions.md#d7--custom-properties-on-a-configuration-block) is the open one.**
-Raised by the owner on 2026-09-06: whether a configuration block may carry a few application
-values that the core never interprets. Two discussions the same day: the first produced six
-questions, the second replaced the design three of them were about. The block is now carried as
-**text**, with an optional caller-supplied handler turning it into whatever object the
-application wants, so the library provides no reading mechanism for values it does not own. The
-entry carries worked examples and the shapes that were rejected. No ADR yet, and no code depends
-on it.
+**D1 to D8 are all settled, so `open-decisions.md` is a record rather than a queue.** The last
+two were taken on 2026-09-06 and are the whole of 0.2.0's planned work:
+[D7](open-decisions.md#d7--custom-properties-on-a-configuration-block) carries a block's custom
+properties as text that the library never interprets (ADR-0055), and
+[D8](open-decisions.md#d8--a-key-the-schema-does-not-know) makes a key the schema does not know
+an error rather than silence (ADR-0056). They ship together: until the first gave application
+values a declared place, nothing distinguished a misspelling from a value someone put there on
+purpose. The implementations are [P40](post-v1.md#p40--custom-properties-carried-as-text) and
+[P41](post-v1.md#p41--reject-a-key-the-schema-does-not-know); no code exists for either yet.
 
 A second question was spun out of the same discussion and left without a number, because taking
 one is the owner's call: whether a key the library's own schema does not know should be an

@@ -571,11 +571,11 @@ in-flight requests may still hold them.
   `if (!awaitTermination(...)) shutdownNow();`, and the check belongs after the `try`.
 - **`docs/tasks/open-decisions.md` needs the owner.** Ask; do not decide unilaterally. A new
   entry there is a question for the owner, not work to pick up, and an entry marked
-  `Needs decision` blocks the code that depends on it rather than inviting a guess. **D1–D6
-  are settled and D7 is open**, so that file is a queue again. Read it for the
+  `Needs decision` blocks the code that depends on it rather than inviting a guess. **D1–D8
+  are all settled**, so that file is a record rather than a queue right now. Read it for the
   current list rather than trusting this sentence — it said "all settled" for a day after two
-  entries had been added (P29). D7 was added with this line changed in the same commit, which
-  is the only thing that keeps a sentence like this true.
+  entries had been added (P29). D7 and D8 were each added with this line changed in the same
+  commit, which is the only thing that keeps a sentence like this true.
 - The §2 decision table in `brainstorm/PLAN.md` is closed: do not reopen those choices
   without asking. The ADRs carry the same decisions with their reasoning.
 - Milestones run M0 → M6 in `docs/tasks/milestones.md`; v1 was done at M5, and M6 gained its
