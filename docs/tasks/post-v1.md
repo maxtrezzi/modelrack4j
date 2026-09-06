@@ -4834,15 +4834,19 @@ that says so, not a bullet among the additions.
 
 ---
 
-### P42 — A registry with no configurations
+### P42 — An empty configuration, and the layer that empties it
 
 **Status:** Not started — target 0.2.0 ·
 **Raised by:** the owner on 2026-09-06: *"se non ho nessuna configurazione, non devo avere
 errore. È un problema dell'applicazione non della configurazione in generale"* ·
-**Settled by:** [ADR-0057](../adr/0057-an-empty-configuration-is-valid.md)
+**Settled by:** [ADR-0057](../adr/0057-an-empty-configuration-is-valid.md) and
+[ADR-0058](../adr/0058-a-higher-layer-can-remove-a-configuration.md)
 
-Remove the two refusals in `SnapshotLoader.load` — line 96 for a missing `llm` block, line 126
-for one that defines no names — and let both produce an empty registry.
+Three changes in one method, `SnapshotLoader.load`, because they are one behaviour seen from
+three sides: an empty result is valid, and a higher layer must be able to produce one.
+
+Remove the two refusals — line 96 for a missing `llm` block, line 126 for one that defines no
+names — and skip a name whose merged value is NULL instead of rejecting it.
 
 #### Why it is not only a preference
 
@@ -4859,6 +4863,19 @@ names afterwards : [SL]
 ADR-0014 says removed names are honoured. The last one is not, so this is an inconsistency with
 an accepted decision rather than a new behaviour being introduced.
 
+The second half is the same gap from the layering side. Measured against a base defining `SL` and
+`SH`:
+
+| in a higher layer | today |
+|---|---|
+| `llm.SH = null` | `ConfigValidationException: llm.SH must be a configuration block, but is of type NULL` |
+| `llm = null` | no `llm` block — an empty registry once the refusals are gone |
+| `llm = {}` | clears nothing: HOCON merges objects, so `[SH, SL]` survive |
+
+`= null` is how this project already clears `description` across layers (ADR-0032), and it fails
+one level up. The loop walks `root.keySet()`, which includes a NULL-cleared key, and the type
+check aimed at `llm.SL = "a string"` catches the removal idiom by accident.
+
 #### What to build
 
 - Both checks removed; `load` returns an empty map instead of throwing.
@@ -4866,10 +4883,17 @@ an accepted decision rather than a new behaviour being introduced.
   it is what ADR-0014 already specifies for a name that is not there.
 - A reload that empties the configuration swaps, and `ReloadChange.removed()` names everything
   that was there.
+- A name whose merged value is NULL is skipped before the type check, so a higher layer can
+  remove it. **Every other non-object value keeps the refusal it has today**, with its message,
+  its type name and its origin: `llm.SL = "a string"` is still a mistake.
 
 **Leave the layer rule alone.** `ConfigLoader.load` still throws when there are no configuration
 sources at all. Having nowhere to read from is a different thing from reading and finding
 nothing, and the two must not be merged.
+
+**Do not switch the loop to `entrySet()` to skip the NULL entries.** It excludes them, which
+looks like the fix, and it also flattens nested objects into dotted leaf paths — the loop would
+stop iterating configurations and start iterating their keys. Skip on `valueType()` instead.
 
 #### Tests worth naming
 
@@ -4880,11 +4904,17 @@ is empty afterwards and that `removed()` carries the name. Then that `get()` on 
 registry throws `UnknownConfigurationException`, and that a build with **no sources at all**
 still throws, so the two rules stay apart.
 
+Then the layer that empties: `llm.SH = null` in a higher layer removing one of two; the same on
+both, leaving an empty registry; `llm = null`; and `llm = {}`, which must **not** clear anything.
+And a guard that the repair is narrow — `llm.SL = "a string"` still fails, naming the type and
+the origin.
+
 Nothing has to be un-asserted: measured that no test names either message today.
 
 #### Documentation
 
-The reference should say that an empty configuration is valid and that checking for a
-configuration the application requires is the application's job, with the one-line shape of that
-check. The CHANGELOG entry belongs with the behaviour changes rather than the additions: an
+The reference should say that an empty configuration is valid, that checking for a configuration
+the application requires is the application's job, with the one-line shape of that check, and
+that a higher layer removes a configuration with `= null` — the reference already documents that
+syntax for `description`, so this is the same rule at a second depth rather than a new one. The CHANGELOG entry belongs with the behaviour changes rather than the additions: an
 application relying on `build()` to fail will now start.
