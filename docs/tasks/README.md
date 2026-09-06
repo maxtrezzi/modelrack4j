@@ -118,6 +118,7 @@ Phase 0 gates everything else; nothing below M0 should start before its blockers
 | [P39](post-v1.md#p39--a-relative-configuration-path-loses-its-sibling-includes) | A relative configuration path loses its sibling includes | **Found, not fixed** — `Path.of("app.conf")` has no parent, so `parseFile` resolves `include "sibling.conf"` to nothing; an optional key would go missing with no error at all, and the watcher and the write path are unaffected because both absolutise first |
 | [P40](post-v1.md#p40--custom-properties-carried-as-text) | Custom properties, carried as text | **Not started** — target 0.2.0; the text goes in `LlmConfig` for the diff and the parsed object in `LlmBundle`, because a parsed object in the record would make the reload diff depend on the application's `equals`. The handler is generic, so `LlmRegistry` and `LlmBundle` gain a type parameter and every declaration of them in the repository is touched; `LlmConfig` does not, so no provider is; ADR-0055 |
 | [P41](post-v1.md#p41--reject-a-key-the-schema-does-not-know) | Reject a key the schema does not know | **Not started** — target 0.2.0, ships with P40; the known keys are produced by the parse rather than declared beside it, and one error lists every offending key with its layer and line; ADR-0056 |
+| [P42](post-v1.md#p42--a-registry-with-no-configurations) | A registry with no configurations | **Not started** — target 0.2.0; a reload that removes the *last* configuration is refused today, so the registry goes on serving a name the file no longer defines, which contradicts ADR-0014's honoured removals; ADR-0057 |
 | [D1](open-decisions.md#d1--glm-route-if-no-maintained-module-exists) | GLM route if no maintained module | **Closed** — never became live |
 | [D2](open-decisions.md#d2--repository-visibility) | Repository visibility | **Settled** — public, not released; ADR-0034 |
 | [D3](open-decisions.md#d3--token-window-memory-on-a-remote-estimator) | Token-window memory on a remote estimator | **Settled** — opt-in flag |
@@ -202,6 +203,10 @@ an error rather than silence (ADR-0056). They ship together: until the first gav
 values a declared place, nothing distinguished a misspelling from a value someone put there on
 purpose. The implementations are [P40](post-v1.md#p40--custom-properties-carried-as-text) and
 [P41](post-v1.md#p41--reject-a-key-the-schema-does-not-know); no code exists for either yet.
+[P42](post-v1.md#p42--a-registry-with-no-configurations) joins them in 0.2.0 without an entry
+here, because it was not a question waiting on the owner: an empty configuration becomes valid
+([ADR-0057](../adr/0057-an-empty-configuration-is-valid.md)), which also repairs an
+inconsistency with ADR-0014 — the last configuration could not be removed.
 
 A second question was spun out of the same discussion and left without a number, because taking
 one is the owner's call: whether a key the library's own schema does not know should be an

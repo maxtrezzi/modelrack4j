@@ -4751,7 +4751,9 @@ The order in which a caller chains the builder's methods must not matter.
 #### Tests worth naming
 
 The empty cases first, because they are where the design is: absent sub-block with a handler
-registered (called with `{}`), absent without one, present without one. Then that an edit to a
+registered (called with `{}`), absent without one, present without one. An empty layer among
+others must still build, and the handler must be called for the blocks the other layers define
+rather than being skipped or called for a block that does not exist. Then that an edit to a
 custom property alone rebuilds that bundle and names it in `ReloadChange.updated()`; that a
 handler that throws leaves the previous snapshot live and fires one `onReloadFailure`; that a
 handler rule reading `config.provider()` sees the provider it expects; that a `store()` carrying
@@ -4799,6 +4801,12 @@ reported as one error listing every offending key with its origin.
   `origin().description()`. Measured: that gives `base.conf: 6` for a file layer and
   `db-row:tenant-42: 3` for a text layer, because `ConfigLoader.parse:118` already sets the
   origin description from `ConfigSource.id()`.
+- **An empty layer must stay legal.** A file that is empty, or that holds only comments, is a
+  normal layer: it contributes nothing and the merge takes the rest. Measured on 2026-09-06 that
+  this works today, in any position and more than once — an empty layer below a good one, above
+  it, and two empty layers around it, all build the registry. Nothing protects that behaviour,
+  and this item adds an enumeration over the merged blocks, which is exactly the kind of change
+  that trips on it.
 
 #### What not to do
 
@@ -4815,7 +4823,68 @@ together in one message with both origins. A key cleared with `= null` in a high
 must not be reported. A key under `custom-properties`, which must not be reported. And the same
 rejection through `reload()` and `store()`, since both go through `SnapshotLoader.load`.
 
+Then the empty layers, which are regression tests for behaviour that already works rather than
+for anything this item adds: an empty file below a good layer, above it, and two empty ones
+around it. A file holding only comments counts as empty.
+
 #### Documentation
 
 This breaks configurations that load under `0.1.0`, so it is a CHANGELOG entry under a heading
 that says so, not a bullet among the additions.
+
+---
+
+### P42 — A registry with no configurations
+
+**Status:** Not started — target 0.2.0 ·
+**Raised by:** the owner on 2026-09-06: *"se non ho nessuna configurazione, non devo avere
+errore. È un problema dell'applicazione non della configurazione in generale"* ·
+**Settled by:** [ADR-0057](../adr/0057-an-empty-configuration-is-valid.md)
+
+Remove the two refusals in `SnapshotLoader.load` — line 96 for a missing `llm` block, line 126
+for one that defines no names — and let both produce an empty registry.
+
+#### Why it is not only a preference
+
+Measured on 2026-09-06: a reload that removes the **last** configuration is rejected, and the
+registry goes on serving the name the file no longer defines.
+
+```
+start            : [SH, SL]
+after removing SH: [SL]
+after removing SL: ConfigValidationException: The 'llm' block is empty
+names afterwards : [SL]
+```
+
+ADR-0014 says removed names are honoured. The last one is not, so this is an inconsistency with
+an accepted decision rather than a new behaviour being introduced.
+
+#### What to build
+
+- Both checks removed; `load` returns an empty map instead of throwing.
+- `names()` empty, `get(anything)` throwing `UnknownConfigurationException` — no new behaviour,
+  it is what ADR-0014 already specifies for a name that is not there.
+- A reload that empties the configuration swaps, and `ReloadChange.removed()` names everything
+  that was there.
+
+**Leave the layer rule alone.** `ConfigLoader.load` still throws when there are no configuration
+sources at all. Having nowhere to read from is a different thing from reading and finding
+nothing, and the two must not be merged.
+
+#### Tests worth naming
+
+Building from a file that is empty, from one holding only comments, and from one holding
+`llm {}` — three inputs, all producing an empty registry rather than an exception. Then the case
+that motivated it: a reload that removes the last configuration, asserting both that `names()`
+is empty afterwards and that `removed()` carries the name. Then that `get()` on the empty
+registry throws `UnknownConfigurationException`, and that a build with **no sources at all**
+still throws, so the two rules stay apart.
+
+Nothing has to be un-asserted: measured that no test names either message today.
+
+#### Documentation
+
+The reference should say that an empty configuration is valid and that checking for a
+configuration the application requires is the application's job, with the one-line shape of that
+check. The CHANGELOG entry belongs with the behaviour changes rather than the additions: an
+application relying on `build()` to fail will now start.
