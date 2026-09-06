@@ -4631,3 +4631,305 @@ Four of the runs sent requests: `ProviderSwap` twice at two requests each, one c
 three, and one `ConsoleChat` session — a moderated question on `CR`, then a `/tools` turn whose
 tool call is a second round trip. The two `ConsoleChat` runs that checked the tutorial's step 3
 and step 4 sent nothing, because neither asked a question.
+
+---
+
+### P39 — A relative configuration path loses its sibling includes
+
+**Status:** Not started — target 0.2.0 ·
+**Raised by:** measuring how HOCON text becomes an object, while answering a question about
+whether the two parse paths could be collapsed into one
+
+A `Path` with no parent — `Path.of("app.conf")`, not `Path.of("conf/app.conf")` — passed to
+`LlmRegistry.Builder.configFiles(...)` or to `ConfigSource.ofFile(...)` makes
+`include "sibling.conf"` resolve to nothing.
+
+Proved against the library, with the same two files in both runs:
+
+```
+>>> RELATIVO: ConfigValidationException: ... No configuration setting found for key 'model-name'
+>>> ASSOLUTO: model-name = dal-fratello
+```
+
+**The chain.** `ConfigSource.ofFile(file)` keeps the path exactly as given;
+`Layer.of` hands it to `FileLayer`; `FileLayer.parse:45` calls
+`ConfigFactory.parseFile(file.toFile(), ...)`; and `new File("app.conf").getParentFile()` is
+`null`, so Typesafe Config has no directory against which to resolve a relative include.
+
+**Why it is worse than the run above suggests.** Here it surfaced as an error only because
+`model-name` is a required key. Had the included file carried an **optional** key, it would have
+gone missing with no error at all: an include is allow-missing by default. That is ADR-0042's
+hazard — the one P19 shipped and a review caught — arriving through a different door. P19's
+regression test, `ConfigSourceTest`'s *"a file layer still resolves an include relative to
+itself"* at line 268, cannot catch it: it builds its paths with `dir.resolve(...)` from a
+`@TempDir`, which is absolute.
+
+**The record is already inconsistent with itself.** `FileConfigSource.id():47` returns
+`file.toAbsolutePath().normalize().toString()`, so the source reports an absolute path while
+parsing through a relative one.
+
+**What is not affected**, checked rather than assumed:
+
+- The watcher. `ConfigWatcher:153` takes `getParent()` of a path already made absolute.
+- The write path. `WritableFileConfigSource.destination()` returns `toRealPath()` or
+  `toAbsolutePath().normalize()` in every branch.
+
+So it is the parse path alone.
+
+**The fix is one line** — absolutise and normalise in `ConfigSource.ofFile`, and in
+`ofWritableFile` for the same reason — plus a regression test that uses a relative path with no
+parent, which is the case no existing test covers. Whether `id()` should then stop normalising
+separately is worth a look at the same time: with the path already normalised the two would
+agree by construction rather than by both doing the same thing.
+
+One comment goes with it. `ConfigSourceTest:278-280` says that parsing the text instead "looks
+on the classpath, finds nothing, and drops SH in silence". Measured: the includer resolves
+against the process's working directory as well, so with the working directory set to the
+directory holding the configuration it *does* find the sibling and the test's premise would not
+hold. The silence is real; the "finds nothing" depends on where the process was started.
+
+
+---
+
+### P40 — Custom properties, carried as text
+
+**Status:** Not started — target 0.2.0 ·
+**Raised by:** [D7](open-decisions.md#d7--custom-properties-on-a-configuration-block), settled by
+[ADR-0055](../adr/0055-custom-properties-are-carried-as-text.md)
+
+An optional `custom-properties` sub-block on each named configuration, carried as text and
+interpreted by nobody but the application.
+
+#### What to build
+
+- **`LlmConfig` gains one component**, the rendered text of the merged sub-block. `SnapshotLoader`
+  renders it with `ConfigRenderOptions.concise()` before calling `fromBlock`; absent renders as
+  `{}`. Nothing else in the record changes, and the reload diff stays a value comparison.
+- **`LlmConfig.toString()`** prints `{}` when the text is empty and `***` otherwise. It is a
+  hand-written override (ADR-0047), so a new component does not appear in it by itself.
+- **A generic functional interface for the handler**, `CustomPropertiesHandler<T>`, whose single
+  method is `T handle(LlmConfig config) throws Exception`. Two things about that signature were
+  measured rather than chosen. It cannot be `java.util.function.Function`:
+  `text -> mapper.readValue(text, X.class)` does not compile against it, because
+  `JsonProcessingException` extends `IOException` and is checked. And it takes the whole config
+  rather than the text alone, so that a rule can depend on the block's name and on its provider —
+  the text is read from `config.customPropertiesText()`.
+- **`LlmRegistry.Builder.customPropertiesHandler(...)`**, optional, one per registry. A rule that
+  applies to one block branches on `config.name()`.
+- **The generic travels with the registry.** `LlmRegistry.builder()` returns `Builder<Void>` and
+  `customPropertiesHandler` returns `Builder<U>`, so a caller declares nothing in advance and
+  reads `registry.get(name).customProperties()` with no cast and no class token. `LlmRegistry<T>`
+  and `LlmBundle<T>` become generic; `LlmConfig` does not.
+- **`SnapshotLoader.buildBundle` calls the handler** after `factory.validate` and before
+  `createChatModel`: after, so the provider exists and its own rules have passed; before, so a
+  rejected configuration does not first build a model that is discarded. Anything thrown is
+  wrapped in `ConfigValidationException` naming the block, with the original as the cause.
+- **The handler is called even when the sub-block is absent**, with `{}`. This is not a
+  formality: a rule of the form "an openai block needs `prompt-id`" is violated exactly when the
+  sub-block is missing.
+- **`LlmBundle` carries the parsed object** and exposes `customPropertiesText()` — the reading
+  path the owner chose — delegating to the config. No accessor throws for a missing handler: a
+  registry built without one is an `LlmRegistry<Void>`, whose `customProperties()` can only
+  return `null`.
+
+#### What not to do
+
+**Do not put the parsed object in `LlmConfig`.** The reload diff would then depend on whether
+the application implemented `equals`; a class without it compares by identity, so every block
+looks changed on every reload and every model is rebuilt with nothing to warn about it. This is
+the one mistake in this item that fails silently.
+
+**Do not give the library accessors over the text** — no `getInt`, no key enumeration, no rule
+about nested objects. That is the two-mechanism shape ADR-0055 rejects.
+
+**Do not implement `customPropertiesHandler` by constructing a fresh `Builder`.** It is a
+type-changing method, so the obvious `return new Builder<>(handler)` compiles and silently drops
+every field already set — the sources, `watch`, `debounce`, the notifier, the listeners. Set the
+field and return `this` behind an unchecked cast instead, so no state can be lost by omission.
+The order in which a caller chains the builder's methods must not matter.
+
+#### Tests worth naming
+
+The empty cases first, because they are where the design is: absent sub-block with a handler
+registered (called with `{}`), absent without one, present without one. An empty layer among
+others must still build, and the handler must be called for the blocks the other layers define
+rather than being skipped or called for a block that does not exist. Then that an edit to a
+custom property alone rebuilds that bundle and names it in `ReloadChange.updated()`; that a
+handler that throws leaves the previous snapshot live and fires one `onReloadFailure`; that a
+handler rule reading `config.provider()` sees the provider it expects; that a `store()` carrying
+a bad property writes nothing, on a layer that is not a file as well as on one that is; that a
+key cleared with `= null` in a higher layer behaves; and that `LlmConfig.toString()` does not
+leak a `${?VAR}` substituted into the sub-block.
+
+One test is about the builder rather than the feature: set `watch`, `debounce` and a listener,
+then register the handler **last**, and assert they all survived.
+
+#### Documentation
+
+The reference gains the key, the tutorial gains a worked example, and the README's *What you
+still write yourself* section is where the boundary is already explained. All of it is
+user-facing prose under ADR-0039.
+
+**The generic reaches further than the feature does.** Measured on 2026-09-06: 132 declarations
+of `LlmRegistry` or `LlmBundle` in Java — 25 in `modelrack4j-core/src/main`, 77 in its tests, 23
+in the examples — and 30 mentions across the README and the two manual parts. Existing callers
+keep compiling, because a raw type is legal and generics are erased, so this is neither a source
+nor a binary break; but every snippet this repository ships should be updated in the same commit,
+or the documentation teaches the raw form.
+
+---
+
+### P41 — Reject a key the schema does not know
+
+**Status:** Not started — target 0.2.0, ships with [P40](#p40--custom-properties-carried-as-text) ·
+**Raised by:** [D8](open-decisions.md#d8--a-key-the-schema-does-not-know), settled by
+[ADR-0056](../adr/0056-an-unknown-key-is-an-error.md)
+
+A key inside a named block that the schema does not know makes the configuration invalid,
+reported as one error listing every offending key with its origin.
+
+#### What to build
+
+- **A wrapper that records the paths `fromBlock` asks for.** The known keys are produced by the
+  parse; the unknown ones are the leaf paths it never touched. `hasPath` counts as asking, which
+  is what makes `description` and `moderation.enabled` known without a special case.
+- **Everything under `custom-properties` is known by prefix** (P40).
+- **Enumerate with `entrySet()`**, which yields leaf paths — so a misspelling inside `memory` is
+  reported as `memory.max-mesages` — and which excludes a key cleared with `= null` in a higher
+  layer, so ADR-0032's clearing idiom does not report as unknown.
+- **One `ConfigValidationException` listing every offending key**, each with
+  `origin().description()`. Measured: that gives `base.conf: 6` for a file layer and
+  `db-row:tenant-42: 3` for a text layer, because `ConfigLoader.parse:118` already sets the
+  origin description from `ConfigSource.id()`.
+- **An empty layer must stay legal.** A file that is empty, or that holds only comments, is a
+  normal layer: it contributes nothing and the merge takes the rest. Measured on 2026-09-06 that
+  this works today, in any position and more than once — an empty layer below a good one, above
+  it, and two empty layers around it, all build the registry. Nothing protects that behaviour,
+  and this item adds an enumeration over the merged blocks, which is exactly the kind of change
+  that trips on it.
+
+#### What not to do
+
+**Do not declare a `Set<String>` of known keys beside `fromBlock`.** It is the obvious
+implementation and it reintroduces the same silent drift with the sign reversed: add a key to
+the parse, forget the list, and every file using that key is rejected. `modelrack4j-reference.conf`
+cannot serve either — it holds the defaults and deliberately omits the required keys and the ones
+whose absence is meaningful.
+
+#### Tests worth naming
+
+A misspelling at the top level and one nested inside `memory`, in the same block, reported
+together in one message with both origins. A key cleared with `= null` in a higher layer, which
+must not be reported. A key under `custom-properties`, which must not be reported. And the same
+rejection through `reload()` and `store()`, since both go through `SnapshotLoader.load`.
+
+Then the empty layers, which are regression tests for behaviour that already works rather than
+for anything this item adds: an empty file below a good layer, above it, and two empty ones
+around it. A file holding only comments counts as empty.
+
+#### Documentation
+
+This breaks configurations that load under `0.1.0`, so it is a CHANGELOG entry under a heading
+that says so, not a bullet among the additions.
+
+---
+
+### P42 — An empty configuration, and the layer that empties it
+
+**Status:** Not started — target 0.2.0 ·
+**Raised by:** the owner on 2026-09-06: *"se non ho nessuna configurazione, non devo avere
+errore. È un problema dell'applicazione non della configurazione in generale"* ·
+**Settled by:** [ADR-0057](../adr/0057-an-empty-configuration-is-valid.md) and
+[ADR-0058](../adr/0058-null-does-not-remove-a-configuration.md)
+
+Two changes in one method, `SnapshotLoader.load`. An empty result becomes valid, and the two
+ways of asking a layer to *remove* a configuration are refused in words that say so.
+
+Remove the two refusals — line 96 for a missing `llm` block, line 126 for one that defines no
+names — and replace the accidental NULL rejection with a deliberate one.
+
+#### Why it is not only a preference
+
+Measured on 2026-09-06: a reload that removes the **last** configuration is rejected, and the
+registry goes on serving the name the file no longer defines.
+
+```
+start            : [SH, SL]
+after removing SH: [SL]
+after removing SL: ConfigValidationException: The 'llm' block is empty
+names afterwards : [SL]
+```
+
+ADR-0014 says removed names are honoured. The last one is not, so this is an inconsistency with
+an accepted decision rather than a new behaviour being introduced.
+
+The second change is separate and is about a message rather than a capability. Measured against
+a base defining `SL` and `SH`:
+
+| in a higher layer | today |
+|---|---|
+| `llm.SH = null` | `ConfigValidationException: llm.SH must be a configuration block, but is of type NULL` |
+| `llm = null` | no `llm` block — an empty registry once the refusals above are gone |
+| `llm = {}` | clears nothing: HOCON merges objects, so `[SH, SL]` survive |
+
+`= null` is how this project already clears `description` across layers (ADR-0032), so a reader
+will try it one level up. It is refused, and it must keep being refused — but the message
+describes an internal value type, and it is reached by accident: the loop walks `root.keySet()`,
+which includes a NULL-cleared key, and the check aimed at `llm.SL = "a string"` catches the
+removal idiom on the way past.
+
+The `llm = null` row is the one to be careful with. Once an empty registry is legal, nulling the
+whole root would become a working back door to the removal the other row refuses, so it is
+refused too. Measured that the two are distinguishable: with `llm = null` the root contains `llm`
+with value type NULL, while a genuinely absent block is not in the root at all.
+
+#### What to build
+
+- Both checks removed; `load` returns an empty map instead of throwing.
+- `names()` empty, `get(anything)` throwing `UnknownConfigurationException` — no new behaviour,
+  it is what ADR-0014 already specifies for a name that is not there.
+- A reload that empties the configuration swaps, and `ReloadChange.removed()` names everything
+  that was there.
+- A name whose merged value is NULL gets its own refusal, before the type check, naming the layer
+  and line that wrote the null and saying that a configuration cannot be removed from a higher
+  layer, that null clears a value inside a block rather than the block itself, and that the way
+  to remove one is to remove it from the layer that defines it.
+- `llm = null` is refused in the same terms; an `llm` key that is simply absent stays legal and
+  gives an empty registry. Tell them apart with `root().containsKey("llm")`, not `hasPath`,
+  which answers false for both.
+- **Every other non-object value keeps the refusal it has today**, with its message, its type
+  name and its origin: `llm.SL = "a string"` is still a mistake.
+
+**Leave the layer rule alone.** `ConfigLoader.load` still throws when there are no configuration
+sources at all. Having nowhere to read from is a different thing from reading and finding
+nothing, and the two must not be merged.
+
+**Do not switch the loop to `entrySet()` to make the NULL entries disappear.** It excludes them,
+which looks like a tidy fix, and it also flattens nested objects into dotted leaf paths — the
+loop would stop iterating configurations and start iterating their keys. It would also skip the
+refusal silently, which is the behaviour ADR-0058 declined.
+
+#### Tests worth naming
+
+Building from a file that is empty, from one holding only comments, and from one holding
+`llm {}` — three inputs, all producing an empty registry rather than an exception. Then the case
+that motivated it: a reload that removes the last configuration, asserting both that `names()`
+is empty afterwards and that `removed()` carries the name. Then that `get()` on the empty
+registry throws `UnknownConfigurationException`, and that a build with **no sources at all**
+still throws, so the two rules stay apart.
+
+Then the refusals: `llm.SH = null` in a higher layer, rejected with a message that names
+`high.conf` and its line; `llm = null`, rejected in the same terms; an absent `llm`, which must
+**not** be rejected; and `llm = {}`, which clears nothing and builds `[SH, SL]`. And a guard that
+the repair is narrow — `llm.SL = "a string"` still fails, naming the type and the origin.
+
+Nothing has to be un-asserted: measured that no test names either message today.
+
+#### Documentation
+
+The reference should say that an empty configuration is valid, that checking for a configuration
+the application requires is the application's job, with the one-line shape of that check, and
+that `= null` does not remove a configuration. The reference already documents that syntax for
+`description`, which is exactly why the limit has to be stated: a reader who learned it one level
+down will try it one level up. The CHANGELOG entry belongs with the behaviour changes rather than the additions: an
+application relying on `build()` to fail will now start.

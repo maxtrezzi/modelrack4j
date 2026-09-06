@@ -115,12 +115,18 @@ Phase 0 gates everything else; nothing below M0 should start before its blockers
 | [P36](post-v1.md#p36--housekeeping-a-test-that-raced-its-own-listener-and-the-first-read-of-five-merged-branches) | Housekeeping: a test that raced its own listener, and the first read of five merged branches | **Done** — six `ReloadTest` tests read a listener's counter after waiting on the registry, which publishes before it announces; a Java review of the test tree then found the concurrency test that defends ADR-0038 could not fail when it detected a torn bundle; the combined read of `#50`–`#54` found nothing to correct; the version was still the published `0.1.0` and is now `0.2.0-SNAPSHOT` |
 | [P37](post-v1.md#p37--what-a-failed-store-tells-you-and-the-layers-the-registry-would-not-name) | What a failed store tells you, and the layers the registry would not name | **Done** — the consuming application re-ran the seven awkward points against a build of `main`: a store fails on the *directory* and nothing public said so, while the reference said a read-only file makes one fail; two `ConfigAccessException` messages named a path the caller had never seen; `StaleLayerException` did not say that its comparison includes the final newline; and `LlmRegistry.sources()` now reports the layers `ReloadFailure` was already handing out (ADR-0054) |
 | [P38](post-v1.md#p38--running-the-examples-and-reading-the-manual-against-them) | Running the examples and reading the manual against them | **Done** — all five examples run, which is also the only check that `examples.conf`'s model names still exist; the tutorial printed a ConsoleChat line the program stopped printing at P21 and a council snippet using the two-`get()` shape ADR-0038 argues against; the reference gave two different answers for which thread a listener runs on, and an out-of-date list of where `id()` is printed |
+| [P39](post-v1.md#p39--a-relative-configuration-path-loses-its-sibling-includes) | A relative configuration path loses its sibling includes | **Not started** — target 0.2.0; `Path.of("app.conf")` has no parent, so `parseFile` resolves `include "sibling.conf"` to nothing; an optional key would go missing with no error at all, and the watcher and the write path are unaffected because both absolutise first |
+| [P40](post-v1.md#p40--custom-properties-carried-as-text) | Custom properties, carried as text | **Not started** — target 0.2.0; the text goes in `LlmConfig` for the diff and the parsed object in `LlmBundle`, because a parsed object in the record would make the reload diff depend on the application's `equals`. The handler is generic, so `LlmRegistry` and `LlmBundle` gain a type parameter and every declaration of them in the repository is touched; `LlmConfig` does not, so no provider is; ADR-0055 |
+| [P41](post-v1.md#p41--reject-a-key-the-schema-does-not-know) | Reject a key the schema does not know | **Not started** — target 0.2.0, ships with P40; the known keys are produced by the parse rather than declared beside it, and one error lists every offending key with its layer and line; ADR-0056 |
+| [P42](post-v1.md#p42--an-empty-configuration-and-the-layer-that-empties-it) | An empty configuration, and the layer that empties it | **Not started** — target 0.2.0; the *last* configuration cannot be removed today, so the registry goes on serving a name the file no longer defines, and `= null` on a block is rejected with a message about an internal value type rather than one saying that a configuration cannot be removed from a layer; ADR-0057, ADR-0058 |
 | [D1](open-decisions.md#d1--glm-route-if-no-maintained-module-exists) | GLM route if no maintained module | **Closed** — never became live |
 | [D2](open-decisions.md#d2--repository-visibility) | Repository visibility | **Settled** — public, not released; ADR-0034 |
 | [D3](open-decisions.md#d3--token-window-memory-on-a-remote-estimator) | Token-window memory on a remote estimator | **Settled** — opt-in flag |
 | [D4](open-decisions.md#d4--mutation-testing-in-ci) | Mutation testing in CI | **Settled** — never, in any form; ADR-0043 |
 | [D5](open-decisions.md#d5--a-version-token-for-optimistic-concurrency) | A version token for optimistic concurrency | **Settled** — no token; the `ETag` pattern already works on the current signature; ADR-0052 |
 | [D6](open-decisions.md#d6--cannot-store-is-not-your-configuration-is-invalid) | "Cannot store" is not "your configuration is invalid" | **Settled** — `ConfigAccessException`, standalone, covering reads as well as writes; ADR-0053 |
+| [D7](open-decisions.md#d7--custom-properties-on-a-configuration-block) | Custom properties on a configuration block | **Settled** — carried as text, interpreted by nobody but the application, with an optional caller handler whose parse *is* the validation; ADR-0055 |
+| [D8](open-decisions.md#d8--a-key-the-schema-does-not-know) | A key the schema does not know | **Settled** — an error listing every offending key, not a warning: a warning would repeat on every reload while the bad configuration stayed live; ADR-0056 |
 
 **Phase 0 is complete except for one measurement, and M0 is done — the build is green.** Tasks 0.1–0.7 are
 done; Task 0.8 is done on Linux and open only on the macOS latency figure, which qualifies
@@ -173,13 +179,43 @@ two were wrong about the code and wrong in the project's favour, two forced deci
 [ADR-0036](../adr/0036-claude-md-is-local-only.md), because hiding a file does not stop it
 drifting), and the rest were documentation the code had already outgrown.
 
-**One of the two decisions raised by the first consumer putting `0.1.0` behind HTTP is
-still open.** [D5](open-decisions.md#d5--a-version-token-for-optimistic-concurrency), whether
+**Both decisions raised by the first consumer putting `0.1.0` behind HTTP are now settled.**
+[D5](open-decisions.md#d5--a-version-token-for-optimistic-concurrency), whether
 a layer should have a version token smaller than its whole text, was settled on 2026-09-03: it
 should not, because the `ETag` pattern it was raised for already works on the current
 signature. [D6](open-decisions.md#d6--cannot-store-is-not-your-configuration-is-invalid),
-whether "cannot store" deserves its own exception, is still marked `Needs decision` and is the
-next item.
+whether "cannot store" deserves its own exception, was settled the same day: it does, and it
+covers reads as well as writes
+([ADR-0053](../adr/0053-a-separate-exception-for-a-layer-that-cannot-be-reached.md),
+implemented in [P30](post-v1.md#p30--configaccessexception-the-implementation-of-d6)).
+
+> **Corrected 2026-09-06.** This paragraph said D6 was "still marked `Needs decision` and is
+> the next item" for three days after it was settled, while the decisions table above it
+> already recorded the outcome. It is the drift `AGENTS.md` describes: a sentence that was true
+> when written, falsified by work that updated the table beside it and not the prose.
+
+**D1 to D8 are all settled, so `open-decisions.md` is a record rather than a queue.** The last
+two were taken on 2026-09-06 and are the whole of 0.2.0's planned work:
+[D7](open-decisions.md#d7--custom-properties-on-a-configuration-block) carries a block's custom
+properties as text that the library never interprets (ADR-0055), and
+[D8](open-decisions.md#d8--a-key-the-schema-does-not-know) makes a key the schema does not know
+an error rather than silence (ADR-0056). They ship together: until the first gave application
+values a declared place, nothing distinguished a misspelling from a value someone put there on
+purpose. The implementations are [P40](post-v1.md#p40--custom-properties-carried-as-text) and
+[P41](post-v1.md#p41--reject-a-key-the-schema-does-not-know); no code exists for either yet.
+[P39](post-v1.md#p39--a-relative-configuration-path-loses-its-sibling-includes) is in the same
+version and needs no decision behind it: a configuration path with no parent directory loses the
+files it includes, which is a defect rather than a choice.
+[P42](post-v1.md#p42--an-empty-configuration-and-the-layer-that-empties-it) joins them in 0.2.0
+without an entry here, because it was not a question waiting on the owner: an empty configuration
+becomes valid ([ADR-0057](../adr/0057-an-empty-configuration-is-valid.md)) — which repairs an
+inconsistency with ADR-0014, since the last configuration could not be removed — and `= null` on
+a configuration is refused in words that say so rather than by an accident of a type check
+([ADR-0058](../adr/0058-null-does-not-remove-a-configuration.md)).
+
+A second question was spun out of the same discussion and left without a number, because taking
+one is the owner's call: whether a key the library's own schema does not know should be an
+error rather than ignored in silence, as it is today.
 
 One thing waits on hardware rather than on a decision: the macOS half of
 [Task 0.8](phase-0-verification.md#task-08--watch-strategy-spike). The README states that gap

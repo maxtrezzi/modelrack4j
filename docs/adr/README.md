@@ -107,6 +107,10 @@ by number, since the numbering only reflects the order of the original appendix.
 | [0052](0052-no-version-token-the-expected-text-is-the-token.md) | No version token — the expected text is the token | Accepted |
 | [0053](0053-a-separate-exception-for-a-layer-that-cannot-be-reached.md) | A separate exception for a layer that cannot be reached | Accepted |
 | [0054](0054-the-registry-reports-its-own-layers.md) | The registry reports its own layers | Accepted |
+| [0055](0055-custom-properties-are-carried-as-text.md) | Carry a configuration block's custom properties as text | Accepted |
+| [0056](0056-an-unknown-key-is-an-error.md) | Reject a key the schema does not know | Accepted |
+| [0057](0057-an-empty-configuration-is-valid.md) | A registry with no configurations is valid | Accepted |
+| [0058](0058-null-does-not-remove-a-configuration.md) | Null does not remove a configuration | Accepted |
 | [0030](0030-one-timeout-in-the-schema.md) | One `timeout` in the schema; providers map it onto their own client | Accepted |
 | [0018](0018-manage-langchain4j-versions-via-bom.md) | Manage LangChain4j versions by importing its BOM | Accepted — the BOM import set amended by ADR-0022 |
 | [0022](0022-glm-via-the-community-module-and-its-bom.md) | Take GLM from the community module, and import its BOM alongside the main one | Accepted |

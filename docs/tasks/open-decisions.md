@@ -3,7 +3,7 @@
 Items waiting on the owner rather than on work. Do not resolve these unilaterally — each
 one closes by writing an ADR (see [ADR-0001](../adr/0001-record-decisions-as-adrs.md)).
 
-**D1 to D6 are all settled**, so this file is a record rather than a queue right now. A new
+**D1 to D8 are all settled**, so this file is a record rather than a queue right now. A new
 entry here is a question for the owner, not work to pick up, and an entry marked
 `Needs decision` blocks the code that depends on it rather than inviting a guess. Entries stay
 in number order and keep the framing they were decided under, with the outcome at the top.
@@ -247,3 +247,417 @@ gets it wrong for one of the two cases: a read-only file or a full disk reaches 
 
 The rollback behaviour is not in question either way: a failed write already restores the
 previous snapshot before the exception leaves the method.
+
+---
+
+### D7 — Custom properties on a configuration block
+
+**Status:** Settled 2026-09-06 — the block is carried as text and the library interprets none
+of it ·
+**Settled by:** [ADR-0055](../adr/0055-custom-properties-are-carried-as-text.md) ·
+**Raised by:** the owner on 2026-09-06, wanting two or three application values to travel with
+the connection they belong to
+
+An optional sub-block on each named configuration, holding values the library **never
+interprets**. It is carried as text, and an optional caller-supplied handler turns that text
+into whatever object the application wants.
+
+The entry records three discussions on the same day. The first produced six questions with a
+recommendation beside each. The second answered questions 4, 5 and 6. The third replaced the
+design the other three were about, so those three had nothing left to decide. The rejected
+shapes are kept at the end, because the reasoning against them is what makes the current shape
+defensible.
+
+#### The shape
+
+Nothing changes before the block is reached: layers are parsed, merged and resolved exactly as
+they are today. Then, for each named configuration:
+
+1. The `custom-properties` sub-block of the merged, resolved block is **rendered back to text**.
+   `ConfigObject.render(ConfigRenderOptions.concise())` produces valid JSON — measured:
+   `{"escalate-after":"45s","max-retries":3,"prompt-id":"support-v3","tags":["a","b"]}`.
+   Absent means `{}`.
+2. That text is a component of `LlmConfig`, so **the reload diff is a string comparison**.
+3. If the caller registered a handler, it is called in `SnapshotLoader.buildBundle`, beside
+   `factory.validate` and `createChatModel`, and its result is a member of `LlmBundle` — a built
+   object, like the chat model. It receives the whole `LlmConfig`, so a rule can depend on the
+   block's name and on its provider, and reads the text from `config.customPropertiesText()`.
+4. The caller reads `customPropertiesText()` always, and the parsed object when a handler
+   exists. The handler's type parameter travels with the registry, so that object needs no cast.
+
+**Why this shape rather than an accessor the library provides.** The owner's objection, which
+is the reason the earlier design was dropped: a library that supplies typed accessors for values
+it does not own has two reading mechanisms inside one object — manual reading for its own
+schema, and a second mechanism for the application's. Carrying text has one rule instead: **the
+library reads manually what it owns, and of what it does not own it knows nothing and passes the
+text.**
+
+It is also less library, not more, which is the right direction for ADR-0002. The core interprets
+nothing here.
+
+#### What the shape dissolves
+
+Three of the six original questions no longer have anything to decide:
+
+| # | Was | Now |
+|---|---|---|
+| 1 | The value type: `Map<String,String>` · `Map<String,Object>` · `CustomProperties` · `Config` | **No value type.** The library holds a string |
+| 2 | How the keys are enumerated, and whether a nested object is refused | **The library does not enumerate.** Structure is the handler's business |
+| 4 | A caller-supplied validator, and its signature | **The handler is the validator.** If the text does not become the application's type, it throws |
+
+Question 3 — what `toString()` prints — is simplified rather than dissolved: the library holds
+text that can contain a resolved credential, so `LlmConfig.toString()` must not print it. The
+`isSafeToLog` interface discussed earlier is no longer needed, because the application's own
+object has the application's own `toString()`, which is not the library's business.
+
+Question 5 stands: the carrier and the handler ship together, since the handler is what makes
+the carrier useful.
+
+#### Question 6 is amended by the shape
+
+It was answered **yes** — a `ProviderFactory` may read the custom properties — on the ground that
+every `ProviderFactory` method takes `LlmConfig`, so the field is reachable anyway. Under this
+shape what a provider reaches is **the text**, like everyone else. A provider could parse it, but
+it cannot know the application's type, and a provider that parsed it would be doing exactly the
+string lookups ADR-0002 names as what this library is not.
+
+So the answer stands in letter and changes in effect: **there is no provider-facing shape.** The
+owner confirmed this is intended.
+
+Three things the earlier "yes" brought with it survive the amendment:
+
+1. **The definition is "the core never interprets them"**, not "the library never reads them".
+2. **Name divergence between providers** is no longer a risk worth managing, because there is no
+   typed field for providers to disagree about.
+3. **A custom property may still hold a credential**, which is why `toString()` matters.
+
+#### The semantics, including every empty case
+
+The handler is optional. The text is always present.
+
+| block in the file | handler | `customPropertiesText()` | the object |
+|---|---|---|---|
+| absent | registered | `"{}"` | the handler is called with `"{}"` → a real object |
+| present | registered | rendered JSON | a real object |
+| absent | none | `"{}"` | — |
+| present | none | rendered JSON | — |
+
+Never `null`, never an empty string, and no case a caller has to distinguish before parsing.
+Absent and present-but-empty render to the same text, so neither produces a false change in the
+diff.
+
+**With a handler registered the object always exists, including when the block is absent**,
+because the handler is called with `{}`. That is not a formality: a rule of the form "an openai
+block needs `prompt-id`" is violated exactly when the sub-block is missing, so a handler skipped
+there could not enforce the rule that motivated the feature. Measured that `{}` yields an
+instance rather than a failure:
+
+```
+readValue("{}") -> SupportProps[promptId=null, retries=0, tags=null]
+```
+
+**Without a handler the empty object is still one line away**, in the caller's own type:
+`mapper.readValue(bundle.customPropertiesText(), SupportProps.class)`.
+
+The last row needs no exception. A registry built with no handler is an `LlmRegistry<Void>`,
+whose `customProperties()` can only return `null`, so the type system makes the call meaningless
+instead of the library making it an error. An earlier answer in this entry had it throwing, with
+`UnknownConfigurationException` as the precedent; the generic removed the case rather than the
+answer being wrong.
+
+#### Why the text goes in `LlmConfig` and the object in `LlmBundle`
+
+This is the load-bearing part of the shape, and getting it wrong fails silently.
+
+ADR-0006 makes the per-name reload diff record equality on `LlmConfig`. If the parsed
+application object were a component, the diff would depend on **whether the application
+implemented `equals`**. A class without it compares by identity, so every block looks changed on
+every reload: every bundle rebuilt, every model reconstructed, `ReloadChange.updated()` naming
+everything. Nothing warns.
+
+Carrying the text instead makes equality exact and requires no contract from the application.
+The parsed object then belongs where built objects belong — `LlmBundle` — and the carry-over at
+`SnapshotLoader:118-121` keeps working: unchanged text, unchanged bundle, handler not re-run.
+
+The reading path the owner chose is `registry.get("SL").customPropertiesText()`, so `LlmBundle`
+carries a convenience method delegating to `config().customPropertiesText()`.
+
+The split also decides how far the generic reaches. `LlmRegistry<T>` and `LlmBundle<T>` carry the
+type parameter; **`LlmConfig` does not**, because it holds the text rather than the object. So
+`ProviderFactory`, `ReloadChange` and the listeners are untouched — had the parsed object gone
+into the record, the type parameter would have reached every provider on the classpath.
+
+#### What this looks like in use
+
+**None of this is implemented.** The names are placeholders for the shape under discussion.
+
+```hocon
+llm {
+  SUPPORT {
+    provider   = openai
+    api-key    = ${OPENAI_API_KEY}
+    model-name = "gpt-4o-mini"
+    timeout    = 30s
+
+    custom-properties {
+      prompt-id      = "support-v3"
+      max-retries    = 3
+      escalate-after = 45s
+      webhook-token  = ${?SUPPORT_WEBHOOK_TOKEN}
+    }
+  }
+}
+```
+
+```java
+LlmRegistry<SupportProps> registry = LlmRegistry.builder()
+        .configFiles(List.of(base, local))
+        .customPropertiesHandler(config -> mapper.readValue(
+                config.customPropertiesText(), SupportProps.class))
+        .build();
+
+SupportProps props = registry.get("SUPPORT").customProperties();   // no cast, no class token
+String raw         = registry.get("SUPPORT").customPropertiesText();
+```
+
+```java
+record SupportProps(@JsonProperty("prompt-id")      String promptId,
+                    @JsonProperty("max-retries")    int maxRetries,
+                    @JsonProperty("escalate-after") String escalateAfter) {}
+```
+
+**The handler's type is fixed by two measurements.** First, it cannot be
+`java.util.function.Function`: `ObjectMapper.readValue` throws `JsonProcessingException`, which
+extends `IOException` and is checked, so the lambda does not compile against it.
+
+```
+error: unreported exception JsonProcessingException; must be caught or declared to be thrown
+        Function<String, Object> handler = text -> m.readValue(text, SupportProps.class);
+```
+
+Binding a configuration block is I/O-shaped in almost every library a caller might reach for, so
+forcing a `try`/`catch` into every lambda would tax the normal case rather than an unusual one.
+Second, it takes the `LlmConfig` rather than the text alone, because a rule that depends on the
+provider is the reason the owner asked for a caller-supplied rule in the first place, and the
+text alone carries neither the provider nor the block's name:
+
+```java
+@FunctionalInterface
+public interface CustomPropertiesHandler<T> {
+    T handle(LlmConfig config) throws Exception;
+}
+```
+
+A handler that needs more than binding writes it, and throwing is how it rejects — this is the
+rule that could not be written when the handler received only the text:
+
+```java
+.customPropertiesHandler(config -> {
+    SupportProps p = mapper.readValue(config.customPropertiesText(), SupportProps.class);
+    if (config.provider().equals("openai") && p.promptId() == null) {
+        throw new IllegalArgumentException("prompt-id is required when the provider is openai");
+    }
+    return p;
+})
+```
+
+A rejection reaches the three paths that run `SnapshotLoader.load` exactly as any other
+validation failure does: thrown to the caller on `build()`; on `reload()` nothing swaps, the
+previous snapshot stays live and one `onReloadFailure` fires (ADR-0012, ADR-0031); on `store()`
+nothing is written and nothing is announced, which holds for a layer that is not a file because
+`LlmRegistry.storeHoldingTheLock:549-552` validates the staged layer list before anything
+distinguishes a file from a text layer.
+
+#### The three costs the shape accepts
+
+**Per-value origins are lost inside the sub-block.** Rendering to text drops the file and line
+attached to each value, so a handler's error cannot say `base.conf: 6`. Two things limit the
+damage, and the second was measured rather than assumed:
+
+- It is **only** the custom properties. Every key the library owns keeps its origin, because
+  those are read straight from the merged `Config`.
+- The merged sub-block's own origin **names every layer that contributed to it**:
+  `merge of override.conf: 1,base.conf: 1`. So the library can say which block failed and which
+  layers built it. Only "which key came from which file" is gone, and even that could be
+  recovered by walking the sub-block once before rendering.
+
+**A render and a re-parse per changed block per reload.** Trivial on blocks this size, and the
+carry-over means it happens only for blocks that changed. The owner judged it negligible.
+
+**The structural bound disappears** — nothing refuses a nested object or a list any more. This
+is the smallest cost of the three, because the bound moves somewhere sharper rather than
+vanishing. Measured: Jackson deserializes records natively and has
+`FAIL_ON_UNKNOWN_PROPERTIES` **enabled by default**, so a typo is refused by the application's
+own binder, naming what it did know:
+
+```
+Unrecognized field "retrys" (class SupportProps), not marked as ignorable
+(2 known properties: "retries", "promptId")
+```
+
+The library could only have refused *structure*. The application's binder refuses *wrong names*,
+which is what actually goes wrong.
+
+#### The answers taken last
+
+- **The handler is one function, not an interface with two methods.** The `isSecret` half is
+  gone: the library holds text it simply never prints, and the application's own object has the
+  application's own `toString()`, which is not the library's business. What remains is a
+  library-side choice with no caller involved — `LlmConfig.toString()` prints `{}` when the text
+  is empty and `***` otherwise. Printing the key names would mean parsing a text the library has
+  just promised not to interpret.
+- **What the library wraps a handler's exception in: `ConfigValidationException`.** *That* it
+  wraps stopped being a preference once the handler declared `throws Exception`, since a checked
+  exception has to become something the public API declares. The type follows ADR-0053: the
+  library read something and objected. Wrapping unconditionally also keeps the block name out of
+  the caller's hands — unwrapped, a plain `IllegalArgumentException` would carry no block name
+  and would slip past a caller catching `ConfigValidationException` around `build()`.
+- **The handler is registered on the builder, not passed at each read.** Passing it at read time
+  would remove the "no handler registered" case entirely, which is why it was raised. It also
+  removes the reason the feature exists: a handler that runs only when someone reads does not run
+  during a reload, so malformed properties are published and fail later, inside the application.
+  What the builder shape buys is the atomicity of *validation*, not just of delivery. The cost
+  that does **not** decide it: parsing on every read is microseconds against an LLM call, so
+  performance was not the argument either way.
+- **The handler is generic, and the type parameter travels with the registry.** Rather than a
+  class token at each read, `LlmRegistry.builder()` returns a `Builder<Void>` and
+  `customPropertiesHandler` is a type-changing method returning a `Builder<T>`, so a caller
+  declares nothing in advance and reads an object with no cast. One registry therefore binds one
+  custom-properties type, which the owner accepted. It reaches `LlmRegistry` and `LlmBundle` but
+  not `LlmConfig`, so no provider is affected, and existing callers keep compiling because a raw
+  type is legal and generics are erased.
+- **The handler takes the `LlmConfig`, not the text alone.** This corrects the shape as first
+  written: two sentences in this entry already said that a rule "branches on `config.name()`",
+  which the text-only signature made impossible — and it also silently dropped the ability to
+  write a rule that depends on the provider, which is the reason the owner gave for wanting a
+  caller-supplied rule at all. The text is read from `config.customPropertiesText()`.
+
+**Target: 0.2.0**, with [D8](#d8--a-key-the-schema-does-not-know) in the same version.
+
+#### The question this raised, now D8
+
+Whether a key belonging to the library's own schema should be an error rather than ignored is a
+separate question that this discussion made *answerable*: until the block existed, nothing
+distinguished a misspelling from a value an application had put there deliberately. It is
+recorded as [D8](#d8--a-key-the-schema-does-not-know) and ships in the same version.
+
+#### Smaller choices that follow, listed so they are not rediscovered
+
+The key is `custom-properties` in the file, kebab-case like the rest of the schema. Absent
+renders as `{}` rather than an `Optional`. The text is an ordinary record component, so an edit
+rebuilds that bundle and reports the name in `ReloadChange.updated()` — ADR-0032 settled that for
+`description` and explicitly forbids carving a field out of equality. `ConfigSource` and the
+reload machinery are untouched. The handler is pure and fast, with no I/O and no blocking,
+because it runs under `reloadLock`; that is the contract provider factories already live under,
+and `SnapshotLoader.buildBundle` already runs `factory.validate` and `createChatModel` there, so
+the hazard class is not new. One handler serves every block; a rule that applies to one branches
+on the name.
+
+ADR-0032's closing warning applies and should be quoted in the schema documentation: a field
+that must not affect the diff does not belong in `LlmConfig` at all, so this is for small stable
+values and is neither a cache nor a data channel.
+
+**Why this is not the "generic reloadable configuration" ADR-0002 refuses.** The value is not
+storage: an application can already keep its own HOCON file, and unknown keys inside a block are
+ignored in silence today. What it buys is **atomicity** — a property inside the block is
+validated, published and rejected in the same swap as the model it belongs to, so a reload
+cannot leave a new prompt template beside an old model — and it buys that while the core
+interprets nothing.
+
+#### Shapes considered and rejected
+
+**A typed value on the record** — `Map<String,String>`, `Map<String,Object>`, or a
+`CustomProperties` wrapper over Typesafe Config's accessors. All three make the library provide
+a reading mechanism for values it does not own, which is the second logic the owner objected to.
+The measurements taken while comparing them are kept because they would decide the question
+again if it reopened:
+
+| in the file | `Map<String,Object>` | `Map<String,String>` |
+|---|---|---|
+| `retries = 3` | `Integer` | `"3"` |
+| `big = 3000000000` | **`Long`** | `"3000000000"` |
+| `ttl = 10s` | **`String`** | `"10s"` |
+| `size = 10MB` | **`String`** | `"10MB"` |
+| `list = [1,2]` | `ArrayList` | refused: *list has type LIST rather than STRING* |
+
+`Map<String,String>` does not force quoting — `getString` converts every scalar — so the two
+produce identical configuration files and differ only in the application's code.
+`Map<String,Object>` preserves four scalar types and the line between `Integer` and `Long` is
+invisible in the file, so `(Integer)` works until a value crosses it. Durations and sizes are
+`String` under both, because they are interpretations applied by `getDuration` and `getBytes`
+rather than types in the value tree. And a key cleared with `= null` in a higher layer arrives in
+`unwrapped()` as a present key with a `null` value, so `Object` needs the same explicit null
+handling a map of strings would.
+
+The `CustomProperties` wrapper was the strongest of the three, because Typesafe Config's own
+accessors are tolerant about form and strict about content and name the line — `getBoolean` on a
+quoted `"true"` gives `true`, `getInt` on `"tre"` is refused, `getDuration("10s")` gives
+`PT10S` — which no map reaches. It lost to the text carrier on the one-mechanism argument.
+
+**Exposing Typesafe `Config` as the field type.** `LlmConfig.fromBlock(String, Config)` is
+already an accidental leak that P29 and P38 both declined to make permanent; a second one would
+be deliberate, and it would turn a Typesafe Config upgrade into a consumer-visible change.
+
+**`ConfigBeanFactory` inside the library.** It exists in `config-1.4.9`, needs no new dependency,
+and does more than expected — measured mapping `prompt-id` to `promptId`, `45s` to a `Duration`
+and a list to `List<String>`. It refuses records: *"needs a public no-args constructor to be used
+as a bean"*. Since ADR-0006 requires `LlmConfig` to be an immutable record whose equality is the
+reload diff, it cannot bind the library's own schema, and under the text carrier the caller can
+still use it inside a handler if they want JavaBeans.
+
+**A `toJson()` accessor on a typed wrapper**, so the application could deserialize with its own
+Jackson. Superseded: if the useful thing is the text, the text is what the library should carry.
+
+**Carving the field out of `equals`** to avoid rebuilding a bundle when only a property changes:
+forbidden by ADR-0032, which gives the reason — a carve-out produces a permanently stale
+accessor. **Letting the handler transform the library's own configuration**: a live `LlmConfig`
+that differs from the file makes the record-equality diff meaningless. **A per-snapshot handler**
+seeing every block at once: out of step with the framing, since these properties belong to one
+connection. **A handler named in the configuration file** rather than registered on the builder:
+that means naming a class in a file, which is code-shaped and falls under ADR-0003.
+
+---
+
+### D8 — A key the schema does not know
+
+**Status:** Settled 2026-09-06 — **an error, listing every offending key** ·
+**Settled by:** [ADR-0056](../adr/0056-an-unknown-key-is-an-error.md) ·
+**Raised by:** the owner on 2026-09-06: *"Se carico un file di configurazione che non va bene io
+mi aspetto un errore o una serie di warning con i valori ignorati"*
+
+Today a key inside a named block that the library's schema does not know is ignored in silence.
+Measured by running it — a throwaway test in core's test scope, since removed — against a block
+named `SL` carrying `temperatur = 0.9`, `timeuot = 30s`, `memory.max-mesages = 99` and an
+invented sub-block containing a list:
+
+```
+>>> LOADED. temperature = Optional.empty | timeout = PT1M
+```
+
+The registry builds and `get("SL")` works. Both misspelled values are gone: `temperature` falls
+back to the provider's own default and `timeout` to the 60s in `modelrack4j-reference.conf`.
+There is no exception and no warning, because `LlmConfig.fromBlock` reads only the paths it
+knows and nothing enumerates the rest, so no code is in a position to notice.
+
+**The answer is an error, and the owner's "a series of" survives inside it**: one error listing
+every offending key rather than failing on the first, each with its origin. The reasoning is in
+ADR-0056; four points are worth having here because they are what a reader will question.
+
+- **A warning is worse here than elsewhere, and the reason is reloading rather than taste.** The
+  configuration loads, and the same warning then repeats on every reload for as long as nobody
+  fixes the file. With an error that state cannot exist.
+- **The order of reversibility decides the timing.** Strict to lenient breaks no existing file;
+  lenient to strict breaks every file with a stray key. `0.x` with one consumer is the cheapest
+  moment there will be — and it *is* a break against `0.1.0`, which the CHANGELOG allows.
+- **[D7](#d7--custom-properties-on-a-configuration-block) is what made the question answerable**,
+  and the two ship together. Making an unknown key an error without providing the declared place
+  for application values would remove a capability that exists today without supplying its
+  replacement.
+- **The known keys must be produced by the parse, never declared beside it.** A
+  `Set<String>` next to `fromBlock` is a second copy of the same truth, and the day someone adds
+  a key to the parse and forgets the list, that key becomes unknown and every file using it is
+  rejected — the same silent-drift failure, wearing the opposite sign. `modelrack4j-reference.conf`
+  cannot be that list either: it holds the defaults and deliberately omits both the required keys
+  and the ones whose absence is meaningful.
+
+**Target: 0.2.0.** Implementation is [P41](post-v1.md#p41--reject-a-key-the-schema-does-not-know).
