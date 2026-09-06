@@ -4840,13 +4840,13 @@ that says so, not a bullet among the additions.
 **Raised by:** the owner on 2026-09-06: *"se non ho nessuna configurazione, non devo avere
 errore. È un problema dell'applicazione non della configurazione in generale"* ·
 **Settled by:** [ADR-0057](../adr/0057-an-empty-configuration-is-valid.md) and
-[ADR-0058](../adr/0058-a-higher-layer-can-remove-a-configuration.md)
+[ADR-0058](../adr/0058-null-does-not-remove-a-configuration.md)
 
-Three changes in one method, `SnapshotLoader.load`, because they are one behaviour seen from
-three sides: an empty result is valid, and a higher layer must be able to produce one.
+Two changes in one method, `SnapshotLoader.load`. An empty result becomes valid, and the two
+ways of asking a layer to *remove* a configuration are refused in words that say so.
 
 Remove the two refusals — line 96 for a missing `llm` block, line 126 for one that defines no
-names — and skip a name whose merged value is NULL instead of rejecting it.
+names — and replace the accidental NULL rejection with a deliberate one.
 
 #### Why it is not only a preference
 
@@ -4863,18 +4863,25 @@ names afterwards : [SL]
 ADR-0014 says removed names are honoured. The last one is not, so this is an inconsistency with
 an accepted decision rather than a new behaviour being introduced.
 
-The second half is the same gap from the layering side. Measured against a base defining `SL` and
-`SH`:
+The second change is separate and is about a message rather than a capability. Measured against
+a base defining `SL` and `SH`:
 
 | in a higher layer | today |
 |---|---|
 | `llm.SH = null` | `ConfigValidationException: llm.SH must be a configuration block, but is of type NULL` |
-| `llm = null` | no `llm` block — an empty registry once the refusals are gone |
+| `llm = null` | no `llm` block — an empty registry once the refusals above are gone |
 | `llm = {}` | clears nothing: HOCON merges objects, so `[SH, SL]` survive |
 
-`= null` is how this project already clears `description` across layers (ADR-0032), and it fails
-one level up. The loop walks `root.keySet()`, which includes a NULL-cleared key, and the type
-check aimed at `llm.SL = "a string"` catches the removal idiom by accident.
+`= null` is how this project already clears `description` across layers (ADR-0032), so a reader
+will try it one level up. It is refused, and it must keep being refused — but the message
+describes an internal value type, and it is reached by accident: the loop walks `root.keySet()`,
+which includes a NULL-cleared key, and the check aimed at `llm.SL = "a string"` catches the
+removal idiom on the way past.
+
+The `llm = null` row is the one to be careful with. Once an empty registry is legal, nulling the
+whole root would become a working back door to the removal the other row refuses, so it is
+refused too. Measured that the two are distinguishable: with `llm = null` the root contains `llm`
+with value type NULL, while a genuinely absent block is not in the root at all.
 
 #### What to build
 
@@ -4883,17 +4890,24 @@ check aimed at `llm.SL = "a string"` catches the removal idiom by accident.
   it is what ADR-0014 already specifies for a name that is not there.
 - A reload that empties the configuration swaps, and `ReloadChange.removed()` names everything
   that was there.
-- A name whose merged value is NULL is skipped before the type check, so a higher layer can
-  remove it. **Every other non-object value keeps the refusal it has today**, with its message,
-  its type name and its origin: `llm.SL = "a string"` is still a mistake.
+- A name whose merged value is NULL gets its own refusal, before the type check, naming the layer
+  and line that wrote the null and saying that a configuration cannot be removed from a higher
+  layer, that null clears a value inside a block rather than the block itself, and that the way
+  to remove one is to remove it from the layer that defines it.
+- `llm = null` is refused in the same terms; an `llm` key that is simply absent stays legal and
+  gives an empty registry. Tell them apart with `root().containsKey("llm")`, not `hasPath`,
+  which answers false for both.
+- **Every other non-object value keeps the refusal it has today**, with its message, its type
+  name and its origin: `llm.SL = "a string"` is still a mistake.
 
 **Leave the layer rule alone.** `ConfigLoader.load` still throws when there are no configuration
 sources at all. Having nowhere to read from is a different thing from reading and finding
 nothing, and the two must not be merged.
 
-**Do not switch the loop to `entrySet()` to skip the NULL entries.** It excludes them, which
-looks like the fix, and it also flattens nested objects into dotted leaf paths — the loop would
-stop iterating configurations and start iterating their keys. Skip on `valueType()` instead.
+**Do not switch the loop to `entrySet()` to make the NULL entries disappear.** It excludes them,
+which looks like a tidy fix, and it also flattens nested objects into dotted leaf paths — the
+loop would stop iterating configurations and start iterating their keys. It would also skip the
+refusal silently, which is the behaviour ADR-0058 declined.
 
 #### Tests worth naming
 
@@ -4904,10 +4918,10 @@ is empty afterwards and that `removed()` carries the name. Then that `get()` on 
 registry throws `UnknownConfigurationException`, and that a build with **no sources at all**
 still throws, so the two rules stay apart.
 
-Then the layer that empties: `llm.SH = null` in a higher layer removing one of two; the same on
-both, leaving an empty registry; `llm = null`; and `llm = {}`, which must **not** clear anything.
-And a guard that the repair is narrow — `llm.SL = "a string"` still fails, naming the type and
-the origin.
+Then the refusals: `llm.SH = null` in a higher layer, rejected with a message that names
+`high.conf` and its line; `llm = null`, rejected in the same terms; an absent `llm`, which must
+**not** be rejected; and `llm = {}`, which clears nothing and builds `[SH, SL]`. And a guard that
+the repair is narrow — `llm.SL = "a string"` still fails, naming the type and the origin.
 
 Nothing has to be un-asserted: measured that no test names either message today.
 
@@ -4915,6 +4929,7 @@ Nothing has to be un-asserted: measured that no test names either message today.
 
 The reference should say that an empty configuration is valid, that checking for a configuration
 the application requires is the application's job, with the one-line shape of that check, and
-that a higher layer removes a configuration with `= null` — the reference already documents that
-syntax for `description`, so this is the same rule at a second depth rather than a new one. The CHANGELOG entry belongs with the behaviour changes rather than the additions: an
+that `= null` does not remove a configuration. The reference already documents that syntax for
+`description`, which is exactly why the limit has to be stated: a reader who learned it one level
+down will try it one level up. The CHANGELOG entry belongs with the behaviour changes rather than the additions: an
 application relying on `build()` to fail will now start.
