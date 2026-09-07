@@ -30,7 +30,7 @@ That is the whole idea. [Quick start](#quick-start) has the dependencies and the
 📖 **[The manual](docs/manual/README.md)** — a [tutorial](docs/manual/part-1-tutorial.md) that
 starts from nothing, and a [reference](docs/manual/part-2-reference.md) for everything else.
 
-**Status: `0.1.0`, the first release, on Maven Central.** The API is 0.x and may still
+**Status: `0.2.0`, on Maven Central.** The API is 0.x and may still
 change in a minor release; see [CHANGELOG.md](CHANGELOG.md).
 
 ---
@@ -139,17 +139,17 @@ each one registers itself through `ServiceLoader`.
 <dependency>
   <groupId>io.github.maxtrezzi</groupId>
   <artifactId>modelrack4j-core</artifactId>
-  <version>0.1.0</version>
+  <version>0.2.0</version>
 </dependency>
 <dependency>
   <groupId>io.github.maxtrezzi</groupId>
   <artifactId>modelrack4j-provider-anthropic</artifactId>
-  <version>0.1.0</version>
+  <version>0.2.0</version>
 </dependency>
 <dependency>
   <groupId>io.github.maxtrezzi</groupId>
   <artifactId>modelrack4j-provider-openai</artifactId>
-  <version>0.1.0</version>
+  <version>0.2.0</version>
 </dependency>
 ```
 
@@ -161,7 +161,7 @@ Or import the BOM once and drop the versions:
     <dependency>
       <groupId>io.github.maxtrezzi</groupId>
       <artifactId>modelrack4j-bom</artifactId>
-      <version>0.1.0</version>
+      <version>0.2.0</version>
       <type>pom</type>
       <scope>import</scope>
     </dependency>
