@@ -244,13 +244,14 @@ try (var registry = LlmRegistry.builder()
 
 ### Runnable examples
 
-Five, in [`modelrack4j-examples`](modelrack4j-examples/src/main/java/io/github/maxtrezzi/modelrack4j/examples).
+Six, in [`modelrack4j-examples`](modelrack4j-examples/src/main/java/io/github/maxtrezzi/modelrack4j/examples).
 Each one demonstrates a single claim from [Why](#why) rather than the library in general:
 
 | Example | Shows | Cost |
 |---|---|---|
 | [`AtomicSnapshot`](modelrack4j-examples/src/main/java/io/github/maxtrezzi/modelrack4j/examples/AtomicSnapshot.java) | A single save changes two models at once, while four threads keep reading both; reading through `snapshot()` never catches a mix of old and new, reading through two `get()` calls can, though a single run often catches none | **free, no API key** |
 | [`DatabaseSource`](modelrack4j-examples/src/main/java/io/github/maxtrezzi/modelrack4j/examples/DatabaseSource.java) | Configuration held in memory instead of a file, standing in for a database row, driven by the application: all four answers `reload()` can give, then the same rejected change through `store()`, which refuses it before the row is written | **free, no API key** |
+| [`CustomProperties`](modelrack4j-examples/src/main/java/io/github/maxtrezzi/modelrack4j/examples/CustomProperties.java) | Values the application owns, carried inside the block they belong to and checked by the application's own rules **inside** the reload: a good edit applied, one the rules reject leaving the whole previous configuration live, and the same change through `store()` refused before the layer is written | **free, no API key** |
 | [`ProviderSwap`](modelrack4j-examples/src/main/java/io/github/maxtrezzi/modelrack4j/examples/ProviderSwap.java) | The same call site answered by Anthropic, then by OpenAI, after a file edit | two requests |
 | [`ConsoleChat`](modelrack4j-examples/src/main/java/io/github/maxtrezzi/modelrack4j/examples/ConsoleChat.java) | An interactive menu of every configured model; edit the file while it runs and the menu changes; `/tools` answers through an `AiServices` proxy with a `@Tool` method, rebuilt on the current bundle each turn | a conversation |
 | [`ThreeModelCouncil`](modelrack4j-examples/src/main/java/io/github/maxtrezzi/modelrack4j/examples/ThreeModelCouncil.java) | The scenario above: three models, the questions you type, no provider branch in the code | three requests per question |
@@ -261,8 +262,8 @@ Start with `AtomicSnapshot` if you want to see the least obvious guarantee at no
 ./run-atomic.sh
 ```
 
-One script per example — `run-atomic.sh`, `run-database.sh`, `run-swap.sh`, `run-chat.sh`,
-`run-council.sh` — each with a `--help` that says what it shows and what it costs. They
+One script per example — `run-atomic.sh`, `run-database.sh`, `run-properties.sh`,
+`run-swap.sh`, `run-chat.sh`, `run-council.sh` — each with a `--help` that says what it shows and what it costs. They
 install the project first if they have to, because `exec:java` resolves `modelrack4j-core`
 from `~/.m2` rather than from the reactor. There are no `.bat` counterparts: on Windows,
 run the command `--help` prints.

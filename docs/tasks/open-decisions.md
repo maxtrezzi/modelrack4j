@@ -525,8 +525,9 @@ which is what actually goes wrong.
   declares nothing in advance and reads an object with no cast. One registry therefore binds one
   custom-properties type, which the owner accepted. It reaches `LlmRegistry`, `LlmBundle` and
   `LlmSnapshot` but not `LlmConfig`, so no provider is affected. It **is** a source break for
-  some existing code — see P40, which measured it; the claim first written here, that a raw type
-  keeps everything compiling, is wrong.
+  some existing code: the claim first written here, that a raw type keeps everything compiling,
+  is wrong, and
+  [ADR-0059](../adr/0059-the-generic-registry-is-a-source-break.md) replaces it.
 - **The handler takes the `LlmConfig`, not the text alone.** This corrects the shape as first
   written: two sentences in this entry already said that a rule "branches on `config.name()`",
   which the text-only signature made impossible — and it also silently dropped the ability to

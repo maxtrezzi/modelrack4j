@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
 # Shared implementation behind the five run-*.sh scripts in the repository root. Not meant to
-# be called directly: run ./run-atomic.sh, ./run-database.sh, ./run-swap.sh, ./run-chat.sh
-# or ./run-council.sh.
+# be called directly: run ./run-atomic.sh, ./run-database.sh, ./run-properties.sh,
+# ./run-swap.sh, ./run-chat.sh or ./run-council.sh.
 #
 # The exec:java command these examples need is long, and three parts of it are easy to get
 # wrong: the fully qualified main class, the path to the configuration file, and the fact
@@ -34,6 +34,15 @@ snapshot() never catches a mixed pair; reading through two get() calls sometimes
 driven by the application itself. Shows all four answers reload() can give, then the same
 rejected change offered through store(), which refuses it before the row is written."
         ;;
+    properties)
+        script="run-properties.sh"; main="CustomProperties"; needs_keys=false; takes_config=false
+        layered=false
+        cost="free, and sends no request"
+        shows="Values the application owns, carried inside the block they belong to, and checked
+by the application's own rules inside the reload. A good edit is applied; one the rules reject
+leaves the whole previous configuration live, and the same change through store() is refused
+before the layer is written at all."
+        ;;
     swap)
         script="run-swap.sh";    main="ProviderSwap";      needs_keys=true;  takes_config=false
         layered=false
@@ -57,7 +66,8 @@ It asks you for a question, all three answer it, and it asks again until you typ
         ;;
     *)
         echo "run-example.sh is the shared implementation behind ./run-atomic.sh," >&2
-        echo "./run-database.sh, ./run-swap.sh, ./run-chat.sh and ./run-council.sh. Run one of those." >&2
+        echo "./run-database.sh, ./run-properties.sh, ./run-swap.sh, ./run-chat.sh and" >&2
+        echo "./run-council.sh. Run one of those." >&2
         exit 2
         ;;
 esac

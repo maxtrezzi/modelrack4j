@@ -602,8 +602,9 @@ afterwards. In a program of your own, written like the one above, editing the fi
 nothing swaps, the previous configuration stays live, and the rejection is reported. Your
 prompt template can never end up beside a model it was not meant for.
 
-(None of the shipped examples registers a handler, so this is the one part of the tutorial you
-try in your own code rather than by running something here.)
+You can watch all of that happen without writing anything: `./run-properties.sh` is the
+`CustomProperties` example, which does exactly these steps against a configuration it holds in
+memory. It sends no request and needs no key.
 
 The handler receives the whole configuration, not only the block, so a rule may depend on the
 provider or the name:

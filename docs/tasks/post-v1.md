@@ -3732,6 +3732,18 @@ that entry could not check whether a real GLM key satisfies the `id.secret` rule
 of at least 16 bytes, because `ZHIPU_API_KEY` was not on the shell it ran from. `GlmProviderIT`
 passed with the real key, so the check refuses no working credential.
 
+**A sixth example, `CustomProperties`.** The feature's whole argument is that the application's
+own rules run *inside* the reload, and unit tests do not demonstrate that to anyone who does not
+run them — which is what this project's examples are for (P38). It shows the five steps against a
+configuration held in memory: the properties arriving as an object, a block with none of them
+still reaching the handler as `{}`, a good edit rebuilding only the block that changed, a
+rejected edit leaving the previous configuration live *and* the layer holding the text that was
+written before asking, and the same change through `store()` refused before anything is written.
+Free, no key, and driven from `./run-properties.sh`.
+
+Counting the wrappers to write the sixth found an older defect: four of the five said the work is
+"shared with the other three" when there were four others. All six now say five.
+
 **The documentation was checked by running it, not by reading it.** The four failures the
 tutorial prints in sections 6 and 7 were reproduced from a probe and match the printed text —
 moderation on Anthropic, token-window on Anthropic, an unset mandatory substitution, and a
@@ -4888,6 +4900,18 @@ a row, and its snippets now use `var` rather than naming the type. The CHANGELOG
 addition and, separately, the three behaviour changes. All of it is user-facing prose under
 ADR-0039.
 
+**A sixth example, `CustomProperties`.** The feature's whole argument is that the application's
+own rules run *inside* the reload, and unit tests do not demonstrate that to anyone who does not
+run them — which is what this project's examples are for (P38). It shows the five steps against a
+configuration held in memory: the properties arriving as an object, a block with none of them
+still reaching the handler as `{}`, a good edit rebuilding only the block that changed, a
+rejected edit leaving the previous configuration live *and* the layer holding the text that was
+written before asking, and the same change through `store()` refused before anything is written.
+Free, no key, and driven from `./run-properties.sh`.
+
+Counting the wrappers to write the sixth found an older defect: four of the five said the work is
+"shared with the other three" when there were four others. All six now say five.
+
 **The documentation was checked by running it, not by reading it.** Strictness can reject the
 configurations this project itself ships and prints, and compiling the examples does not notice:
 every `.conf` in the repository and every ` ```hocon ` block in the README and the two manual
@@ -4919,9 +4943,12 @@ A raw type erases *every* generic member of the class, not only the ones mention
 So a caller who declares the target type is fine, and one who chains inline is not. Binary
 compatibility is unaffected, since generics are erased at run time.
 
-ADR-0055 carries the same wrong sentence in its Consequences. It is on `main` and accepted, so
-the correction lives here rather than being edited into it (ADR-0015); whether the claim is
-load-bearing enough to want an amending ADR is the owner's call.
+ADR-0055 carried the same wrong sentence in its Consequences. Its body is frozen, so the fix is
+the mechanism the project has for exactly this:
+[ADR-0059](../adr/0059-the-generic-registry-is-a-source-break.md) replaces that consequence and
+records the break as accepted rather than absent, and ADR-0055's `Status` points at it. The
+decision itself — the type parameter — is unchanged; what was wrong was the claim about what it
+costs.
 
 **The reach, measured on 2026-09-06 and swept on 2026-09-07:** 132 declarations of `LlmRegistry`
 or `LlmBundle` in Java — 25 in `modelrack4j-core/src/main`, 77 in its tests, 23 in the examples —
