@@ -1,6 +1,6 @@
 # ADR-0016: One feature branch per task
 
-- **Status:** Accepted
+- **Status:** Accepted — the branch a task targets amended by [ADR-0061](0061-work-lands-on-dev-and-main-carries-releases.md)
 - **Date:** 2026-07-26
 - **Supersedes:** —
 - **Amends:** —

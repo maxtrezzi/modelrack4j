@@ -55,8 +55,12 @@ is.
 
 ## Pull requests
 
-- One branch per change, never committed straight to `main`. This is enforced, not only
-  asked: `main` requires a pull request, and force-pushing and deletion are blocked
+- **Branch from `dev` and open your pull request against `dev`**, which is the default
+  branch, so GitHub already proposes it. `main` holds released versions only — one commit per
+  release, each with its tag — so a change that targets `main` is targeting the wrong branch
+  ([ADR-0061](docs/adr/0061-work-lands-on-dev-and-main-carries-releases.md)).
+- One branch per change, never committed straight to either. This is enforced, not only
+  asked: both branches require a pull request, and force-pushing and deletion are blocked
   ([ADR-0040](docs/adr/0040-protect-main-with-required-checks-not-required-review.md)).
 - The build stays green: `mvn clean verify` before you push. The five checks in
   `.github/workflows/build.yml` — JDK 17, 21 and 25, docs consistency, and the offline
@@ -83,9 +87,9 @@ is.
   documentation.
 - If your change settles a design question, it needs an ADR. Copy
   [`docs/adr/0000-template.md`](docs/adr/0000-template.md), take the next free number after the
-  ones already on `main`, and add a row to the index. Two open pull requests can pick the same
+  ones already on `dev`, and add a row to the index. Two open pull requests can pick the same
   number and both be right, so renumber yours if another one merges first — an ADR number is
-  only settled once it is on `main`.
+  only settled once it is on `dev`.
 
 ## License
 

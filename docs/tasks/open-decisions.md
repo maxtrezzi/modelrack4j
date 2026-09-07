@@ -712,3 +712,39 @@ everything, with its javadoc pointing at the new method instead of carrying the 
 What tipped it was not the convenience. `sources()`'s javadoc had told applications to look the
 layer up **and shipped the five-line filter as its example**, so the friction was one this
 library's own documentation created.
+
+---
+
+### D10 — Where work lands
+
+**Status:** Settled 2026-09-07 — **`dev` is the default; `main` carries releases only** ·
+**Settled by:** [ADR-0061](../adr/0061-work-lands-on-dev-and-main-carries-releases.md) ·
+**Raised by:** the owner on 2026-09-07, immediately after `0.2.0` was published
+
+Until `0.2.0` every task merged into `main`, so `main` was the last release plus whatever had
+landed since. The owner named three costs, and each is visible in the `0.2.0` sequence:
+
+- **What a reader sees is not what they can depend on.** The README's dependency snippets said
+  `0.1.0` while the code beside them was ahead of it — correct at every moment, and still a
+  page describing two different things.
+- **Items that belong to one version could not be tried together.** P40 through P45 merged one
+  at a time, each green alone. Whether they were right together was answered by the release.
+- **`main`'s history is one commit per task**, so "what changed between two releases" means
+  reading a dozen commits and deciding which of them a user would notice.
+
+Settled as full git-flow rather than as a long-lived integration branch beside an unchanged
+`main`: the deciding point is that the default branch is where a reader lands and where a
+contributor branches from, so making `dev` the default is what makes the rule true without
+being read.
+
+**The gate had to move with it.** `.github/workflows/build.yml` triggered on `main` alone and
+the five required contexts were configured on `main`'s protection, so a pull request against
+`dev` would have run no job and reported no status — the branch rule kept and the checks
+silently gone. Both branches now trigger the workflow and both carry the same five required
+checks.
+
+**What is not enforceable, and is written down instead:** `main` is never merged back into
+`dev`. The merge that makes a release is a squash, so afterwards the two hold the same tree and
+unrelated histories; branching from `main` or rebasing `dev` onto it brings every conflict back
+a second time. No protection rule can express that, which is the same trade ADR-0040 already
+takes with `enforce_admins`.
