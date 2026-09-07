@@ -109,7 +109,7 @@ public final class DatabaseSource {
     public static void main(String[] args) {
         Row row = new Row(models(new Model("SL", "gpt-5.1")));
 
-        try (LlmRegistry registry = LlmRegistry.builder().sources(List.of(row)).build()) {
+        try (LlmRegistry<?> registry = LlmRegistry.builder().sources(List.of(row)).build()) {
             System.out.println("Configuration comes from " + row.id()
                     + ", which nothing can watch. The application applies every change below"
                     + " itself: with reload() in steps 1 to 4, and with store() in 5 and 6.");
@@ -195,7 +195,7 @@ public final class DatabaseSource {
         return text.replaceAll("\\s+", " ").strip();
     }
 
-    private static void print(String when, LlmRegistry registry) {
+    private static void print(String when, LlmRegistry<?> registry) {
         StringBuilder line = new StringBuilder("   " + when + ", the registry holds:");
         for (String name : registry.names()) {
             line.append(' ').append(name).append('=')

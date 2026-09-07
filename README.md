@@ -17,7 +17,7 @@ llm {
 ```
 
 ```java
-LlmRegistry registry = LlmRegistry.builder().configFiles(List.of(Path.of("llm.conf"))).build();
+var registry = LlmRegistry.builder().configFiles(List.of(Path.of("llm.conf"))).build();
 String answer = registry.get("SL").chatModel().chat("Why is the sky blue?");
 ```
 
@@ -218,12 +218,12 @@ temperature fixed in a builder call.
 ### 3. Use it
 
 ```java
-try (LlmRegistry registry = LlmRegistry.builder()
+try (var registry = LlmRegistry.builder()
         .configFiles(List.of(Path.of("llm.conf")))
         .watch(true)
         .build()) {
 
-    LlmBundle sl = registry.get("SL");
+    var sl = registry.get("SL");
     String answer = sl.chatModel().chat("In one sentence: why merge before resolving?");
 
     registry.get("SH").streamingChatModel()
@@ -244,13 +244,14 @@ try (LlmRegistry registry = LlmRegistry.builder()
 
 ### Runnable examples
 
-Five, in [`modelrack4j-examples`](modelrack4j-examples/src/main/java/io/github/maxtrezzi/modelrack4j/examples).
+Six, in [`modelrack4j-examples`](modelrack4j-examples/src/main/java/io/github/maxtrezzi/modelrack4j/examples).
 Each one demonstrates a single claim from [Why](#why) rather than the library in general:
 
 | Example | Shows | Cost |
 |---|---|---|
 | [`AtomicSnapshot`](modelrack4j-examples/src/main/java/io/github/maxtrezzi/modelrack4j/examples/AtomicSnapshot.java) | A single save changes two models at once, while four threads keep reading both; reading through `snapshot()` never catches a mix of old and new, reading through two `get()` calls can, though a single run often catches none | **free, no API key** |
 | [`DatabaseSource`](modelrack4j-examples/src/main/java/io/github/maxtrezzi/modelrack4j/examples/DatabaseSource.java) | Configuration held in memory instead of a file, standing in for a database row, driven by the application: all four answers `reload()` can give, then the same rejected change through `store()`, which refuses it before the row is written | **free, no API key** |
+| [`CustomProperties`](modelrack4j-examples/src/main/java/io/github/maxtrezzi/modelrack4j/examples/CustomProperties.java) | Values the application owns, carried inside the block they belong to and checked by the application's own rules **inside** the reload: a good edit applied, one the rules reject leaving the whole previous configuration live, and the same change through `store()` refused before the layer is written | **free, no API key** |
 | [`ProviderSwap`](modelrack4j-examples/src/main/java/io/github/maxtrezzi/modelrack4j/examples/ProviderSwap.java) | The same call site answered by Anthropic, then by OpenAI, after a file edit | two requests |
 | [`ConsoleChat`](modelrack4j-examples/src/main/java/io/github/maxtrezzi/modelrack4j/examples/ConsoleChat.java) | An interactive menu of every configured model; edit the file while it runs and the menu changes; `/tools` answers through an `AiServices` proxy with a `@Tool` method, rebuilt on the current bundle each turn | a conversation |
 | [`ThreeModelCouncil`](modelrack4j-examples/src/main/java/io/github/maxtrezzi/modelrack4j/examples/ThreeModelCouncil.java) | The scenario above: three models, the questions you type, no provider branch in the code | three requests per question |
@@ -261,8 +262,9 @@ Start with `AtomicSnapshot` if you want to see the least obvious guarantee at no
 ./run-atomic.sh
 ```
 
-One script per example — `run-atomic.sh`, `run-database.sh`, `run-swap.sh`, `run-chat.sh`,
-`run-council.sh` — each with a `--help` that says what it shows and what it costs. They
+One script per example — `run-atomic.sh`, `run-database.sh`, `run-properties.sh`,
+`run-swap.sh`, `run-chat.sh`, `run-council.sh` — each with a `--help` that says what it shows
+and what it costs. They
 install the project first if they have to, because `exec:java` resolves `modelrack4j-core`
 from `~/.m2` rather than from the reactor. There are no `.bat` counterparts: on Windows,
 run the command `--help` prints.
@@ -282,7 +284,7 @@ mvn -q -pl modelrack4j-examples exec:java \
 ```java
 // ✅ correct — always the current bundle
 class Council {
-    private final LlmRegistry registry;
+    private final LlmRegistry<Void> registry;
 
     String ask(String q) {
         return registry.get("SL").chatModel().chat(q);
@@ -293,7 +295,7 @@ class Council {
 class Council {
     private final ChatModel model;
 
-    Council(LlmRegistry registry) {
+    Council(LlmRegistry<Void> registry) {
         this.model = registry.get("SL").chatModel();   // captured once, forever
     }
 }
@@ -306,6 +308,14 @@ lookup; it is cheap enough to call per request, and it is the API's primary path
 are secondary.
 
 If you use a DI container, inject the **registry**, not a `ChatModel`.
+
+**The same trap, one step out:** if you keep state of your own indexed by configuration name —
+a chat history, a cache, a session — remember that a `store()` fires no listener. The caller
+made the change and is handed the result, so clean-up written only inside `onReload` runs for a
+file edit and not for your own editor: the name disappears, its state does not, and reusing the
+name later picks the old state back up. Call the same clean-up from both, driven by
+`ReloadChange.removed()`. The reference has the shape, under
+[The state you keep beside the registry](docs/manual/part-2-reference.md#the-state-you-keep-beside-the-registry).
 
 ---
 
@@ -330,6 +340,7 @@ Every named block lives under the `llm` root. Names are yours: `SL`, `CR`,
 | `memory.max-tokens` | int | — | required by `token-window` |
 | `memory.allow-remote-token-counting` | boolean | `false` | see [Memory](#memory) |
 | `moderation.enabled` | boolean | `false` | builds a `ModerationModel` |
+| `custom-properties` | block | *empty* | values of your own, carried and never read; see below |
 
 **`description` is for whoever did not write the file.** Names like `SL` and `CR` are
 convenient to type and say nothing on their own, so a block can carry one line explaining
@@ -354,6 +365,47 @@ Omitting a key is meaningful: no `temperature` means the provider's default, no 
 block means no `ChatMemoryProvider` is built at all, no `moderation` block means no
 moderation model. The defaults above are the ones in
 [`modelrack4j-reference.conf`](modelrack4j-core/src/main/resources/modelrack4j-reference.conf).
+
+### Values of your own
+
+A block may carry a few values that belong to that connection but that this library has no
+business understanding — which prompt template, how many retries, when to escalate:
+
+```hocon
+llm.SUPPORT {
+  provider = openai
+  api-key = ${OPENAI_API_KEY}
+  model-name = "gpt-5.1-mini"
+
+  custom-properties { prompt-id = "support-v3", max-retries = 3 }
+}
+```
+
+The library renders that block as JSON and hands you the text; it never reads inside it.
+
+```java
+String json = registry.get("SUPPORT").customPropertiesText();   // "{}" when there is none
+```
+
+Register a handler and it becomes an object of yours, checked *inside* the reload:
+
+```java
+LlmRegistry<SupportProps> registry = LlmRegistry.builder()
+        .configFiles(List.of(base, local))
+        .customPropertiesHandler(config -> mapper.readValue(
+                config.customPropertiesText(), SupportProps.class))
+        .build();
+
+SupportProps props = registry.get("SUPPORT").customProperties();
+```
+
+That is the reason to put them here rather than in a file of your own: **parsing is
+validation**. A reload carrying a property your application cannot use is rejected whole, so it
+can never leave a new prompt template beside an old model.
+
+**A key the table above does not list is an error**, naming the layer and the line it came
+from, so a misspelled `temperatur` is caught rather than silently ignored. Anything inside
+`custom-properties` is yours, and is never checked.
 
 ### Layering
 
@@ -402,7 +454,7 @@ ConfigSource row = new ConfigSource() {
     public String text() { return jdbc.readConfigText(42); }
 };
 
-LlmRegistry registry = LlmRegistry.builder()
+var registry = LlmRegistry.builder()
         .sources(List.of(ConfigSource.ofFile(basePath), row))
         .build();
 
@@ -428,16 +480,17 @@ Nothing is written and nothing changes if the text would not load; if saving its
 the previous configuration comes back and the call throws. A store raises no reload event —
 the caller already knows what changed, and is given it as the return value. The target has to
 be a `WritableConfigSource`, which is the interface above plus a `write(String)` method;
-`ConfigSource.ofWritableFile(path)` gives you one for a file, and `registry.sources()` hands
-the layers back, so you can find your writable layer instead of carrying the reference beside
-the registry. Where more than one writer is possible, `storeIfUnchanged(layer, base, newText)`
+`ConfigSource.ofWritableFile(path)` gives you one for a file, and `registry.writableSources()`
+hands back the layers you may write, so code that is handed only the registry can find the
+target instead of having the reference threaded through to it. Where more than one writer is
+possible, `storeIfUnchanged(layer, base, newText)`
 refuses instead of erasing somebody else's change. See
 [Storing a layer back](docs/manual/part-2-reference.md#storing-a-layer-back).
 
 ## Hot reload
 
 ```java
-LlmRegistry registry = LlmRegistry.builder()
+var registry = LlmRegistry.builder()
         .configFiles(files)
         .watch(true)                        // off by default
         .debounce(Duration.ofMillis(300))   // the default
@@ -461,7 +514,7 @@ registry.onReloadFailure(failure ->
   reproducible, and a correctness hazard wherever several models must agree. Where they must, take a snapshot:
 
   ```java
-  LlmSnapshot models = registry.snapshot();   // one read of the current generation
+  var models = registry.snapshot();           // one read of the current generation
   var fast = models.get("SL");
   var deep = models.get("SH");                // guaranteed same generation as fast
   ```

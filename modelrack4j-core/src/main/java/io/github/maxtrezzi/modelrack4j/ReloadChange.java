@@ -63,14 +63,16 @@ public record ReloadChange(Set<String> updated, Set<String> added, Set<String> r
      * @param after the staged snapshot
      * @return the change between them
      */
-    static ReloadChange between(Map<String, LlmBundle> before, Map<String, LlmBundle> after) {
+    static ReloadChange between(
+            Map<String, ? extends LlmBundle<?>> before,
+            Map<String, ? extends LlmBundle<?>> after) {
         Set<String> updated = new TreeSet<>();
         Set<String> added = new TreeSet<>();
         Set<String> removed = new TreeSet<>(before.keySet());
         removed.removeAll(after.keySet());
 
-        for (Map.Entry<String, LlmBundle> entry : after.entrySet()) {
-            LlmBundle previous = before.get(entry.getKey());
+        for (Map.Entry<String, ? extends LlmBundle<?>> entry : after.entrySet()) {
+            LlmBundle<?> previous = before.get(entry.getKey());
             if (previous == null) {
                 added.add(entry.getKey());
             } else if (!previous.config().equals(entry.getValue().config())) {

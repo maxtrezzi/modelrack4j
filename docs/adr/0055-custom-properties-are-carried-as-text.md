@@ -1,6 +1,6 @@
 # ADR-0055: Carry a configuration block's custom properties as text
 
-- **Status:** Accepted
+- **Status:** Accepted — its compatibility consequence amended by ADR-0059
 - **Date:** 2026-09-06
 - **Supersedes:** —
 - **Amends:** —

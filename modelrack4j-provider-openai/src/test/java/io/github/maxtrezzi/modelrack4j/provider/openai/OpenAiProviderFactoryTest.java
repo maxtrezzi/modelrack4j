@@ -133,6 +133,7 @@ class OpenAiProviderFactoryTest {
 
     private static LlmConfig config(String modelName, Optional<Double> temperature) {
         return new LlmConfig("CR", Optional.empty(), "openai", "test-key-not-used", modelName,
-                temperature, Duration.ofSeconds(60), false, false, false, Optional.empty(), false);
+                temperature, Duration.ofSeconds(60), false, false, false, Optional.empty(),
+                false, "{}");
     }
 }

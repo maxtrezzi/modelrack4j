@@ -3732,6 +3732,18 @@ that entry could not check whether a real GLM key satisfies the `id.secret` rule
 of at least 16 bytes, because `ZHIPU_API_KEY` was not on the shell it ran from. `GlmProviderIT`
 passed with the real key, so the check refuses no working credential.
 
+**A sixth example, `CustomProperties`.** The feature's whole argument is that the application's
+own rules run *inside* the reload, and unit tests do not demonstrate that to anyone who does not
+run them — which is what this project's examples are for (P38). It shows the five steps against a
+configuration held in memory: the properties arriving as an object, a block with none of them
+still reaching the handler as `{}`, a good edit rebuilding only the block that changed, a
+rejected edit leaving the previous configuration live *and* the layer holding the text that was
+written before asking, and the same change through `store()` refused before anything is written.
+Free, no key, and driven from `./run-properties.sh`.
+
+Counting the wrappers to write the sixth found an older defect: four of the five said the work is
+"shared with the other three" when there were four others. All six now say five.
+
 **The documentation was checked by running it, not by reading it.** The four failures the
 tutorial prints in sections 6 and 7 were reproduced from a probe and match the printed text —
 moderation on Anthropic, token-window on Anthropic, an unset mandatory substitution, and a
@@ -4761,7 +4773,10 @@ the comment now says so.
 
 ### P40 — Custom properties, carried as text
 
-**Status:** Not started — target 0.2.0 ·
+**Status:** Done — target 0.2.0 ·
+**Branch:** `feature/custom-properties-and-a-closed-schema`, shared with P41 and P42: all three
+change the same loop in `SnapshotLoader.load` and one depends on another, so they are one piece
+of work rather than three batched for convenience ·
 **Raised by:** [D7](open-decisions.md#d7--custom-properties-on-a-configuration-block), settled by
 [ADR-0055](../adr/0055-custom-properties-are-carried-as-text.md)
 
@@ -4832,24 +4847,123 @@ leak a `${?VAR}` substituted into the sub-block.
 One test is about the builder rather than the feature: set `watch`, `debounce` and a listener,
 then register the handler **last**, and assert they all survived.
 
+#### What building it found
+
+**Rendering keeps a cleared key, as an explicit null.** A test written for the layering case
+failed on `{"max-retries":null,"prompt-id":"experimental"}`. `ConfigObject.render` does not drop
+a key a higher layer cleared with `= null`, so clearing a custom property would have handed the
+application a JSON null rather than an absent key — which is not what clearing means, and
+disagrees with the library's own `hasPath`, which already answers false for it. The render now
+strips cleared keys at every depth, with a test that clears one inside a nested object so the
+recursion is exercised rather than assumed.
+
+**`LlmConfigTest` caught the redaction label by itself.** It reflects over
+`LlmConfig.getRecordComponents()` and asserts that each appears in `toString()`, which is exactly
+the check a hand-written `toString()` needs; the new component was printed as
+`customProperties=` while the component is `customPropertiesText`. That test was written for this
+day and worked.
+
+**The examples ended up with no `<Void>` in them at all.** The first sweep put one on every
+declaration, which is what a caller has to write and reads badly in code that is documentation.
+A parameter that never uses the type takes `LlmBundle<?>` instead, and a local takes `var`, so
+the examples show the shape an application would actually write. The cost is still real for a
+caller whose own methods pass a registry around: there, `LlmRegistry<Void>` is what they write.
+
+**Result.** `mvn clean install` green on all eight reactor projects. Core is at **193 tests**, up
+from 155; the four provider modules unchanged and green. `DatabaseSource` and `AtomicSnapshot`
+were run, being the two that need no key.
+
+`mvn -Pintegration verify` was run with all four keys loaded from `.env`, and **all four
+integration tests ran rather than being skipped** — the failure mode to watch for, since a
+missing key silently disables one. `claude-sonnet-4-6`, `gemini-3.6-flash`, `glm-5.3` and
+`gpt-5-mini` all answered, so the four configured identifiers still exist upstream, which is the
+only check for that (P6). Nothing in this work touches a provider, but it changes the record
+every provider receives, so a live run is the only thing that shows the four modules still build
+a model from it.
+
+**And the build was run once against an empty local repository**, which answers a question the
+ordinary build cannot: not "does it work here" but "does it work for someone cloning". With
+`-Dmaven.repo.local` pointed at a throwaway directory — destroying nothing —
+**483 artefacts were downloaded, every one of them from `central`**, with no resolution warning,
+and the whole reactor built and tested green. That covers the second BOM the GLM module needs
+(`langchain4j-community-bom` at `1.20.0-beta30`, ADR-0022), which is the dependency most likely
+to exist only in a developer's cache.
+
 #### Documentation
 
-The reference gains the key, the tutorial gains a worked example, and the README's *What you
-still write yourself* section is where the boundary is already explained. All of it is
-user-facing prose under ADR-0039.
+The reference gained the key, a *Values of your own* section covering the handler and what the
+feature is not, and rows in the builder and registry tables. The tutorial gained a section of the
+same name — **unnumbered, beside "If your configuration is not in a file"**, because inserting a
+numbered step would renumber steps 9 and 10, which the tutorial's own contents table, its
+introduction and several entries in this file refer to by number. The README gained a section and
+a row, and its snippets now use `var` rather than naming the type. The CHANGELOG carries the
+addition and, separately, the three behaviour changes. All of it is user-facing prose under
+ADR-0039.
 
-**The generic reaches further than the feature does.** Measured on 2026-09-06: 132 declarations
-of `LlmRegistry` or `LlmBundle` in Java — 25 in `modelrack4j-core/src/main`, 77 in its tests, 23
-in the examples — and 30 mentions across the README and the two manual parts. Existing callers
-keep compiling, because a raw type is legal and generics are erased, so this is neither a source
-nor a binary break; but every snippet this repository ships should be updated in the same commit,
-or the documentation teaches the raw form.
+**A sixth example, `CustomProperties`.** The feature's whole argument is that the application's
+own rules run *inside* the reload, and unit tests do not demonstrate that to anyone who does not
+run them — which is what this project's examples are for (P38). It shows the five steps against a
+configuration held in memory: the properties arriving as an object, a block with none of them
+still reaching the handler as `{}`, a good edit rebuilding only the block that changed, a
+rejected edit leaving the previous configuration live *and* the layer holding the text that was
+written before asking, and the same change through `store()` refused before anything is written.
+Free, no key, and driven from `./run-properties.sh`.
+
+Counting the wrappers to write the sixth found an older defect: four of the five said the work is
+"shared with the other three" when there were four others. All six now say five.
+
+**The documentation was checked by running it, not by reading it.** Strictness can reject the
+configurations this project itself ships and prints, and compiling the examples does not notice:
+every `.conf` in the repository and every ` ```hocon ` block in the README and the two manual
+parts was extracted and loaded through `LlmConfig.fromBlock` over a complete skeleton, so that
+only an unknown key or a refused `null` could fail. **21 blocks, one rejection** — the
+misspelling the tutorial now shows on purpose. `examples.conf` passes.
+
+That pass also found what a grep would not: the sections that *enumerate* behaviour were left
+incomplete rather than wrong. Tutorial step 6 said "three configurations that fail" and a
+misspelling is now the failure a beginner meets first; the reload sequence in the reference
+listed five steps and did not mention the handler; "names appearing and disappearing" did not
+say that the last one may now go; the Concepts table described a bundle without its custom
+properties; and Layering documented `= null` without its new limit. All five are additions to
+prose that was true, which is the shape this project keeps meeting.
+
+**The generic reaches further than the feature does, and further than this entry first said.**
+
+The correction first. **It is a source break for some existing code**, and the sentence that
+stood here — that a raw type keeps everything compiling because generics are erased — is wrong.
+A raw type erases *every* generic member of the class, not only the ones mentioning `T`, so
+`reload()` and `store()` come back as a raw `Optional`. Measured, compiling code written against
+`0.1.0` against the generic registry:
+
+| the shape in existing code | result |
+|---|---|
+| `Optional<ReloadChange> c = registry.reload();` | compiles, with an unchecked warning |
+| `registry.reload().orElseThrow().updated()` | **`cannot find symbol`** — the raw `Optional` yields `Object` |
+
+So a caller who declares the target type is fine, and one who chains inline is not. Binary
+compatibility is unaffected, since generics are erased at run time.
+
+ADR-0055 carried the same wrong sentence in its Consequences. Its body is frozen, so the fix is
+the mechanism the project has for exactly this:
+[ADR-0059](../adr/0059-the-generic-registry-is-a-source-break.md) replaces that consequence and
+records the break as accepted rather than absent, and ADR-0055's `Status` points at it. The
+decision itself — the type parameter — is unchanged; what was wrong was the claim about what it
+costs.
+
+**The reach, measured on 2026-09-06 and swept on 2026-09-07:** 132 declarations of `LlmRegistry`
+or `LlmBundle` in Java — 25 in `modelrack4j-core/src/main`, 77 in its tests, 23 in the examples —
+and 30 mentions across the README and the two manual parts. 85 lines in the tests and 27 in the
+examples took a type argument. The examples take `<Void>` rather than `var` because most of the
+mentions are method parameters and fields, where `var` cannot go — which is itself the cost worth
+seeing: an application that never uses custom properties still writes `LlmRegistry<Void>` in every
+signature that passes one.
 
 ---
 
 ### P41 — Reject a key the schema does not know
 
-**Status:** Not started — target 0.2.0, ships with [P40](#p40--custom-properties-carried-as-text) ·
+**Status:** Done — target 0.2.0, shipped with [P40](#p40--custom-properties-carried-as-text) ·
+**Branch:** `feature/custom-properties-and-a-closed-schema`, shared with P40 and P42 ·
 **Raised by:** [D8](open-decisions.md#d8--a-key-the-schema-does-not-know), settled by
 [ADR-0056](../adr/0056-an-unknown-key-is-an-error.md)
 
@@ -4895,16 +5009,61 @@ Then the empty layers, which are regression tests for behaviour that already wor
 for anything this item adds: an empty file below a good layer, above it, and two empty ones
 around it. A file holding only comments counts as empty.
 
+#### What building it found
+
+**The recorded set has to be complete even when the parse fails, and it was not.** `fromBlock`
+read its values as arguments to the record constructor, so a missing required key threw at that
+argument and everything after it was never asked for — `timeout`, `streaming`, `log-requests`,
+all present from the defaults — and would have been reported as unknown. The parse now collects a
+missing required value instead of throwing on it, reaches the end, checks unknown keys, and only
+then reproduces the original failure by asking Typesafe Config for the value again.
+
+That ordering is also what makes the useful message possible: a block whose `model-name` is
+misspelled as `modle-name` now names the misspelling, where reporting the missing key first would
+have said `No configuration setting found for key 'model-name'` and left the reader to spot it.
+
+**The message a user already knows is unchanged**, which matters because the tutorial prints it
+three times as real output. Verified by running it: `llm.SL is not a valid configuration block:
+String: 1: No configuration setting found for key 'model-name'`.
+
+**The known set is per block, and that is correct rather than a limitation.** `memory.max-tokens`
+is not asked for when `memory.type` is `message-window`, so writing both is rejected — which is
+what it should be.
+
+**Mutation testing found one real gap and five equivalent mutants.** Run on this tree — AMD
+Ryzen 7 7840HS, Temurin 25: **256 mutants, 249 killed**, line coverage 678/718. The report was
+checked to contain `BlockReader` before being read (P31).
+
+The real gap was `rethrowFirstMissing`: removing it survived, because the test for a missing
+`model-name` asserted only that the message named the key, and the record's own `requireText`
+also names it. The assertion now demands the exact `No configuration setting found for key
+'model-name'`, which only that call produces — and which is the line the tutorial prints as real
+output. Confirmed by deleting the call: the test fails.
+
+The five `BlockReader` survivors all remove a `record(path)` call, and they are **equivalent in
+context**: every read is preceded by a `has()` on the same path, so the recording happens twice
+and removing either alone changes nothing. Verified rather than assumed — removing the recording
+from `has` *and* `string` together fails three tests. The redundancy stays: a future read written
+without a guard must still record, or its key silently becomes unknown.
+
+The other two entries are the ones already known. `LlmRegistry.reload` has `Optional.empty()`
+replaced by `Optional.empty()`, and `WritableFileConfigSource.stage` keeps the uncovered cleanup
+branch `AGENTS.md` describes. A `TIMED_OUT` minion on `Builder.chooseNotifier` is what makes the
+run take minutes rather than the two it used to: a mutant returning a null notifier leaves a
+watching test waiting out its own timeout.
+
 #### Documentation
 
-This breaks configurations that load under `0.1.0`, so it is a CHANGELOG entry under a heading
-that says so, not a bullet among the additions.
+This breaks configurations that load under `0.1.0`, so it is a CHANGELOG entry under **Changed**
+with the migration — move application values into `custom-properties` — rather than a bullet
+among the additions. The reference's *Every key* section states the rule and shows the message.
 
 ---
 
 ### P42 — An empty configuration, and the layer that empties it
 
-**Status:** Not started — target 0.2.0 ·
+**Status:** Done — target 0.2.0 ·
+**Branch:** `feature/custom-properties-and-a-closed-schema`, shared with P40 and P41 ·
 **Raised by:** the owner on 2026-09-06: *"se non ho nessuna configurazione, non devo avere
 errore. È un problema dell'applicazione non della configurazione in generale"* ·
 **Settled by:** [ADR-0057](../adr/0057-an-empty-configuration-is-valid.md) and
@@ -4993,6 +5152,14 @@ the repair is narrow — `llm.SL = "a string"` still fails, naming the type and 
 
 Nothing has to be un-asserted: measured that no test names either message today.
 
+#### What building it found
+
+**`llm = 5` escaped as Typesafe Config's own exception.** With the two refusals gone, the next
+line reaches `resolved.getObject(ROOT_PATH)`, which throws `ConfigException.WrongType` — a
+foreign type out of a method documented to throw this library's. It was already so before this
+item and became visible only because the cases around it were being handled deliberately. The
+root now gets its own check and its own message, naming the type it found.
+
 #### Documentation
 
 The reference should say that an empty configuration is valid, that checking for a configuration
@@ -5001,3 +5168,246 @@ that `= null` does not remove a configuration. The reference already documents t
 `description`, which is exactly why the limit has to be stated: a reader who learned it one level
 down will try it one level up. The CHANGELOG entry belongs with the behaviour changes rather than the additions: an
 application relying on `build()` to fail will now start.
+
+---
+
+### P43 — What the consuming application found in 0.2.0
+
+**Status:** Done — four findings, three fixed here and one raised as a decision ·
+**Branch:** `feature/custom-properties-and-a-closed-schema`, shared with P40, P41 and P42,
+because three of the four are about what those items changed ·
+**Raised by:** the consuming application, reading the manual against a real upgrade
+
+#### The one that caused a bug, and it is not new
+
+**The manual never said what to do with `ReloadChange.removed()`.** It appeared nowhere in
+`part-2-reference.md` except as a component in the `ReloadChange` record — no sentence, no
+example. Beside it sits a second true statement, *"a store raises no reload event"*, filed as a
+note about listeners inside the store section.
+
+Both facts are correct and both are documented. What is missing is the rule an application needs,
+which is the two of them joined: **clean-up written only inside `onReload` runs for a file edit
+and not for your own `store()`.** An application that keeps state indexed by configuration name
+then deletes a connection through its own editor, the state survives, and reusing the name picks
+the old state straight back up. That is what happened: chat histories outlived the connections
+they belonged to, and a re-added name resumed a conversation from before its deletion.
+
+**The library is not at fault and needed no change.** Both halves are pinned by tests already —
+`ConfigStoreTest` asserts that a store reports the removed name in `removed()`, and that it fires
+no reload listener. The failure was entirely one of documentation: two true sentences, in two
+places, neither of them about the state the *application* keeps.
+
+Fixed as the application proposed, with no API change: a subsection under Reload semantics —
+*The state you keep beside the registry* — with the two-route table, the shape of a clean-up
+called from both, and a note that whether `updated()` belongs there is the caller's judgement
+while `removed()` is not. The `store()` contract row now leads with "no listener runs" and points
+at it, and the README's caching-trap section gains a paragraph, since this is the same trap one
+step out.
+
+#### Three that this branch caused, or should have prevented
+
+**The `Records` block was still at `0.1.0`.** `LlmBundle` without its type parameter and without
+`customProperties`, `LlmConfig` without `customPropertiesText` — while the prose, the tables and
+the examples around it had all been updated. Localised drift, and in the worst possible place:
+that block is what a reader copies signatures from. It is P19's lesson again — the diff was read
+and the file was not — and this time the fix was checked mechanically, by parsing the record's
+components out of `LlmConfig.java` and comparing them to the block, name by name.
+
+**The generic break had no troubleshooting row**, and its symptom does not name generics at all:
+
+```
+error: cannot find symbol
+        registry.reload().ifPresent(change -> System.out.println(change.added()));
+  symbol:   method added()
+  location: variable change of type Object
+```
+
+Reproduced exactly, compiling code written for `0.1.0` against the new jar. The CHANGELOG
+explains it; nobody reads the CHANGELOG while staring at a compiler error. The row now carries
+the message, the reason a raw type erases `Optional<ReloadChange>`, and the correction — plus the
+part the application supplied and that matters most: **an incremental build hides it.** Maven
+does not recompile a source it considers unchanged, so `mvn compile` after the bump can pass
+while `clean compile` fails.
+
+**A convenience the documentation asked for and did not provide.** `sources()`'s javadoc told
+applications to use it to find the layer to write and offered no way to find the *writable* one —
+worse, it carried the five-line `instanceof` filter as its documented example, so the library was
+shipping the boilerplate as the recommended usage. Raised as
+[D9](open-decisions.md#d9--finding-the-writable-layer), settled the same day and implemented here:
+`LlmRegistry.writableSources()` returns a `List<WritableConfigSource>`
+([ADR-0060](../adr/0060-the-registry-hands-over-its-writable-layers.md)).
+
+A list rather than an `Optional`, because `sources(...)` allows any number of writable layers and
+the library will not pick one of two; the order is `sources()`'s own, which is the only thing
+that tells two apart; empty is an ordinary answer. Five tests, of which two are about the parts
+a convenience gets wrong: that the order is contract rather than iteration order, and that what
+it hands back is the layer object `store()` accepts, since `requireOwnLayer` compares by record
+equality and an equal-but-rejected copy would be worse than no method at all.
+
+Writing those tests found something in the test suite rather than the code: `LAYER_WITH_SECOND_MODEL`
+in `ConfigStoreTest` changes the *model name* to `"second"` and adds no second block. An assertion
+written from the constant's name rather than its body passed the wrong claim, and failed.
+
+#### What this round says about the process
+
+Three of the four were documentation, and none of them would have been caught by any check this
+repository runs: the links resolve, the ADRs are consistent, the snippets load, the tests pass.
+They were found by someone upgrading a real application against the manual. That is the only
+check that finds this class of defect, and it is worth more than another pass by the author.
+
+---
+
+### P44 — The pre-release check of 0.2.0
+
+**Status:** Done — one defect in the code, 43 compiler warnings, three untested error conditions, seven findings in the prose ·
+**Branch:** `feature/custom-properties-and-a-closed-schema`, shared with P40, P41, P42 and P43 ·
+**Raised by:** the owner on 2026-09-07, as the check before 0.2.0 is released
+
+A pass over the whole branch — review, mutation testing, integration tests against the four
+real APIs, the examples, the manual and the rest of the documentation. Everything measured on
+this machine: AMD Ryzen 7 7840HS, Temurin 25, Pop!_OS 24.04.
+
+#### What was measured
+
+| | |
+|---|---|
+| `mvn clean install` | green, 8 modules |
+| `mvn -Pintegration verify` | green — 204 core tests (198 before this item's six), 47 provider unit tests, and one live IT per provider: OpenAI, Anthropic, Gemini, GLM. The four configured `model-name` values all still exist upstream, which is the only check that catches a rotted identifier (P6) |
+| `mvn -pl modelrack4j-core org.pitest:pitest-maven:mutationCoverage` | 270 mutants, 262 killed, 1 timed out, 6 survived, 1 uncovered. Line coverage 703/741. Run again after the fixes below; the branch as it arrived had 259 |
+| `build/check-docs.py` | clean, 60 ADRs and 75 tracked markdown files |
+| `./run-atomic.sh`, `./run-database.sh`, `./run-properties.sh` | all three run and print what their `--help` and the README claim |
+| the reactor's own `-Xlint:all,-serial` output | **43 warnings**, all new on this branch and all about raw types — see below |
+
+The branch as it arrived was three mutants larger than P41's table, because that run predates
+[D9](open-decisions.md#d9--finding-the-writable-layer): `writableAmong` and `writableSources`
+contribute three, all killed. This item's own fixes add eleven more — `anyMissing`,
+`built(...)`, `requireNotSetForType` and the refusal of a `null` from a handler — and those are
+killed too, so the survivor set never moved. It is the one P41 already accounted for — five
+redundant `record(path)` calls in `BlockReader` and the equivalent `Optional.empty()` in
+`LlmRegistry.reload`, plus the cleanup branch of `WritableFileConfigSource.stage` that
+`AGENTS.md` describes as untested on purpose. The report was checked to contain `BlockReader`
+before it was read (P31).
+
+#### The defect in the code
+
+**A misspelled key inside `memory` reported the key it hid, not the misspelling.**
+`memory { type = message-window, max-mesages = 4 }` answered *"memory.max-messages must be
+greater than 0, was 0"*. That is exactly the failure ADR-0056 exists to prevent, and the
+reference already promised the opposite in the same words it uses for every other depth —
+*"a misspelling inside `memory` is named as `memory.max-mesages`"*.
+
+The cause is one asymmetry: `fromBlock` builds the `LlmConfig` record *after*
+`requireNoUnknownKeys`, so a collected placeholder never reaches validation — but `readMemory`
+builds a `MemoryConfig` variant *during* the parse, and that record validates its own range in
+its constructor. `BlockReader.anyMissing()` and `LlmConfig.built(...)` defer the construction;
+the empty variant cannot escape, because `rethrowFirstMissing` throws for the same value a
+moment later. Both paths have a test.
+
+The same probe raised a second, smaller thing beside it: `memory.allow-remote-token-counting`
+on a `message-window` block was reported as *"a key this library does not know"*, and the
+message went on to advise checking the spelling or moving the key into `custom-properties` —
+all three untrue of a key the reference lists. It is still refused, because a block that sets
+it says two different things; `requireNotSetForType` now asks for the key, which keeps it out
+of the closed-schema check, and names the memory type instead.
+
+Both new messages have a troubleshooting row, because every other message this branch
+introduced got one and that table is where a reader arrives holding an error. The Memory
+section says the two sets of keys do not mix, which is where someone learns the variants in
+the first place.
+
+#### Forty-three compiler warnings, starting in the class the generic is about
+
+`-Xlint:all,-serial` is configured in the parent POM, and the build prints its warnings and
+carries on, so nothing announced these. Counted on `b211d14` with `mvn clean install
+-DskipTests` in a detached worktree, so the figure is the branch's own and not a half-fixed
+tree: **43, and 0 afterwards.**
+
+Eight are in `modelrack4j-core/src/main`: raw `Builder` and raw `LlmRegistry` inside
+`builder()`, `build()` and `startOrClose`, each a `rawtypes` and three of them an `unchecked`
+alongside. ADR-0059 is about what a raw type costs a caller, and the class it is about was
+using three of them internally.
+
+The other 35 are in test sources, in all five modules that build a registry — each
+`registryFrom` helper, each `List<LlmRegistry>` of registries to close, and the four provider
+`*IT.java` files. They are why the count is what it is: a raw receiver makes every
+`assertThat(registry.get(...).something())` an unchecked call as well, so one raw declaration
+in `AnthropicProviderFactoryTest` produced seven warnings. The tests never need the type
+argument, so they take `LlmRegistry<?>` — except `built.forEach(LlmRegistry::close)`, where a
+method reference takes no wildcard.
+
+Two javadoc examples taught readers the same thing — `LlmRegistry registry =
+LlmRegistry.builder()` in `LlmRegistry`'s own class comment, and `LlmSnapshot models = ...`
+twice — while the README, both manual pages and every example had been moved to `var`. A grep
+for the type name finds them; a grep for the word "generic" does not.
+
+#### What the prose still had wrong
+
+- **`sources()`'s javadoc was fixed halfway by D9.** The sentence *"Use it to find the layer to
+  store into … :"* kept its colon after the `instanceof` example it introduced was deleted, and
+  the paragraph below it now said to use `writableSources()` instead. The reference's own row
+  had been corrected properly; only the javadoc was left contradicting itself.
+- **`writableSources()` had no CHANGELOG entry**, though the README, the reference and ADR-0060
+  all carry it. It is a new public method in the release being prepared, and the CHANGELOG is
+  what a consumer reads first. The generic entry beside it was also the only one in its section
+  citing no ADR.
+- **The tutorial printed output its own command does not produce.** Step 6 shows
+  `temperatur (llm.conf: 3)`, but the tutorial runs with
+  `-Dexec.args=$HOME/modelrack4j-tutorial/llm.conf`, so the origin is the absolute path — as
+  the substitution example four paragraphs later correctly shows. P26 again, found the same
+  way: by running it.
+- **`run-example.sh` said "the five run-\*.sh scripts" and then listed six**, and its two
+  enumerations of the examples that cost nothing still named only `run-atomic.sh` and
+  `run-database.sh`. Those two lines are the ones `AGENTS.md` warns about by name from P19,
+  and a sixth example walked past them again: they sit at lines 101 and 188, far from anything
+  the diff touched.
+- **`LlmConfig.toString()`'s javadoc still said it hides only the credential**, while the
+  method also redacts `customPropertiesText`. The reference described the new behaviour
+  correctly; the javadoc — which is the published API documentation — did not.
+- **A handler returning `null` was accepted**, leaving `customProperties()` null on a bundle
+  whose type parameter says otherwise, while every `null` from a `ProviderFactory` goes through
+  `requireProduced`. `LlmBundle`'s own javadoc claimed *"with a handler registered the object is
+  always there"*, which nothing enforced. It is now refused, and the reference's list of things
+  to know about the handler says so.
+- **`gpt-4o-mini` in the README and the reference**, the only two places using a model the rest
+  of the documentation does not — and the README explains its choice of `gpt-5.1` alongside
+  `claude-sonnet-5` two sections earlier. Plus a `custom-properties` row inserted between two
+  `memory.*` rows, and two lines left at 119 and 143 characters by a reflow.
+
+#### Three error conditions nothing exercised
+
+Asked whether every error condition has a test, and answered by counting rather than by
+reading: **57 places in the library sources throw**, and the 112 message assertions in the
+suite cover 37 of them outright. Most of the rest are asserted by scenario instead, in
+`ConfigSourceTest` — *"the source's id, not a file name, is what a parse error names"*, *"a
+file source that cannot read names the file and the reason"*. Three were exercised by nothing
+at all, proved by deleting the check and watching all 204 tests still pass:
+
+| | |
+|---|---|
+| `ConfigSources.requireUsableId` | a `ConfigSource` whose `id()` is null or blank |
+| `TextLayer.parse` | a `ConfigSource` whose `text()` returns null |
+| `ConfigLoader`'s second `catch` | a resolution that fails for a reason other than an unset variable |
+
+They share a shape: all three are the mistakes of somebody writing a `ConfigSource` of their
+own, which is what ADR-0042 opened the interface for. Every fake in this suite implements it
+correctly, so nothing reached them. The third needed a probe to reach at all — a circular
+substitution still raises `UnresolvedSubstitution` and lands in the *first* catch; what
+reaches the second is concatenating a string with an object, which fails as `WrongType`
+during `resolve()`.
+
+Each of the three tests was checked the way it was found: with the guard removed it fails,
+with the guard in place it passes.
+
+**Mutation testing could not have found these**, which is worth writing down. PIT generates no
+mutants on a bare `throw` line, and the mutant on the guard above it — `if (id == null ||
+id.isBlank())` negated — is killed by any test at all that passes a valid id, because the
+negation then throws for every one of them. A survivor list is a question about the tests, but
+it is not this question.
+
+#### What this says about the checks
+
+The one code defect was found by a throwaway probe, not by the suite: 198 tests passed over an
+error message that contradicted the page describing it. The eight warnings were found by
+running `javac` by hand, because the build prints them and goes on. Neither is a gap a test
+would have closed on its own — what closed them was asking the code a question the tests were
+not asking, which is the same lesson P27 recorded about reading a mutation report.

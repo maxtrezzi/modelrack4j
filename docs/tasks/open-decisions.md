@@ -3,7 +3,7 @@
 Items waiting on the owner rather than on work. Do not resolve these unilaterally — each
 one closes by writing an ADR (see [ADR-0001](../adr/0001-record-decisions-as-adrs.md)).
 
-**D1 to D8 are all settled**, so this file is a record rather than a queue right now. A new
+**D1 to D9 are all settled**, so this file is a record rather than a queue right now. A new
 entry here is a question for the owner, not work to pick up, and an entry marked
 `Needs decision` blocks the code that depends on it rather than inviting a guess. Entries stay
 in number order and keep the framing they were decided under, with the outcome at the top.
@@ -523,9 +523,11 @@ which is what actually goes wrong.
   class token at each read, `LlmRegistry.builder()` returns a `Builder<Void>` and
   `customPropertiesHandler` is a type-changing method returning a `Builder<T>`, so a caller
   declares nothing in advance and reads an object with no cast. One registry therefore binds one
-  custom-properties type, which the owner accepted. It reaches `LlmRegistry` and `LlmBundle` but
-  not `LlmConfig`, so no provider is affected, and existing callers keep compiling because a raw
-  type is legal and generics are erased.
+  custom-properties type, which the owner accepted. It reaches `LlmRegistry`, `LlmBundle` and
+  `LlmSnapshot` but not `LlmConfig`, so no provider is affected. It **is** a source break for
+  some existing code: the claim first written here, that a raw type keeps everything compiling,
+  is wrong, and
+  [ADR-0059](../adr/0059-the-generic-registry-is-a-source-break.md) replaces it.
 - **The handler takes the `LlmConfig`, not the text alone.** This corrects the shape as first
   written: two sentences in this entry already said that a rule "branches on `config.name()`",
   which the text-only signature made impossible — and it also silently dropped the ability to
@@ -661,3 +663,52 @@ ADR-0056; four points are worth having here because they are what a reader will 
   and the ones whose absence is meaningful.
 
 **Target: 0.2.0.** Implementation is [P41](post-v1.md#p41--reject-a-key-the-schema-does-not-know).
+
+---
+
+### D9 — Finding the writable layer
+
+**Status:** Settled 2026-09-07 — **`writableSources()`, returning a list** ·
+**Settled by:** [ADR-0060](../adr/0060-the-registry-hands-over-its-writable-layers.md) ·
+**Raised by:** the consuming application on 2026-09-07, after writing the same filter twice
+
+`LlmRegistry.sources()` returns `List<ConfigSource>`. An application with a configuration editor
+needs the layer it may write, and the only way to get it is to filter:
+
+```java
+WritableConfigSource target = registry.sources().stream()
+        .filter(WritableConfigSource.class::isInstance)
+        .map(WritableConfigSource.class::cast)
+        .findFirst()
+        .orElseThrow();
+```
+
+Every such application writes that. The proposal is `Optional<WritableConfigSource>
+writableSource()`, or the list form, so it does not have to.
+
+**What makes this more than a convenience.** `sources()`'s own javadoc says to *"use it to find
+the layer to write instead of keeping the reference beside the registry"* — so the library
+recommends the lookup and then supplies no way to perform it. The friction is one the
+documentation creates.
+
+**The questions.** Whether it returns one or many: `sources(...)` accepts any number of writable
+layers, so `Optional` is a lie the moment somebody configures two, while a list makes the common
+case — exactly one — read worse. Whether an empty result is an `Optional`, an empty list, or a
+refusal at `build()`. And whether this belongs on the registry at all, since it is a filter over
+a list the caller already has.
+
+**Against doing it.** It is public API on a `0.x` library that has just taken one source break;
+`ConfigSource` and `WritableConfigSource` are a deliberate split (ADR-0042), and a convenience
+that flattens it back invites the assumption that a registry has *the* writable layer. The
+consuming application called it low priority.
+
+**Answered: a list, not an `Optional`.** `sources(...)` allows any number of writable layers, so
+an `Optional` would have to pick one of two — arbitrary — or turn a legal configuration into a
+failure. `writableSources().get(0)` is clumsier than an `Optional` in the case everybody has, and
+that is the price of not guessing. The order is `sources()`'s own, which is the only thing that
+tells two writable layers apart; empty is an ordinary answer; and `sources()` keeps returning
+everything, with its javadoc pointing at the new method instead of carrying the filter.
+
+What tipped it was not the convenience. `sources()`'s javadoc had told applications to look the
+layer up **and shipped the five-line filter as its example**, so the friction was one this
+library's own documentation created.

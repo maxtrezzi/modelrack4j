@@ -65,7 +65,7 @@ class GeminiProviderIT {
                 }
                 """, StandardCharsets.UTF_8);
 
-        try (LlmRegistry registry = LlmRegistry.builder().configFiles(List.of(file)).build()) {
+        try (LlmRegistry<?> registry = LlmRegistry.builder().configFiles(List.of(file)).build()) {
             String answer =
                     registry.get("IT").chatModel().chat("Reply with the single word: pong");
 

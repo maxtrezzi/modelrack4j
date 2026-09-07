@@ -19,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertAll;
 
+import com.typesafe.config.ConfigFactory;
 import java.lang.reflect.RecordComponent;
 import java.time.Duration;
 import java.util.Optional;
@@ -139,6 +140,37 @@ class LlmConfigTest {
     }
 
     @Test
+    @DisplayName("a substituted secret in a custom property does not reach toString()")
+    void toStringRedactsACustomPropertyToo() {
+        // A substitution resolves inside the sub-block, so a custom property holds the
+        // credential after substitution exactly as api-key does: ADR-0047 a second time.
+        LlmConfig config = LlmConfig.fromBlock("SL", ConfigFactory.parseString(
+                "provider = fake-local\n"
+                        + "api-key = \"k\"\n"
+                        + "model-name = \"m\"\n"
+                        + "timeout = 60s\n"
+                        + "log-requests = false\n"
+                        + "log-responses = false\n"
+                        + "streaming = false\n"
+                        + "custom-properties { webhook-token = \"shhh-1234\","
+                        + " prompt-id = \"p1\" }\n"));
+
+        String described = config.toString();
+
+        assertThat(described).doesNotContain("shhh-1234");
+        // Nor the key names: reading them would mean parsing a text this library has just
+        // promised not to interpret.
+        assertThat(described).doesNotContain("webhook-token", "prompt-id");
+        assertThat(described).contains("customPropertiesText=***");
+    }
+
+    @Test
+    @DisplayName("a configuration with no custom properties says so rather than hiding it")
+    void toStringShowsAnEmptyCustomPropertiesBlock() {
+        assertThat(config().build().toString()).contains("customPropertiesText={}");
+    }
+
+    @Test
     @DisplayName("toString hides the credential but keeps every other component")
     void toStringRedactsTheApiKey() {
         LlmConfig config = config()
@@ -253,7 +285,7 @@ class LlmConfigTest {
 
         LlmConfig build() {
             return new LlmConfig(name, description, provider, apiKey, modelName, temperature,
-                    timeout, false, false, false, Optional.empty(), false);
+                    timeout, false, false, false, Optional.empty(), false, "{}");
         }
     }
 }

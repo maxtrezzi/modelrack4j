@@ -153,7 +153,7 @@ class GeminiProviderFactoryTest {
         }
     }
 
-    private LlmRegistry registryFrom(String hocon) throws IOException {
+    private LlmRegistry<?> registryFrom(String hocon) throws IOException {
         Path file = Files.createTempFile(dir, "gemini", ".conf");
         Files.writeString(file, hocon, StandardCharsets.UTF_8);
         return LlmRegistry.builder().configFiles(List.of(file)).build();
@@ -161,6 +161,7 @@ class GeminiProviderFactoryTest {
 
     private static LlmConfig config(Optional<Double> temperature, boolean moderation) {
         return new LlmConfig("SL", Optional.empty(), "gemini", "test-key-not-used", MODEL,
-                temperature, Duration.ofSeconds(60), false, false, false, Optional.empty(), moderation);
+                temperature, Duration.ofSeconds(60), false, false, false, Optional.empty(),
+                moderation, "{}");
     }
 }

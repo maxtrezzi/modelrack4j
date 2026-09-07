@@ -41,15 +41,32 @@ import java.util.Optional;
  *     provider supports it
  * @param chatMemoryProvider the memory provider, present when a {@code memory} block was
  *     configured
+ * @param customProperties whatever a registered {@link CustomPropertiesHandler} made of this
+ *     configuration's {@code custom-properties} block, or {@code null} when none was
+ *     registered — which is then the only value its type has
+ * @param <T> what the registry's handler turns a {@code custom-properties} block into, or
+ *     {@link Void} when no handler was registered
  */
-public record LlmBundle(
+public record LlmBundle<T>(
         LlmConfig config,
         ChatModel chatModel,
         Optional<StreamingChatModel> streamingChatModel,
         Optional<ModerationModel> moderationModel,
-        Optional<ChatMemoryProvider> chatMemoryProvider) {
+        Optional<ChatMemoryProvider> chatMemoryProvider,
+        T customProperties) {
 
-    /** @throws NullPointerException if any component is null */
+    /**
+     * Checks that every model and provider this bundle hands out is really there.
+     *
+     * @throws NullPointerException if any component other than {@code customProperties} is
+     *     null
+     * @implNote {@code customProperties} is the one component that may be null, and only in
+     *     the case where that is the sole value its type has: a registry built without a
+     *     {@link CustomPropertiesHandler} is an {@code LlmRegistry<Void>}, and {@code null} is
+     *     the only {@code Void}. With a handler registered the object is always there, because
+     *     the handler is called even for a configuration that has no such block, and one that
+     *     returns {@code null} is refused rather than believed.
+     */
     public LlmBundle {
         Objects.requireNonNull(config, "config");
         Objects.requireNonNull(chatModel, "chatModel");
@@ -65,5 +82,18 @@ public record LlmBundle(
      */
     public String name() {
         return config.name();
+    }
+
+    /**
+     * Returns this configuration's {@code custom-properties} block, as text.
+     *
+     * <p>Always available, whether or not a {@link CustomPropertiesHandler} was registered.
+     * A configuration whose file has no such block gives {@code "{}"}, so the result is
+     * always a JSON object you can hand straight to a parser.
+     *
+     * @return the block as JSON
+     */
+    public String customPropertiesText() {
+        return config.customPropertiesText();
     }
 }

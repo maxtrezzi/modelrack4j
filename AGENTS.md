@@ -406,6 +406,69 @@ and it is not redundant.
 `ChatMemoryProvider` is built in core (provider-independent), except the
 `TokenCountEstimator` needed by token-window memory, which comes from the factory.
 
+**A block's custom properties are text in `LlmConfig` and an object on `LlmBundle`
+(ADR-0055).** The `custom-properties` sub-block is rendered from the merged configuration with
+`ConfigRenderOptions.concise()` and carried as a JSON string; an optional
+`CustomPropertiesHandler<T>` registered on the builder turns it into the application's own
+object, in `buildBundle`, after `factory.validate` and before `createChatModel`. Five things
+here are load-bearing:
+
+- **The parsed object must not go into the record.** The reload diff is record equality on
+  `LlmConfig` (ADR-0006), so an application type without `equals` would compare by identity and
+  every block would look changed on every reload — every bundle rebuilt, every model
+  reconstructed, nothing to warn about it. The text compares exactly and asks the application
+  for nothing.
+- **The render strips keys a higher layer cleared with `= null`, at every depth.** Without that
+  a cleared property reaches the application as an explicit JSON null rather than as absent,
+  which is not what clearing means and disagrees with `hasPath`, which already answers false.
+  A test clears a key inside a nested object, so the recursion is covered.
+- **`customPropertiesHandler` changes the builder's type parameter by casting `this`, not by
+  building a new `Builder<U>`.** The obvious `return new Builder<>(handler)` compiles and
+  silently drops the sources, `watch`, `debounce` and the notifier, so the order a caller
+  chains the methods in would change the result. A test registers the handler last.
+- **A handler that returns `null` is refused, like a factory that produces no model.** The
+  type parameter says the object is there, so a `null` would surface as a
+  `NullPointerException` in the application, far from the handler that produced it. The
+  no-handler case still returns `null`, because `Void` has no other value.
+- **The generic reaches `LlmRegistry`, `LlmBundle` and `LlmSnapshot`, and stops at
+  `LlmConfig`** — which is why no provider is affected. It **is** a source break for callers
+  who used the raw type and chained through `reload()` or `store()`: a raw type erases every
+  generic member, including their `Optional<ReloadChange>`. Assigning to a declared type still
+  compiles, with an unchecked warning.
+
+**A key the schema does not know is an error, and the known keys are produced by the parse
+(ADR-0056).** `LlmConfig.fromBlock` reads through `BlockReader`, which records every path it is
+asked for; the unknown keys are the leaf paths of `entrySet()` it never touched, minus anything
+under `custom-properties`. **Never replace that with a declared `Set<String>`**: it is the
+obvious implementation and it reintroduces the same silent drift with the sign reversed — add a
+key to the parse, forget the list, and every file using that key is rejected. Two details that
+look incidental and are not: a required value is *collected* rather than thrown on, so the
+recorded set is complete even when the block is invalid — otherwise a misspelled `model-name`
+would report every key after it as unknown — and `rethrowFirstMissing` reproduces the original
+failure by asking Typesafe Config again, because the tutorial prints that message as real
+output three times.
+
+**`memory` is the one sub-block that builds a validating object during the parse, and that is
+why `readMemory` goes through `built(...)`.** `MemoryConfig.MessageWindow` checks its own range
+in its constructor, so constructing it from `requiredInt`'s placeholder threw
+*"max-messages must be greater than 0, was 0"* before `requireNoUnknownKeys` could name the
+`max-mesages` that hid the key — the missing key rather than the misspelling, which is the
+failure ADR-0056 exists to prevent, and which the reference already promised was handled *"at
+every depth"*. Every other value defers construction to after the checks, because `fromBlock`
+builds the record last. Do not construct a `MemoryConfig` from a collected placeholder; the
+empty variant `built` yields never escapes, since `rethrowFirstMissing` throws for the same
+value a moment later. A key belonging to the *other* variant is asked for on purpose, in
+`requireNotSetForType`, so that a documented key is refused in its own words instead of being
+reported as one the library does not know.
+
+**An empty configuration is valid and `null` never removes one (ADR-0057, ADR-0058).** No `llm`
+block, or one defining no names, gives an empty registry rather than a failure; that is what
+lets a reload remove the *last* configuration, which ADR-0014 always promised and the old
+refusal made impossible. `llm.<name> = null` and `llm = null` are refused in their own words —
+tell an explicit null from a genuinely absent root with `root().containsKey`, not `hasPath`,
+which answers false for both. **Do not turn either refusal into a skip**: that converts a
+refusal into a silent removal, which is the decision ADR-0058 declined.
+
 **Registry keys are config names, never provider names (ADR-0006).** Two named blocks may share
 a provider and differ only in parameters. Change detection is per-name diff by *record
 equality* on the parsed config, so `LlmConfig` must be an immutable record with validation
@@ -577,10 +640,10 @@ in-flight requests may still hold them.
   `if (!awaitTermination(...)) shutdownNow();`, and the check belongs after the `try`.
 - **`docs/tasks/open-decisions.md` needs the owner.** Ask; do not decide unilaterally. A new
   entry there is a question for the owner, not work to pick up, and an entry marked
-  `Needs decision` blocks the code that depends on it rather than inviting a guess. **D1–D8
+  `Needs decision` blocks the code that depends on it rather than inviting a guess. **D1–D9
   are all settled**, so that file is a record rather than a queue right now. Read it for the
   current list rather than trusting this sentence — it said "all settled" for a day after two
-  entries had been added (P29). D7 and D8 were each added with this line changed in the same
+  entries had been added (P29). D7, D8 and D9 were each added with this line changed in the same
   commit, which is the only thing that keeps a sentence like this true.
 - The §2 decision table in `brainstorm/PLAN.md` is closed: do not reopen those choices
   without asking. The ADRs carry the same decisions with their reasoning.

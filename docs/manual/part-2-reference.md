@@ -9,7 +9,7 @@ wrong. [Part 1](part-1-tutorial.md) is the way in; this is the page you come bac
 |---|---|
 | [Concepts](#concepts) | five words used precisely |
 | [Dependencies](#dependencies) | what to put in your POM |
-| [Examples](#examples) | five runnable programs, one claim each |
+| [Examples](#examples) | six runnable programs, one claim each |
 | [Configuration](#configuration) | file format, layering, every key |
 | [Memory](#memory) | the two variants and the cost rule |
 | [Java API](#java-api) | builder, registry, records, exceptions |
@@ -29,7 +29,7 @@ wrong. [Part 1](part-1-tutorial.md) is the way in; this is the page you come bac
 | Term | Meaning |
 |---|---|
 | **Name** | A key under `llm` in the configuration — `SL`, `CR`, `summariser-eu`. You invent it, your code asks for it, and it is the registry's only key. Two names may use the same provider and the same model, differing only in parameters. |
-| **Bundle** | Everything built from one name: a `ChatModel`, and optionally a `StreamingChatModel`, a `ModerationModel` and a `ChatMemoryProvider`. Immutable. |
+| **Bundle** | Everything built from one name: a `ChatModel`, and optionally a `StreamingChatModel`, a `ModerationModel` and a `ChatMemoryProvider`. It also carries that block's `custom-properties`, as text and — if you registered a handler — as an object of yours. Immutable. |
 | **Snapshot** | The complete map of name to bundle at one instant. There is exactly one live snapshot, and a reload replaces it wholesale. |
 | **Layer** | One piece of configuration text, given as a `ConfigSource`. Usually a file, but it can be a row in a database or anything else that produces text. Layers merge into one snapshot; they do not each produce their own. |
 | **Notifier** | What tells the registry that a layer changed, as a `ChangeNotifier`. Files get one built in; a layer nothing can watch has none, and the application calls `reload()` instead. |
@@ -108,6 +108,7 @@ claim rather than the library in general.
 |---|---|---|
 | `AtomicSnapshot` | [Snapshot-wide atomicity](#reload-semantics): a single save changes two models at once, while four threads keep reading both — once via two separate `get()` calls, once via one `snapshot()` shared for both lookups. A `get()` pair can occasionally catch one model already updated and the other not (a torn read); a `snapshot()` pair never can, because both lookups read the same frozen snapshot. The counter is real, not decorative: sabotaging the swap to publish one model 5 ms early makes the `get()` count jump to tens of thousands. | **nothing** — reads configuration only, sends no request |
 | `DatabaseSource` | [Configuration that is not a file](#configuration-that-is-not-a-file): a layer held in memory, standing in for a database row, driven entirely by the application. It shows all four answers `reload()` can give — a name added, a name updated, nothing changed, and a rejected reload that leaves the previous configuration live — and then the same rejected change offered through [`store()`](#storing-a-layer-back) instead, which refuses it before the row is written rather than after. | **nothing** — sends no request |
+| `CustomProperties` | [Values of your own](#values-of-your-own): a block's `custom-properties` turned into the application's own object by a handler that runs *inside* the reload. A good edit is applied and rebuilds only the block that changed; an edit the application's own rules reject leaves the whole previous configuration live, and the layer holding the text it wrote before asking; the same change through [`store()`](#storing-a-layer-back) is refused before anything is written. | **nothing** — sends no request |
 | `ProviderSwap` | The provider as configuration: the same method, called twice around a file edit, answered by `AnthropicChatModel` and then `OpenAiChatModel`. The method names no provider and has no branch. | `ANTHROPIC_API_KEY` + `OPENAI_API_KEY`, two requests |
 | `ConsoleChat` | Everything interactively: a menu of configured models, streaming where configured, moderation on input where configured, memory across turns, and reload while you watch. `/tools` switches the answering path to an `AiServices` proxy with a `@Tool` method — see [What you still write yourself](#what-you-still-write-yourself) — built on the bundle that turn fetched. | `ANTHROPIC_API_KEY` + `OPENAI_API_KEY` with the shipped `examples.conf`, which configures both providers; a configuration of your own can need one |
 | `ThreeModelCouncil` | The multi-model scenario: three names, the questions you type, capabilities read from the bundle, all read from one `snapshot()` per round so the members answer under the same configuration. A model that fails does not end the round: its exception is printed beside the others — a different type per provider, as [Exceptions](#exceptions) describes — and the round says how many answered. | two provider keys, three requests per question |
@@ -165,12 +166,40 @@ llm {
 | `memory.max-tokens` | int | — | Required by `token-window`, greater than zero. |
 | `memory.allow-remote-token-counting` | boolean | `false` | See [Memory](#memory). |
 | `moderation.enabled` | boolean | `false` | Builds a `ModerationModel`. Rejected on providers that ship none. |
+| `custom-properties` | block | *empty* | Values of your own. The library carries them and never reads them — see *[Values of your own](#values-of-your-own)*. |
 
 Defaults live in
 [`modelrack4j-reference.conf`](../../modelrack4j-core/src/main/resources/modelrack4j-reference.conf)
 inside the core jar. It is deliberately not named `reference.conf`: HOCON merges that
 automatically only for fixed paths, and your configuration names are not fixed, so the loader
 merges the defaults into each named block explicitly.
+
+**A key this list does not contain is an error.** A misspelling such as `temperatur` or
+`timeuot` is caught rather than quietly doing nothing, and the message names every offending key
+with the layer and line it came from:
+
+```
+llm.SL has 2 keys this library does not know:
+  temperatur (base.conf: 5)
+  timeuot (overrides.conf: 2)
+Check the spelling. Values your own application reads belong in the block's custom-properties
+section, which this library carries without reading.
+```
+
+It applies at every depth, so a misspelling inside `memory` is named as `memory.max-mesages`.
+A key a higher layer clears with `= null` is not reported, and neither is anything inside
+`custom-properties`.
+
+A key that belongs to the *other* memory type gets its own message, because it is a key this
+library knows rather than one it does not:
+
+```
+llm.SL.memory.allow-remote-token-counting does not apply to memory.type = message-window
+(llm.conf: 6). Remove it, or change the memory type.
+```
+
+It is still refused. A block that sets `max-messages` beside `type = token-window` says two
+different things, and the one it does not mean is the one that would be ignored.
 
 **Model names are not validated.** `model-name` goes straight to the provider's builder.
 LangChain4j ships model-name enums, but they are a convenience rather than a whitelist, and
@@ -204,7 +233,17 @@ loudly when unset. `${?VAR}` is the optional form and is the wrong tool for a cr
 yields nothing and defers the failure to the first request.
 
 To clear a value a lower layer set, rather than override it, use `null` — HOCON removes the
-key outright.
+key outright:
+
+```hocon
+llm.SL.description = null                       # the description is gone
+llm.SL.custom-properties.max-retries = null     # so is that property
+```
+
+It works at any depth, inside `custom-properties` too, and a key cleared this way is not
+reported as a misspelling. What it does **not** do is remove a whole configuration:
+`llm.SL = null` is refused, and says so — see
+[Missing and malformed files](#missing-and-malformed-files).
 
 ### Missing and malformed files
 
@@ -216,6 +255,34 @@ the second has to be corrected in the text.
 There is no "skip what is missing" mode. The reason: an operator expects every listed file to
 be read, and a file that was silently skipped is a worse outcome than a start that fails
 immediately.
+
+**A file with nothing in it is not an error.** Neither is a configuration that defines no
+names at all: the registry starts, `names()` is empty, and `get(...)` throws
+`UnknownConfigurationException` for anything you ask it. Whether that is a problem depends on
+what your application needs, which the library cannot know — so if you require a particular
+configuration to exist, check for it:
+
+```java
+if (!registry.names().contains("SL")) {
+    throw new IllegalStateException("no SL configuration was loaded");
+}
+```
+
+This is also what lets a reload remove the last configuration, and what lets a registry start
+before the file that will fill it arrives.
+
+**A higher layer cannot remove a configuration.** `llm.SL = null` is refused, and so is
+`llm = null`:
+
+```
+llm.SL is set to null (overrides.conf: 3). A configuration cannot be removed from a higher
+layer: null clears a value inside a block, not the block itself. Remove it from the layer
+that defines it instead.
+```
+
+`= null` clears a *value* — `description`, or one of your own custom properties — at any depth
+inside a block. It does not remove the block. An `llm` section that no layer mentions at all is
+a different thing and is perfectly legal: that is the empty configuration above.
 
 ---
 
@@ -252,6 +319,121 @@ bill.
 On a local counter the flag has no effect rather than being an error, because one
 configuration layer commonly spans several providers.
 
+**The two sets of keys do not mix.** `max-messages` belongs to `message-window` and
+`max-tokens` to `token-window`, and writing one beside the other type is refused rather than
+ignored: a block that sets both says two different things, and the one it does not mean is the
+one that would be dropped in silence. `allow-remote-token-counting` is a `token-window` key
+for the same reason.
+
+---
+
+## Values of your own
+
+A named configuration describes one connection to one model. Applications usually have a few
+values that belong to that connection but that this library has no business understanding:
+which prompt template to use, how many times to retry, when to escalate. Put them in a
+`custom-properties` block.
+
+```hocon
+llm {
+  SUPPORT {
+    provider   = openai
+    api-key    = ${OPENAI_API_KEY}
+    model-name = "gpt-5.1-mini"
+
+    custom-properties {
+      prompt-id      = "support-v3"
+      max-retries    = 3
+      escalate-after = 45s
+    }
+  }
+}
+```
+
+The library never reads what is inside. It renders the block as JSON and hands you the text:
+
+```java
+String json = registry.get("SUPPORT").customPropertiesText();
+```
+
+Always available, and always a JSON object: a configuration whose file has no such block gives
+`{}`, so you can pass the result straight to a parser without checking first. The block above
+becomes:
+
+```json
+{"escalate-after":"45s","max-retries":3,"prompt-id":"support-v3"}
+```
+
+**HOCON's own conveniences do not survive the trip.** `45s` and `10MB` are interpretations
+HOCON applies when *it* is asked for a duration or a size; JSON has no such types, so they
+arrive as the strings `"45s"` and `"10MB"`. Numbers, booleans and nested blocks come through as
+themselves. If you want a `Duration`, parse that string in your own code — which is where the
+meaning of the value belongs anyway.
+
+A key a higher layer cleared with `= null` is not there at all, at any depth: clearing removes,
+it does not set a JSON `null`.
+
+### Turning it into an object
+
+Register a handler and the registry keeps your object beside the models:
+
+```java
+record SupportProps(@JsonProperty("prompt-id")      String promptId,
+                    @JsonProperty("max-retries")    int maxRetries,
+                    @JsonProperty("escalate-after") String escalateAfter) {}
+
+LlmRegistry<SupportProps> registry = LlmRegistry.builder()
+        .configFiles(List.of(base, local))
+        .customPropertiesHandler(config -> mapper.readValue(
+                config.customPropertiesText(), SupportProps.class))
+        .build();
+
+SupportProps props = registry.get("SUPPORT").customProperties();
+```
+
+The handler is the reason to use this rather than a configuration file of your own. **Parsing
+is validation**: if your handler cannot produce its object it throws, and the configuration is
+rejected in the same swap as the model it belongs to. A reload that carries a broken property
+changes nothing, keeps the previous configuration live and reports through `onReloadFailure`,
+exactly as a broken `model-name` does. A `store()` that carries one writes nothing.
+
+Five things to know about the handler:
+
+- **It receives the whole `LlmConfig`**, so a rule can depend on the block's name or on its
+  provider — `config.provider()`, `config.name()` — not only on the block's own text.
+- **It is called for every configuration**, including one whose file has no `custom-properties`
+  block, which arrives as `{}`. A rule such as "an openai block needs a prompt id" is broken
+  exactly in that case, so skipping it would skip the rule.
+- **It runs while a reload holds the registry's lock.** Keep it quick: no I/O, no network, no
+  blocking. That is the same contract a `ProviderFactory` works under.
+- **Whatever it throws becomes a `ConfigValidationException`** naming the block, with yours as
+  the cause. Its method declares `throws Exception` so that a lambda calling a binding library
+  needs no `try`/`catch`.
+- **It must return an object.** Returning `null` is refused like any other rejection, because
+  the type says the object is there and a `null` would instead reach your code much later, far
+  from the handler that produced it. To say "nothing here", return a value of your own that
+  means it — an empty record, or an `Optional` as your `T`.
+
+The type parameter travels with the registry, so nothing is declared twice and nothing is cast.
+A registry built without a handler is an `LlmRegistry<Void>`, which still gives you
+`customPropertiesText()`.
+
+### What it is not
+
+It is a small, stable set of values that belong to *this model configuration* — not a data
+channel and not a cache. Every property is part of the configuration's identity: editing one
+rebuilds that bundle and reports the name in `ReloadChange.updated()`, exactly as editing
+`temperature` would. If you have a value that must not cause a rebuild, it does not belong
+here.
+
+Layering works inside the block as it does everywhere else: a higher layer overrides a property,
+and `= null` clears one, at any depth.
+
+**Values are not printed.** `LlmConfig.toString()` shows `customPropertiesText={}` when the
+block is empty and `customPropertiesText=***` otherwise — never the contents, and not even the
+key names. A substitution such as `${?SLACK_TOKEN}` resolves inside the block, so the library
+has to assume a property may be a credential, exactly as it does for `api-key`.
+
 ---
 
 ## Java API
@@ -259,7 +441,7 @@ configuration layer commonly spans several providers.
 ### Building a registry
 
 ```java
-LlmRegistry registry = LlmRegistry.builder()
+var registry = LlmRegistry.builder()
         .configFiles(List.of(path, higherPrecedencePath))   // required, lowest first
         .watch(true)                                        // default false
         .debounce(Duration.ofMillis(300))                   // default 300 ms
@@ -273,7 +455,8 @@ LlmRegistry registry = LlmRegistry.builder()
 | `watch(boolean)` | Off by default. On, the registry starts one daemon thread and watches the layers that are files, whichever of the two methods above supplied them. Layers that are not files are ignored; at least one must be a file. |
 | `notifier(ChangeNotifier)` | Something of your own that tells the registry when the configuration changed. Cannot be combined with `watch(true)`. |
 | `debounce(Duration)` | How long the files must be quiet before a reload runs. Must be positive. |
-| `build()` | Parses, validates and builds everything, then starts the notifier if there is one. Throws `ConfigValidationException` if no layer was given, two layers share an id, any block is invalid, or `watch(true)` was set and no layer is a file; `ConfigAccessException` if a layer cannot be read; `UncheckedIOException` if a directory cannot be watched. |
+| `customPropertiesHandler(...)` | Turns each block's `custom-properties` into an object of yours, and fixes the registry's type: see *[Values of your own](#values-of-your-own)*. Optional; without it the registry is an `LlmRegistry<Void>`. |
+| `build()` | Parses, validates and builds everything, then starts the notifier if there is one. Throws `ConfigValidationException` if no layer was given, two layers share an id, any block is invalid, a block carries a key the schema does not know, a configuration is set to `null`, or `watch(true)` was set and no layer is a file. A configuration that defines no names is **not** an error; `ConfigAccessException` if a layer cannot be read; `UncheckedIOException` if a directory cannot be watched. |
 
 `build()` is all-or-nothing: one bad block means no registry, not a registry missing one name.
 
@@ -281,10 +464,11 @@ LlmRegistry registry = LlmRegistry.builder()
 
 | Method | Returns |
 |---|---|
-| `get(String name)` | The current bundle. Throws `UnknownConfigurationException` if the name is not configured *now*. |
+| `get(String name)` | The current bundle. Throws `UnknownConfigurationException` if the name is not configured *now*. The bundle carries the models, and also `customPropertiesText()` and — when a handler was registered — `customProperties()`. |
 | `snapshot()` | The current generation, held still, as an `LlmSnapshot`. Every lookup on it belongs to that one generation. |
 | `names()` | The configured names, sorted. |
-| `sources()` | The layers the registry was built from, lowest precedence first, unmodifiable. The list never changes: a reload re-reads the same layers. Use it to find the layer to write instead of keeping the reference beside the registry — but write it through [`store()`](#storing-a-layer-back), never through its own `write(String)`. |
+| `sources()` | The layers the registry was built from, lowest precedence first, unmodifiable. The list never changes: a reload re-reads the same layers. |
+| `writableSources()` | The layers among those that can be written, in the same order — so you need not keep the reference beside the registry, and need not filter `sources()` yourself. A list rather than one value, because a registry may have any number; almost every application configures one and takes the first. Empty when none is writable. Write it through [`store()`](#storing-a-layer-back), never through its own `write(String)`. |
 | `onReload(Consumer<ReloadChange>)` | Registers a listener for successful reloads. |
 | `onReloadFailure(Consumer<ReloadFailure>)` | Registers a listener for rejected ones. |
 | `reload()` | Re-reads every layer now. Returns `Optional<ReloadChange>` — empty when nothing changed. Throws if the new configuration is rejected; the old one stays live. |
@@ -312,7 +496,7 @@ ConfigSource row = new ConfigSource() {
     public String text() { return jdbc.readConfigText(42); }   // your query
 };
 
-LlmRegistry registry = LlmRegistry.builder()
+var registry = LlmRegistry.builder()
         .sources(List.of(ConfigSource.ofFile(basePath), row))   // base file, then the row
         .build();
 ```
@@ -432,13 +616,26 @@ text that does not load. The next start then fails.
 ```java
 WritableConfigSource userLayer = ConfigSource.ofWritableFile(Path.of("user.conf"));
 
-LlmRegistry registry = LlmRegistry.builder()
+var registry = LlmRegistry.builder()
         .sources(List.of(ConfigSource.ofFile(basePath), userLayer))
         .watch(true)                                 // both layers are files, so both are watched
         .build();
 
 Optional<ReloadChange> change = registry.store(userLayer, newText);
 ```
+
+The example above keeps `userLayer` in a variable, which is fine when the code that builds the
+registry is the code that writes it. When it is not — a controller, an editor screen, anything
+that is handed the registry and nothing else — ask the registry instead of threading the
+reference through:
+
+```java
+WritableConfigSource userLayer = registry.writableSources().get(0);
+```
+
+It returns a list because a registry may be built with any number of writable layers, in
+`sources()` order, and the library will not guess which of two you meant. Almost every
+application configures one.
 
 `watch(true)` and `store` work together: the registry saves the change your application made,
 and still picks up an edit someone makes in an editor.
@@ -474,7 +671,7 @@ already live, and publishes nothing.
 
 | Method | Contract |
 |---|---|
-| `store(WritableConfigSource, String)` | Validates, applies, stores. Returns what changed, or empty when the new text means what was already live — a text that only reformats is stored, and reported as no change. A text that does not validate throws `ConfigValidationException`; a layer that cannot be written throws `ConfigAccessException`, and both leave the previous configuration live. |
+| `store(WritableConfigSource, String)` | Validates, applies, stores. **Returns what changed, and no listener runs** — so any state of your own keyed by configuration name must be updated from this return value as well as from `onReload`: see *[The state you keep beside the registry](#the-state-you-keep-beside-the-registry)*. Empty when the new text means what was already live — a text that only reformats is stored, and reported as no change. A text that does not validate throws `ConfigValidationException`; a layer that cannot be written throws `ConfigAccessException`, and both leave the previous configuration live. |
 | `storeIfUnchanged(WritableConfigSource, String, String)` | The same, but only while the layer still holds the text passed as `expected`. Otherwise throws `StaleLayerException`, which carries the text the layer holds now. |
 | `ConfigSource.ofWritableFile(Path)` | A file layer that can also be written. It writes through a temporary file beside the file it will replace, so a reader never sees half a write — which is why the **directory** is what needs write permission, not the file. It follows a symbolic link instead of replacing it, and it keeps the permissions the file already had. |
 | `WritableConfigSource.write(String)` | What the library calls to store the text. Implement it for a layer of your own: make it one statement, make sure it stores nothing at all if it throws, and throw `ConfigAccessException` when the medium fails. |
@@ -572,7 +769,7 @@ a cosmetic one.
 `snapshot()` reads the published generation once and hands it back:
 
 ```java
-LlmSnapshot models = registry.snapshot();   // one read of the current generation
+var models = registry.snapshot();           // one read of the current generation
 var fast = models.get("SL");
 var deep = models.get("SH");                // same generation as fast, guaranteed
 ```
@@ -591,18 +788,21 @@ in a different shape. See
 ### Records
 
 ```java
-record LlmBundle(LlmConfig config,
-                 ChatModel chatModel,
-                 Optional<StreamingChatModel> streamingChatModel,
-                 Optional<ModerationModel> moderationModel,
-                 Optional<ChatMemoryProvider> chatMemoryProvider) {
-    String name();          // == config().name()
+record LlmBundle<T>(LlmConfig config,
+                    ChatModel chatModel,
+                    Optional<StreamingChatModel> streamingChatModel,
+                    Optional<ModerationModel> moderationModel,
+                    Optional<ChatMemoryProvider> chatMemoryProvider,
+                    T customProperties) {
+    String name();                    // == config().name()
+    String customPropertiesText();    // == config().customPropertiesText()
 }
 
 record LlmConfig(String name, Optional<String> description, String provider, String apiKey,
                  String modelName, Optional<Double> temperature, Duration timeout,
                  boolean logRequests, boolean logResponses, boolean streaming,
-                 Optional<MemoryConfig> memory, boolean moderationEnabled) { }
+                 Optional<MemoryConfig> memory, boolean moderationEnabled,
+                 String customPropertiesText) { }
 
 sealed interface MemoryConfig {
     record MessageWindow(int maxMessages) implements MemoryConfig { }
@@ -616,6 +816,12 @@ record ReloadChange(Set<String> updated, Set<String> added, Set<String> removed)
 
 record ReloadFailure(List<ConfigSource> sources, Exception cause) { }
 ```
+
+`T` is what a registered
+[`CustomPropertiesHandler`](#values-of-your-own) returns, and `Void` when none was registered —
+in which case `customProperties()` can only be `null` and `customPropertiesText()` is what you
+read. It is the one component of `LlmBundle` that may be null, because `null` is the only value
+`Void` has.
 
 `LlmConfig` validates in its compact constructor, so an instance that exists is valid.
 `MemoryConfig` is sealed with a record per variant rather than one record carrying unused
@@ -690,10 +896,12 @@ calls [`reload()`](#asking-for-a-reload), and as the first half of a
 [`store()`](#storing-a-layer-back). Whichever started it, it then:
 
 1. re-parses every layer, merges, resolves once;
-2. parses each named block into an `LlmConfig`;
+2. parses each named block into an `LlmConfig`, rejecting any key the schema does not know;
 3. compares each against the live one **by record equality**, and rebuilds only what differs;
-4. assembles a complete new snapshot in a staging area;
-5. swaps one reference.
+4. builds each changed bundle in a staging area — the provider's models, and your
+   [custom-properties handler](#values-of-your-own) if you registered one;
+5. assembles a complete new snapshot;
+6. swaps one reference.
 
 **What is guaranteed:**
 
@@ -717,10 +925,49 @@ calls [`reload()`](#asking-for-a-reload), and as the first half of a
 
 **Names appearing and disappearing.** A name added to the file appears in the registry; a name
 removed from it is removed, and `get()` on it then throws. Long-running code holding a name
-must be ready for that — the console example catches it and returns to its menu.
+must be ready for that — the console example catches it and returns to its menu. This includes
+the *last* name: a reload may leave the registry with nothing in it, which is a valid state and
+not a failure. What a higher layer cannot do is remove a name with `= null`; see
+[Missing and malformed files](#missing-and-malformed-files).
 
 **Superseded bundles are not closed.** An in-flight request may still hold one. They become
 eligible for garbage collection when nothing references them.
+
+### The state you keep beside the registry
+
+If your application keeps anything of its own **indexed by configuration name** — a chat
+history, a cache, a rate limiter, an open session — then a name disappearing has to reach that
+state too. The library will not do it for you: it manages bundles, and knows nothing about the
+map you keep next to it.
+
+**A change arrives by one of two routes, and they are not interchangeable.**
+
+| what changed the configuration | how you learn |
+|---|---|
+| a watched file, or your own `reload()` | `onReload(change)` fires |
+| your own [`store()`](#storing-a-layer-back) or `storeIfUnchanged()` | the **return value**. No listener runs |
+
+A store notifies nobody on purpose: the caller made the change and is handed the result, so
+firing a listener would tell it something it already knows. That is convenient right up to the
+moment you put your clean-up in the listener and nowhere else — and then a name deleted through
+your own editor leaves its state behind, while a name deleted by editing the file cleans up
+correctly. Reusing the deleted name later picks the old state straight back up.
+
+Write the clean-up once and call it from both:
+
+```java
+void applyChange(ReloadChange change) {
+    change.removed().forEach(histories::remove);      // and updated(), if a changed
+    change.updated().forEach(histories::remove);      // configuration invalidates yours
+}
+
+registry.onReload(this::applyChange);                 // the watcher's path, and reload()'s
+registry.store(layer, newText).ifPresent(this::applyChange);   // the store path
+```
+
+Whether `updated()` belongs there is yours to decide: it means the model behind that name was
+rebuilt, which may or may not invalidate what you hold. `removed()` is not a choice — the name
+is gone, and `get()` on it now throws.
 
 ---
 
@@ -906,6 +1153,10 @@ a sign of an unfinished provider.
   of `reload()`. Long work in a listener delays the next reload; hand it off to your own
   executor if it is not quick. A listener must not call `reload()`, because it is already
   running inside one.
+- **A [custom-properties handler](#values-of-your-own) runs on the same thread, and while the
+  lock is held** — earlier than a listener, since it is part of building the snapshot rather
+  than of announcing it. Keep it to parsing and checking: no I/O, no network, no blocking. It
+  is the contract a `ProviderFactory` already works under, for the same reason.
 - **A store takes the same lock, and holds it across the layer's own write.** So
   `store()` and `storeIfUnchanged()` are serialised against reloads and against each other,
   and a slow `WritableConfigSource.write` — a database that is not answering — delays the
@@ -942,7 +1193,7 @@ interface Assistant {
     String ask(String question);
 }
 
-LlmBundle bundle = registry.get("SL");
+var bundle = registry.get("SL");
 
 AiServices<Assistant> building = AiServices.builder(Assistant.class)
         .chatModel(bundle.chatModel())
@@ -1007,6 +1258,14 @@ Deliberate and permanent:
 | `Cannot write the configuration …`, `Cannot replace the configuration file …` | A `store` could not write the layer — the directory is not writable, the disk is full. The message names that directory; the cause after the last colon, for example `java.nio.file.AccessDeniedException`, names the temporary file the write goes through rather than your configuration — and when it is the directory that refused, that file was never created | The previous configuration is still live and the layer still holds its old text; nothing was half-applied. Also a `ConfigAccessException`. Making the **file** writable does not help — it is the directory that is written. |
 | Something escapes a `catch (ConfigValidationException)` that used to catch it | A layer that cannot be reached now throws `ConfigAccessException`, which is deliberately not a subclass | Catch both types where you want the previous behaviour. The split is what lets an application answer `400` for a text it cannot accept and `503` for a disk it cannot write. |
 | `Configuration sources must have distinct ids` | Two layers with the same id — often one file listed twice | Remove the repeat. File ids are the absolute path, so two spellings of one file count as one. |
+| `` llm.SL has a key this library does not know `` | A misspelling — `temperatur` for `temperature` — or a value your own application reads, written directly in the block | Fix the spelling, or move the value into that block's `custom-properties`, which is never checked. The message names every offending key with its layer and line. |
+| `` does not apply to memory.type `` | A memory key belonging to the other variant — `allow-remote-token-counting` or `max-tokens` on a `message-window` block, `max-messages` on a `token-window` one | Remove the key, or change `memory.type`. The library knows the key; only this block's type makes it wrong, which is why it is not reported as a key it does not know. |
+| `` llm.SL is set to null `` , `` llm is set to null `` | An attempt to remove a configuration from a higher layer | `= null` clears a *value* inside a block, not the block. Remove the configuration from the layer that defines it. |
+| `` llm.SL.custom-properties must be a block of values `` | `custom-properties` set to a number, a string or a list | It has to be a block: `custom-properties { … }`. |
+| `` the custom-properties handler rejected this configuration `` | Your own `CustomPropertiesHandler` threw | The message continues with yours, and the cause is the exception you threw. The previous configuration is still live. |
+| `` the custom-properties handler returned null `` | Your own `CustomPropertiesHandler` returned `null` instead of an object | Return a value. `null` is refused because the registry's type parameter says the object is there, so it would reach your code much later. To mean "nothing here", return an empty record of your own, or use `Optional` as your type. |
+| `` cannot find symbol: method added() `` — `` location: variable change of type Object `` | Code that mentions no generics, after upgrading. `LlmRegistry` now takes a type parameter, and a **raw** `LlmRegistry` erases every generic member of the class — including the `Optional<ReloadChange>` that `reload()` and `store()` return, which is why the error names a method of `ReloadChange` and blames `Object` | Write `LlmRegistry<Void>`, or `var` for a local. Assigning the result to a declared `Optional<ReloadChange>` also compiles, with an unchecked warning. **Build clean before you conclude anything**: Maven does not recompile a source file it thinks is unchanged, so an incremental build after the upgrade can pass while `clean compile` fails |
+| `names()` is empty and every `get(...)` throws | No layer defines a configuration — an empty file, or one whose `llm` block has no names | Not an error in itself: check for the names your application requires. See *[Missing and malformed files](#missing-and-malformed-files)*. |
 | An `include` in a layer adds nothing, and nothing is logged | The layer is not a file, so the include is looked up on the classpath, and a HOCON include that finds nothing is not an error | Includes work in file layers. For a layer from a database, assemble the text before handing it over. |
 | `StaleLayerException` on an edit nobody else made | The `expected` text lost the layer's trailing newline on the way in — a shell `expected=$(cat layer.conf)` strips it, and the comparison is byte for byte | Carry the layer's text without reshaping it: start from `text()`, or read the file in a way that keeps the last byte. |
 | Reloads fire constantly | Something else writes into a watched directory | Only the configured filenames are matched, but a symlinked path matches any event in its directory by design. |

@@ -151,7 +151,7 @@ class AnthropicProviderFactoryTest {
         }
     }
 
-    private LlmRegistry registryFrom(String hocon) throws IOException {
+    private LlmRegistry<?> registryFrom(String hocon) throws IOException {
         Path file = Files.createTempFile(dir, "anthropic", ".conf");
         Files.writeString(file, hocon, StandardCharsets.UTF_8);
         return LlmRegistry.builder().configFiles(List.of(file)).build();
@@ -160,6 +160,6 @@ class AnthropicProviderFactoryTest {
     private static LlmConfig config(Optional<Double> temperature, boolean moderation) {
         return new LlmConfig("SL", Optional.empty(), "anthropic", "test-key-not-used",
                 "claude-sonnet-4-5", temperature, Duration.ofSeconds(60), false, false, false, Optional.empty(),
-                moderation);
+                moderation, "{}");
     }
 }
