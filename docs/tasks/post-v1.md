@@ -5411,3 +5411,40 @@ error message that contradicted the page describing it. The eight warnings were 
 running `javac` by hand, because the build prints them and goes on. Neither is a gap a test
 would have closed on its own — what closed them was asking the code a question the tests were
 not asking, which is the same lesson P27 recorded about reading a mutation report.
+
+---
+
+### P45 — 0.2.0 published
+
+**Status:** Done — on Maven Central 2026-09-07 ·
+**Branch:** `release/0.2.0` for the version commit, `docs/0.2.0-is-on-central` for this ·
+**Follows:** the checklist in [P36](#p36--housekeeping-a-test-that-raced-its-own-listener-and-the-first-read-of-five-merged-branches)
+
+`io.github.maxtrezzi:modelrack4j-*:0.2.0` is on Central. Seven artifacts, each with its
+signature; `modelrack4j-examples` is absent, as it was for `0.1.0`, so `skipPublishing` held.
+`maven-metadata.xml` reports `0.2.0` as both `latest` and `release`.
+
+**The `versions:set` trap fired exactly as P36 described it.** The command rewrote
+`project.build.outputTimestamp` from `2026-09-02T00:00:00Z` to `2026-09-07T19:32:28Z`, the
+second it ran. Put back to `2026-09-07T00:00:00Z` by hand, and the published jars carry
+`2026-09-07 00:00` on every entry — checked by unzipping one downloaded from Central, because
+that is the only place the answer is permanent. Without the correction every jar would have
+embedded a build instant, and no downstream reader could verify a jar against the tag.
+
+**Verified from an empty local repository**, with `-Dmaven.repo.local` pointed at a temporary
+directory rather than by emptying `~/.m2`: `dependency:get` on
+`modelrack4j-provider-openai:0.2.0` resolved and pulled core as its transitive. The provider
+jar carries its `META-INF/services/io.github.maxtrezzi.modelrack4j.spi.ProviderFactory`, so
+`ServiceLoader` discovery survives the `<resources>` entry that replaces the default; `NOTICE`
+and `LICENSE` are both inside. The core jar contains `BlockReader` and
+`CustomPropertiesHandler`, which is what proves it is 0.2.0's code and not a rebuild of
+something older.
+
+**Propagation took about ten minutes** from the Publish button to the first `200` on
+`repo1.maven.org`. A `404` before that says nothing; the check that says something is the same
+URL for `0.1.0`, which answers `200` throughout and shows the request is well formed.
+
+The dependency snippets moved to `0.2.0` only here, after the artifacts existed — six of them,
+counted: four in the README including the BOM block, one in the tutorial, one in the
+reference. The README's status line and the reference's *On Maven Central* sentence changed
+with them, and `AGENTS.md`'s Project state names `0.2.0` as the current release.

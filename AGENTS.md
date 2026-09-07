@@ -7,11 +7,14 @@ and points here; every ADR that cites the old name still resolves.
 
 ## Project state
 
-**v1 is complete, the repository is public, and `0.1.0` is released.** Seven Maven modules,
-four providers, hot reload, a two-part manual and runnable examples. M0–M6 are done: M6's
-trigger fired on 2026-09-02, when the owner tested the library and judged it publishable, and
-`io.github.maxtrezzi:modelrack4j-*:0.1.0` was signed and published to Maven Central the same
-evening. `modelrack4j-examples` is not published and is confirmed absent from Central.
+**v1 is complete, the repository is public, and `0.2.0` is the current release.** Seven Maven
+modules, four providers, hot reload, a two-part manual and six runnable examples. M0–M6 are
+done: M6's trigger fired on 2026-09-02, when the owner tested the library and judged it
+publishable, and `io.github.maxtrezzi:modelrack4j-*:0.1.0` was signed and published to Maven
+Central the same evening. `0.2.0` followed on 2026-09-07 — custom properties, a closed schema,
+an empty configuration, `writableSources()`, and a generic registry that is a source break for
+a caller who used the raw type. `modelrack4j-examples` is not published and is confirmed absent
+from Central for both releases.
 
 **A published version can never be changed or deleted.** That is new, and it changes what a
 mistake costs: before M6 a wrong API shape was a commit, now it is a permanent artifact. The
