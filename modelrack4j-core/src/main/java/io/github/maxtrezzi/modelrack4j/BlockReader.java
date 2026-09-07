@@ -121,6 +121,19 @@ final class BlockReader {
     }
 
     /**
+     * Whether any required value was found missing so far.
+     *
+     * @return true when {@link #rethrowFirstMissing()} will throw
+     * @implNote For a caller that would otherwise build a validating object out of a
+     *     placeholder. Everything else defers construction until after
+     *     {@link #requireNoUnknownKeys(String)} has run, which is what lets a misspelling be
+     *     named rather than the missing key it hid.
+     */
+    boolean anyMissing() {
+        return !missing.isEmpty();
+    }
+
+    /**
      * Rejects every key in the block that the parse never asked for.
      *
      * @param name the configuration name, for the message

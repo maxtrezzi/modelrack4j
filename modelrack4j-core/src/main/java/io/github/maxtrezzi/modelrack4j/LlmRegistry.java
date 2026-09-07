@@ -37,7 +37,7 @@ import org.slf4j.LoggerFactory;
  * <p>Build it once at startup and ask it for a bundle whenever you need one:
  *
  * <pre>{@code
- * LlmRegistry registry = LlmRegistry.builder()
+ * var registry = LlmRegistry.builder()
  *         .configFiles(List.of(defaults, product, customer))   // lowest -> highest
  *         .watch(true)                                         // reload on edit
  *         .build();
@@ -163,7 +163,7 @@ public final class LlmRegistry<T> implements AutoCloseable {
      * @return a new builder
      */
     public static Builder<Void> builder() {
-        return new Builder();
+        return new Builder<>();
     }
 
     /**
@@ -194,7 +194,7 @@ public final class LlmRegistry<T> implements AutoCloseable {
      * belongs to that one generation.
      *
      * <pre>{@code
-     * LlmSnapshot models = registry.snapshot();
+     * var models = registry.snapshot();
      * var fast = models.get("SL");
      * var deep = models.get("SH");   // same generation as fast, guaranteed
      * }</pre>
@@ -214,8 +214,7 @@ public final class LlmRegistry<T> implements AutoCloseable {
      *
      * <p>The list is exactly what {@link Builder#sources(List)} or
      * {@link Builder#configFiles(List)} was given, in the same order, and it never changes: a
-     * reload re-reads the same layers rather than replacing them. Use it to find the layer to
-     * store into, instead of carrying the reference alongside the registry:
+     * reload re-reads the same layers rather than replacing them.
      *
      * <p>To find the layer you may write, use {@link #writableSources()} rather than filtering
      * this list yourself.
@@ -650,8 +649,8 @@ public final class LlmRegistry<T> implements AutoCloseable {
         }
     }
 
-    private static <T> void notify(List<Consumer<T>> listeners, T event, String what) {
-        for (Consumer<T> listener : listeners) {
+    private static <E> void notify(List<Consumer<E>> listeners, E event, String what) {
+        for (Consumer<E> listener : listeners) {
             try {
                 listener.accept(event);
             } catch (RuntimeException e) {
@@ -859,10 +858,10 @@ public final class LlmRegistry<T> implements AutoCloseable {
             // watch(true) with no files — is reported before any work, rather than after a
             // slow load.
             ChangeNotifier chosen = chooseNotifier(layers);
-            LlmRegistry registry;
+            LlmRegistry<T> registry;
             try {
                 SnapshotLoader<T> loader = new SnapshotLoader<>(layers, customPropertiesHandler);
-                registry = new LlmRegistry(layers, loader, loader.load(Map.of()));
+                registry = new LlmRegistry<>(layers, loader, loader.load(Map.of()));
             } catch (RuntimeException e) {
                 // A bad layer must not leave a notifier the caller thinks we took ownership
                 // of: build() does not return, so nobody else can close it.
@@ -883,7 +882,7 @@ public final class LlmRegistry<T> implements AutoCloseable {
          *     be left open with nobody holding a reference to close it: {@code build()} does
          *     not return, so the caller never sees the registry that owns it.
          */
-        private static void startOrClose(ChangeNotifier notifier, LlmRegistry registry) {
+        private static void startOrClose(ChangeNotifier notifier, LlmRegistry<?> registry) {
             try {
                 notifier.start(registry::reloadQuietly);
             } catch (RuntimeException e) {

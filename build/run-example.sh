@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Shared implementation behind the five run-*.sh scripts in the repository root. Not meant to
+# Shared implementation behind the six run-*.sh scripts in the repository root. Not meant to
 # be called directly: run ./run-atomic.sh, ./run-database.sh, ./run-properties.sh,
 # ./run-swap.sh, ./run-chat.sh or ./run-council.sh.
 #
@@ -98,7 +98,8 @@ usage() {
     if [ "$needs_keys" = true ]; then
         echo "Needs ANTHROPIC_API_KEY and OPENAI_API_KEY. A .env file in the repository root is"
         echo "loaded if present, so a key you left there is used without being asked for."
-        echo "./run-atomic.sh and ./run-database.sh need no key and cost nothing."
+        echo "./run-atomic.sh, ./run-database.sh and ./run-properties.sh need no key and"
+        echo "cost nothing."
         echo
     fi
     echo "  --build   run \`mvn install\` first even if the project is already installed. Do this"
@@ -185,8 +186,9 @@ if [ "$needs_keys" = true ]; then
     done
     if [ -n "$missing" ]; then
         echo "$main sends real requests and needs:$missing" >&2
-        echo "Set them in the environment or in a .env file, or run './run-atomic.sh'" >&2
-        echo "or './run-database.sh', which cost nothing and need no key." >&2
+        echo "Set them in the environment or in a .env file, or run './run-atomic.sh'," >&2
+        echo "'./run-database.sh' or './run-properties.sh', which cost nothing and" >&2
+        echo "need no key." >&2
         exit 1
     fi
     echo "$main sends real requests to a paid API ($cost)."

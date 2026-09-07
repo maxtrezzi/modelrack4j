@@ -5254,3 +5254,160 @@ Three of the four were documentation, and none of them would have been caught by
 repository runs: the links resolve, the ADRs are consistent, the snippets load, the tests pass.
 They were found by someone upgrading a real application against the manual. That is the only
 check that finds this class of defect, and it is worth more than another pass by the author.
+
+---
+
+### P44 — The pre-release check of 0.2.0
+
+**Status:** Done — one defect in the code, 43 compiler warnings, three untested error conditions, seven findings in the prose ·
+**Branch:** `feature/custom-properties-and-a-closed-schema`, shared with P40, P41, P42 and P43 ·
+**Raised by:** the owner on 2026-09-07, as the check before 0.2.0 is released
+
+A pass over the whole branch — review, mutation testing, integration tests against the four
+real APIs, the examples, the manual and the rest of the documentation. Everything measured on
+this machine: AMD Ryzen 7 7840HS, Temurin 25, Pop!_OS 24.04.
+
+#### What was measured
+
+| | |
+|---|---|
+| `mvn clean install` | green, 8 modules |
+| `mvn -Pintegration verify` | green — 204 core tests (198 before this item's six), 47 provider unit tests, and one live IT per provider: OpenAI, Anthropic, Gemini, GLM. The four configured `model-name` values all still exist upstream, which is the only check that catches a rotted identifier (P6) |
+| `mvn -pl modelrack4j-core org.pitest:pitest-maven:mutationCoverage` | 270 mutants, 262 killed, 1 timed out, 6 survived, 1 uncovered. Line coverage 703/741. Run again after the fixes below; the branch as it arrived had 259 |
+| `build/check-docs.py` | clean, 60 ADRs and 75 tracked markdown files |
+| `./run-atomic.sh`, `./run-database.sh`, `./run-properties.sh` | all three run and print what their `--help` and the README claim |
+| the reactor's own `-Xlint:all,-serial` output | **43 warnings**, all new on this branch and all about raw types — see below |
+
+The branch as it arrived was three mutants larger than P41's table, because that run predates
+[D9](open-decisions.md#d9--finding-the-writable-layer): `writableAmong` and `writableSources`
+contribute three, all killed. This item's own fixes add eleven more — `anyMissing`,
+`built(...)`, `requireNotSetForType` and the refusal of a `null` from a handler — and those are
+killed too, so the survivor set never moved. It is the one P41 already accounted for — five
+redundant `record(path)` calls in `BlockReader` and the equivalent `Optional.empty()` in
+`LlmRegistry.reload`, plus the cleanup branch of `WritableFileConfigSource.stage` that
+`AGENTS.md` describes as untested on purpose. The report was checked to contain `BlockReader`
+before it was read (P31).
+
+#### The defect in the code
+
+**A misspelled key inside `memory` reported the key it hid, not the misspelling.**
+`memory { type = message-window, max-mesages = 4 }` answered *"memory.max-messages must be
+greater than 0, was 0"*. That is exactly the failure ADR-0056 exists to prevent, and the
+reference already promised the opposite in the same words it uses for every other depth —
+*"a misspelling inside `memory` is named as `memory.max-mesages`"*.
+
+The cause is one asymmetry: `fromBlock` builds the `LlmConfig` record *after*
+`requireNoUnknownKeys`, so a collected placeholder never reaches validation — but `readMemory`
+builds a `MemoryConfig` variant *during* the parse, and that record validates its own range in
+its constructor. `BlockReader.anyMissing()` and `LlmConfig.built(...)` defer the construction;
+the empty variant cannot escape, because `rethrowFirstMissing` throws for the same value a
+moment later. Both paths have a test.
+
+The same probe raised a second, smaller thing beside it: `memory.allow-remote-token-counting`
+on a `message-window` block was reported as *"a key this library does not know"*, and the
+message went on to advise checking the spelling or moving the key into `custom-properties` —
+all three untrue of a key the reference lists. It is still refused, because a block that sets
+it says two different things; `requireNotSetForType` now asks for the key, which keeps it out
+of the closed-schema check, and names the memory type instead.
+
+Both new messages have a troubleshooting row, because every other message this branch
+introduced got one and that table is where a reader arrives holding an error. The Memory
+section says the two sets of keys do not mix, which is where someone learns the variants in
+the first place.
+
+#### Forty-three compiler warnings, starting in the class the generic is about
+
+`-Xlint:all,-serial` is configured in the parent POM, and the build prints its warnings and
+carries on, so nothing announced these. Counted on `b211d14` with `mvn clean install
+-DskipTests` in a detached worktree, so the figure is the branch's own and not a half-fixed
+tree: **43, and 0 afterwards.**
+
+Eight are in `modelrack4j-core/src/main`: raw `Builder` and raw `LlmRegistry` inside
+`builder()`, `build()` and `startOrClose`, each a `rawtypes` and three of them an `unchecked`
+alongside. ADR-0059 is about what a raw type costs a caller, and the class it is about was
+using three of them internally.
+
+The other 35 are in test sources, in all five modules that build a registry — each
+`registryFrom` helper, each `List<LlmRegistry>` of registries to close, and the four provider
+`*IT.java` files. They are why the count is what it is: a raw receiver makes every
+`assertThat(registry.get(...).something())` an unchecked call as well, so one raw declaration
+in `AnthropicProviderFactoryTest` produced seven warnings. The tests never need the type
+argument, so they take `LlmRegistry<?>` — except `built.forEach(LlmRegistry::close)`, where a
+method reference takes no wildcard.
+
+Two javadoc examples taught readers the same thing — `LlmRegistry registry =
+LlmRegistry.builder()` in `LlmRegistry`'s own class comment, and `LlmSnapshot models = ...`
+twice — while the README, both manual pages and every example had been moved to `var`. A grep
+for the type name finds them; a grep for the word "generic" does not.
+
+#### What the prose still had wrong
+
+- **`sources()`'s javadoc was fixed halfway by D9.** The sentence *"Use it to find the layer to
+  store into … :"* kept its colon after the `instanceof` example it introduced was deleted, and
+  the paragraph below it now said to use `writableSources()` instead. The reference's own row
+  had been corrected properly; only the javadoc was left contradicting itself.
+- **`writableSources()` had no CHANGELOG entry**, though the README, the reference and ADR-0060
+  all carry it. It is a new public method in the release being prepared, and the CHANGELOG is
+  what a consumer reads first. The generic entry beside it was also the only one in its section
+  citing no ADR.
+- **The tutorial printed output its own command does not produce.** Step 6 shows
+  `temperatur (llm.conf: 3)`, but the tutorial runs with
+  `-Dexec.args=$HOME/modelrack4j-tutorial/llm.conf`, so the origin is the absolute path — as
+  the substitution example four paragraphs later correctly shows. P26 again, found the same
+  way: by running it.
+- **`run-example.sh` said "the five run-\*.sh scripts" and then listed six**, and its two
+  enumerations of the examples that cost nothing still named only `run-atomic.sh` and
+  `run-database.sh`. Those two lines are the ones `AGENTS.md` warns about by name from P19,
+  and a sixth example walked past them again: they sit at lines 101 and 188, far from anything
+  the diff touched.
+- **`LlmConfig.toString()`'s javadoc still said it hides only the credential**, while the
+  method also redacts `customPropertiesText`. The reference described the new behaviour
+  correctly; the javadoc — which is the published API documentation — did not.
+- **A handler returning `null` was accepted**, leaving `customProperties()` null on a bundle
+  whose type parameter says otherwise, while every `null` from a `ProviderFactory` goes through
+  `requireProduced`. `LlmBundle`'s own javadoc claimed *"with a handler registered the object is
+  always there"*, which nothing enforced. It is now refused, and the reference's list of things
+  to know about the handler says so.
+- **`gpt-4o-mini` in the README and the reference**, the only two places using a model the rest
+  of the documentation does not — and the README explains its choice of `gpt-5.1` alongside
+  `claude-sonnet-5` two sections earlier. Plus a `custom-properties` row inserted between two
+  `memory.*` rows, and two lines left at 119 and 143 characters by a reflow.
+
+#### Three error conditions nothing exercised
+
+Asked whether every error condition has a test, and answered by counting rather than by
+reading: **57 places in the library sources throw**, and the 112 message assertions in the
+suite cover 37 of them outright. Most of the rest are asserted by scenario instead, in
+`ConfigSourceTest` — *"the source's id, not a file name, is what a parse error names"*, *"a
+file source that cannot read names the file and the reason"*. Three were exercised by nothing
+at all, proved by deleting the check and watching all 204 tests still pass:
+
+| | |
+|---|---|
+| `ConfigSources.requireUsableId` | a `ConfigSource` whose `id()` is null or blank |
+| `TextLayer.parse` | a `ConfigSource` whose `text()` returns null |
+| `ConfigLoader`'s second `catch` | a resolution that fails for a reason other than an unset variable |
+
+They share a shape: all three are the mistakes of somebody writing a `ConfigSource` of their
+own, which is what ADR-0042 opened the interface for. Every fake in this suite implements it
+correctly, so nothing reached them. The third needed a probe to reach at all — a circular
+substitution still raises `UnresolvedSubstitution` and lands in the *first* catch; what
+reaches the second is concatenating a string with an object, which fails as `WrongType`
+during `resolve()`.
+
+Each of the three tests was checked the way it was found: with the guard removed it fails,
+with the guard in place it passes.
+
+**Mutation testing could not have found these**, which is worth writing down. PIT generates no
+mutants on a bare `throw` line, and the mutant on the guard above it — `if (id == null ||
+id.isBlank())` negated — is killed by any test at all that passes a valid id, because the
+negation then throws for every one of them. A survivor list is a question about the tests, but
+it is not this question.
+
+#### What this says about the checks
+
+The one code defect was found by a throwaway probe, not by the suite: 198 tests passed over an
+error message that contradicted the page describing it. The eight warnings were found by
+running `javac` by hand, because the build prints them and goes on. Neither is a gap a test
+would have closed on its own — what closed them was asking the code a question the tests were
+not asking, which is the same lesson P27 recorded about reading a mutation report.

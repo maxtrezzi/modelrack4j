@@ -43,7 +43,7 @@ class LayeredResolutionTest {
     Path dir;
 
     /** Every registry a test built, so none is left open when it ends. */
-    private final List<LlmRegistry> built = new ArrayList<>();
+    private final List<LlmRegistry<?>> built = new ArrayList<>();
 
     @Test
     @DisplayName("a mandatory substitution in a lower layer is fine when a higher layer overrides that key")

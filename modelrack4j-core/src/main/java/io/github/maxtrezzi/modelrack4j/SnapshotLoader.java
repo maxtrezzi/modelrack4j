@@ -212,7 +212,8 @@ final class SnapshotLoader<T> {
      * @return whatever the handler returned, or {@code null} when there is no handler — which
      *     is then the only value {@code T} has, because the registry is an
      *     {@code LlmRegistry<Void>}
-     * @throws ConfigValidationException if the handler rejects the configuration
+     * @throws ConfigValidationException if the handler rejects the configuration, or returns
+     *     {@code null} instead of an object
      * @implNote ADR-0055. The handler runs here rather than after {@code fromBlock} so that it
      *     sees a provider that exists and rules the provider has already accepted, and before
      *     {@code createChatModel} so that a rejected configuration does not first build a model
@@ -228,8 +229,9 @@ final class SnapshotLoader<T> {
         if (customPropertiesHandler == null) {
             return null;
         }
+        T properties;
         try {
-            return customPropertiesHandler.handle(config);
+            properties = customPropertiesHandler.handle(config);
         } catch (InterruptedException interrupted) {
             // The handler declares throws Exception, so this one can arrive. Wrapping it
             // without restoring the flag would discard a cancellation the caller's thread is
@@ -238,9 +240,24 @@ final class SnapshotLoader<T> {
             throw new ConfigValidationException(path(config) + ": the custom-properties handler"
                     + " was interrupted", interrupted);
         } catch (Exception rejected) {
+            // getMessage() rather than the exception, so the sentence reads as one: an
+            // application's own "max-retries is 99" belongs in this message, its class name
+            // does not. A rejection thrown with no message falls back to the class name,
+            // because "rejected this configuration: null" names nothing at all.
+            String said = rejected.getMessage() == null
+                    ? rejected.getClass().getName()
+                    : rejected.getMessage();
             throw new ConfigValidationException(path(config) + ": the custom-properties handler"
-                    + " rejected this configuration: " + rejected.getMessage(), rejected);
+                    + " rejected this configuration: " + said, rejected);
         }
+        if (properties == null) {
+            // Through the same fail-fast as a factory that produces no model: a handler that
+            // returns nothing leaves customProperties() null on a bundle whose type says it is
+            // there, and the application meets it as a NullPointerException far from here.
+            throw new ConfigValidationException(path(config) + ": the custom-properties handler"
+                    + " returned null. Return an object, or throw to reject the configuration.");
+        }
+        return properties;
     }
 
     /** Anchors a message to the block the user wrote, e.g. {@code llm.SL}. */
@@ -254,8 +271,8 @@ final class SnapshotLoader<T> {
      * dropping it would defeat the fail-fast contract: the configuration would look honoured
      * and the object would not be there.
      */
-    private static <T> Optional<T> requireProduced(
-            Optional<T> produced, LlmConfig config, String requestedBy, String what) {
+    private static <M> Optional<M> requireProduced(
+            Optional<M> produced, LlmConfig config, String requestedBy, String what) {
         if (produced == null || produced.isEmpty()) {
             throw new ConfigValidationException(path(config) + " sets "
                     + requestedBy + ", but provider '" + config.provider()

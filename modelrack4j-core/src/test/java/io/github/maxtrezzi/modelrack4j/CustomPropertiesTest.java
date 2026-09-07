@@ -523,4 +523,91 @@ class CustomPropertiesTest {
             assertThat(registry.get("SL").customProperties().promptId()).isEqualTo("support-v3");
         }
     }
+
+    @Test
+    @DisplayName("a handler that returns null is refused, rather than leaving a null on the bundle")
+    void aHandlerMayNotReturnNull() throws IOException {
+        // The type says the object is there, so a null reaches the application as a
+        // NullPointerException far from the handler that produced it.
+        Path f = file(BLOCK);
+        assertThatThrownBy(() -> LlmRegistry.builder()
+                .configFiles(List.of(f))
+                .customPropertiesHandler(config -> null)
+                .build())
+                .isInstanceOf(ConfigValidationException.class)
+                .hasMessageContaining("llm.SL")
+                .hasMessageContaining("returned null");
+    }
+
+    @Test
+    @DisplayName("a rejection thrown with no message names the exception instead of saying null")
+    void aRejectionWithoutAMessageStillSaysSomething() throws IOException {
+        Path f = file(BLOCK);
+        assertThatThrownBy(() -> LlmRegistry.builder()
+                .configFiles(List.of(f))
+                .customPropertiesHandler(config -> {
+                    throw new IllegalStateException();
+                })
+                .build())
+                .isInstanceOf(ConfigValidationException.class)
+                .hasMessageContaining("java.lang.IllegalStateException")
+                .hasMessageNotContaining(": null");
+    }
+
+    @Test
+    @DisplayName("a memory key belonging to the other variant names the memory type")
+    void aKeyFromTheOtherMemoryVariantIsNamedByType() throws IOException {
+        // The library knows this key. Reporting it as one it does not know would send the
+        // reader to check the spelling, or to move a documented key into custom-properties.
+        Path f = file("llm.SL { provider = fake-local, api-key = \"k\", model-name = \"m\",\n"
+                + "  memory { type = message-window, max-messages = 4,\n"
+                + "           allow-remote-token-counting = true } }\n");
+
+        assertThatThrownBy(() -> LlmRegistry.builder().configFiles(List.of(f)).build())
+                .isInstanceOf(ConfigValidationException.class)
+                .hasMessageContaining("llm.SL.memory.allow-remote-token-counting does not apply"
+                        + " to memory.type = message-window")
+                .hasMessageNotContaining("does not know");
+    }
+
+    @Test
+    @DisplayName("and the same the other way round")
+    void aMessageWindowKeyOnTokenWindowIsNamedByType() throws IOException {
+        Path f = file("llm.SL { provider = fake-local, api-key = \"k\", model-name = \"m\",\n"
+                + "  memory { type = token-window, max-tokens = 10, max-messages = 4 } }\n");
+
+        assertThatThrownBy(() -> LlmRegistry.builder().configFiles(List.of(f)).build())
+                .isInstanceOf(ConfigValidationException.class)
+                .hasMessageContaining("llm.SL.memory.max-messages does not apply"
+                        + " to memory.type = token-window");
+    }
+
+    @Test
+    @DisplayName("a misspelling inside memory names the misspelling, not the key it hid")
+    void aMisspelledMemoryKeyIsNamedRatherThanItsAbsence() throws IOException {
+        // memory is the one sub-block whose value builds a validating record during the
+        // parse. Building it from the placeholder reported "max-messages must be greater
+        // than 0, was 0" — the missing key rather than the misspelling that caused it.
+        Path f = file("llm.SL { provider = fake-local, api-key = \"k\", model-name = \"m\",\n"
+                + "  memory { type = message-window, max-mesages = 4 } }\n");
+
+        assertThatThrownBy(() -> LlmRegistry.builder().configFiles(List.of(f)).build())
+                .isInstanceOf(ConfigValidationException.class)
+                .hasMessageContaining("memory.max-mesages")
+                .hasMessageNotContaining("greater than 0");
+    }
+
+    @Test
+    @DisplayName("a memory value that is simply absent is still reported as missing")
+    void anAbsentMemoryValueIsStillReportedAsMissing() throws IOException {
+        // The empty variant the check above yields must never escape: this is the path that
+        // proves rethrowFirstMissing() catches it.
+        Path f = file("llm.SL { provider = fake-local, api-key = \"k\", model-name = \"m\",\n"
+                + "  memory { type = token-window } }\n");
+
+        assertThatThrownBy(() -> LlmRegistry.builder().configFiles(List.of(f)).build())
+                .isInstanceOf(ConfigValidationException.class)
+                .hasMessageContaining(
+                        "No configuration setting found for key 'memory.max-tokens'");
+    }
 }

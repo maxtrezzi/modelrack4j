@@ -43,7 +43,7 @@ import java.util.Set;
  * models have to agree:
  *
  * <pre>{@code
- * LlmSnapshot models = registry.snapshot();
+ * var models = registry.snapshot();
  * ChatModel a = models.get("SL").chatModel();
  * ChatModel b = models.get("SH").chatModel();     // guaranteed same generation as a
  * }</pre>

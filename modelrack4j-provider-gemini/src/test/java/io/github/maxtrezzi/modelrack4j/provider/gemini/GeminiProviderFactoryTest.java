@@ -153,7 +153,7 @@ class GeminiProviderFactoryTest {
         }
     }
 
-    private LlmRegistry registryFrom(String hocon) throws IOException {
+    private LlmRegistry<?> registryFrom(String hocon) throws IOException {
         Path file = Files.createTempFile(dir, "gemini", ".conf");
         Files.writeString(file, hocon, StandardCharsets.UTF_8);
         return LlmRegistry.builder().configFiles(List.of(file)).build();

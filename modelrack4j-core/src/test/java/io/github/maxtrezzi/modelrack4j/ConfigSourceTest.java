@@ -428,6 +428,67 @@ class ConfigSourceTest {
     }
 
     @Test
+    @DisplayName("a source whose id is blank is refused, because the id is what names a layer")
+    void aBlankIdIsRefused() {
+        // The mistakes below belong to whoever writes a ConfigSource of their own, which is
+        // the reason the interface exists (ADR-0042). Every fake in this suite is written
+        // correctly, so nothing else reaches these two checks.
+        assertThatThrownBy(() -> LlmRegistry.builder()
+                .sources(List.of(new ConfigSource() {
+                    @Override
+                    public String id() {
+                        return "  ";
+                    }
+
+                    @Override
+                    public String text() {
+                        return block("SL", "m");
+                    }
+                }))
+                .build())
+                .isInstanceOf(ConfigValidationException.class)
+                .hasMessageContaining("non-blank id");
+    }
+
+    @Test
+    @DisplayName("a source whose text is null is refused, naming the source rather than failing"
+            + " inside the parser")
+    void aNullTextIsRefused() {
+        assertThatThrownBy(() -> LlmRegistry.builder()
+                .sources(List.of(new ConfigSource() {
+                    @Override
+                    public String id() {
+                        return "empty_row#7";
+                    }
+
+                    @Override
+                    public String text() {
+                        return null;
+                    }
+                }))
+                .build())
+                .isInstanceOf(ConfigValidationException.class)
+                .hasMessageContaining("empty_row#7")
+                .hasMessageContaining("returned no text");
+    }
+
+    @Test
+    @DisplayName("a resolution that fails for a reason other than an unset variable says so")
+    void aResolutionFailureThatIsNotASubstitutionIsReported() {
+        // Concatenating a string with an object fails at resolve() with WrongType rather than
+        // UnresolvedSubstitution, so it lands in the other branch — the one that must not
+        // advise setting an environment variable, because there is none to set.
+        assertThatThrownBy(() -> LlmRegistry.builder()
+                .sources(List.of(ConfigSource.of("row#1",
+                        "o { x = 1 }\nllm.SL { provider = fake-local, api-key = \"k\","
+                                + " model-name = \"m\"${o} }")))
+                .build())
+                .isInstanceOf(ConfigValidationException.class)
+                .hasMessageContaining("could not be resolved")
+                .hasMessageNotContaining("mandatory substitution");
+    }
+
+    @Test
     @DisplayName("a file source reads its file as UTF-8, every time it is asked")
     void aFileSourceReadsItsFile() throws IOException {
         Path file = dir.resolve("app.conf");

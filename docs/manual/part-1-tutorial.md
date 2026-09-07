@@ -319,7 +319,7 @@ llm.SL { provider = anthropic, api-key = ${ANTHROPIC_API_KEY}
 
 ```
 ConfigValidationException: llm.SL has a key this library does not know:
-  temperatur (llm.conf: 3)
+  temperatur (/home/you/modelrack4j-tutorial/llm.conf: 3)
 Check the spelling. Values your own application reads belong in the block's custom-properties
 section, which this library carries without reading.
 ```

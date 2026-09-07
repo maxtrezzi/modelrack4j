@@ -410,7 +410,7 @@ and it is not redundant.
 (ADR-0055).** The `custom-properties` sub-block is rendered from the merged configuration with
 `ConfigRenderOptions.concise()` and carried as a JSON string; an optional
 `CustomPropertiesHandler<T>` registered on the builder turns it into the application's own
-object, in `buildBundle`, after `factory.validate` and before `createChatModel`. Four things
+object, in `buildBundle`, after `factory.validate` and before `createChatModel`. Five things
 here are load-bearing:
 
 - **The parsed object must not go into the record.** The reload diff is record equality on
@@ -426,6 +426,10 @@ here are load-bearing:
   building a new `Builder<U>`.** The obvious `return new Builder<>(handler)` compiles and
   silently drops the sources, `watch`, `debounce` and the notifier, so the order a caller
   chains the methods in would change the result. A test registers the handler last.
+- **A handler that returns `null` is refused, like a factory that produces no model.** The
+  type parameter says the object is there, so a `null` would surface as a
+  `NullPointerException` in the application, far from the handler that produced it. The
+  no-handler case still returns `null`, because `Void` has no other value.
 - **The generic reaches `LlmRegistry`, `LlmBundle` and `LlmSnapshot`, and stops at
   `LlmConfig`** — which is why no provider is affected. It **is** a source break for callers
   who used the raw type and chained through `reload()` or `store()`: a raw type erases every
@@ -443,6 +447,19 @@ recorded set is complete even when the block is invalid — otherwise a misspell
 would report every key after it as unknown — and `rethrowFirstMissing` reproduces the original
 failure by asking Typesafe Config again, because the tutorial prints that message as real
 output three times.
+
+**`memory` is the one sub-block that builds a validating object during the parse, and that is
+why `readMemory` goes through `built(...)`.** `MemoryConfig.MessageWindow` checks its own range
+in its constructor, so constructing it from `requiredInt`'s placeholder threw
+*"max-messages must be greater than 0, was 0"* before `requireNoUnknownKeys` could name the
+`max-mesages` that hid the key — the missing key rather than the misspelling, which is the
+failure ADR-0056 exists to prevent, and which the reference already promised was handled *"at
+every depth"*. Every other value defers construction to after the checks, because `fromBlock`
+builds the record last. Do not construct a `MemoryConfig` from a collected placeholder; the
+empty variant `built` yields never escapes, since `rethrowFirstMissing` throws for the same
+value a moment later. A key belonging to the *other* variant is asked for on purpose, in
+`requireNotSetForType`, so that a documented key is refused in its own words instead of being
+reported as one the library does not know.
 
 **An empty configuration is valid and `null` never removes one (ADR-0057, ADR-0058).** No `llm`
 block, or one defining no names, gives an empty registry rather than a failure; that is what

@@ -25,6 +25,7 @@ import java.time.Duration;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.Supplier;
 
 /**
  * One named configuration block, parsed and validated.
@@ -120,7 +121,9 @@ public record LlmConfig(
     }
 
     /**
-     * Returns every component except the credential, which is replaced by {@code ***}.
+     * Returns every component, with the two that may hold a credential replaced by
+     * {@code ***}: {@link #apiKey()} always, and {@link #customPropertiesText()} whenever it
+     * is not empty.
      *
      * @return a description safe to log
      * @implNote The generated {@code toString()} of a record prints every component, and
@@ -129,6 +132,11 @@ public record LlmConfig(
      *     {@code registry.get(name).config()}, so one {@code log.info("{}", config)} in an
      *     application would put the key in a log file. The same reasoning already applies to
      *     {@link ConfigSource#id()}, which the library itself prints.
+     *     <p>A custom property is redacted for the same reason and one step further: a
+     *     substitution resolves inside that block too, so the library has to assume a property
+     *     may be a credential. Not even the key names are printed, because a block with one
+     *     key is identified by that key alone. {@code {}} is printed as itself, since an empty
+     *     block hides nothing.
      *     <p>Only {@code toString()} changes. {@code equals} and {@code hashCode} stay as the
      *     record generates them, because the per-name reload diff is record equality on this
      *     type (ADR-0006) and it has to keep seeing a changed key as a changed configuration.
@@ -261,13 +269,66 @@ public record LlmConfig(
         }
         String type = memory.string("type");
         return switch (type) {
-            case "message-window" -> Optional.of(
-                    new MemoryConfig.MessageWindow(memory.requiredInt("max-messages")));
-            case "token-window" -> Optional.of(new MemoryConfig.TokenWindow(
-                    memory.requiredInt("max-tokens"),
-                    memory.has("allow-remote-token-counting")
-                            && memory.bool("allow-remote-token-counting")));
+            case "message-window" -> {
+                requireNotSetForType(name, memory, type, "max-tokens",
+                        "allow-remote-token-counting");
+                int maxMessages = memory.requiredInt("max-messages");
+                yield built(memory, () -> new MemoryConfig.MessageWindow(maxMessages));
+            }
+            case "token-window" -> {
+                requireNotSetForType(name, memory, type, "max-messages");
+                int maxTokens = memory.requiredInt("max-tokens");
+                boolean remote = memory.has("allow-remote-token-counting")
+                        && memory.bool("allow-remote-token-counting");
+                yield built(memory, () -> new MemoryConfig.TokenWindow(maxTokens, remote));
+            }
             default -> throw MemoryConfig.unknownType(type);
         };
+    }
+
+    /**
+     * Builds the memory variant, unless a required value of it was missing.
+     *
+     * @param memory a reader over the {@code memory} sub-block
+     * @param variant how to build it from the values read
+     * @return the variant, or empty when a value it needs was not there
+     * @implNote This is the one place in the parse that builds a validating object before the
+     *     block has been checked for unknown keys, and building it from a placeholder is what
+     *     made a misspelled {@code max-mesages} report {@code max-messages must be greater
+     *     than 0} — the missing key rather than the misspelling that hid it, which is the
+     *     failure ADR-0056 exists to prevent. The empty result never escapes: {@code
+     *     rethrowFirstMissing()} throws for the same missing value a moment later, after
+     *     {@code requireNoUnknownKeys} has had its say.
+     */
+    private static Optional<MemoryConfig> built(
+            BlockReader memory, Supplier<MemoryConfig> variant) {
+        return memory.anyMissing() ? Optional.empty() : Optional.of(variant.get());
+    }
+
+    /**
+     * Refuses a memory key that belongs to the other variant.
+     *
+     * @param name the configuration name, for the message
+     * @param memory a reader over the {@code memory} sub-block
+     * @param type the configured memory type
+     * @param inapplicable the keys the other variant uses
+     * @throws ConfigValidationException if any of them is set
+     * @implNote Asking for the key is what keeps it out of the closed-schema check, which
+     *     would otherwise report it as a key this library does not know and tell the reader to
+     *     check the spelling or move it to {@code custom-properties} — all three untrue of a
+     *     key the reference lists (ADR-0056). It is still refused, because a block that sets
+     *     {@code max-messages} beside {@code type = token-window} says two different things,
+     *     and the one it does not mean is the one that would be ignored.
+     */
+    private static void requireNotSetForType(
+            String name, BlockReader memory, String type, String... inapplicable) {
+        for (String key : inapplicable) {
+            if (memory.has(key)) {
+                throw new ConfigValidationException("llm." + name + ".memory." + key
+                        + " does not apply to memory.type = " + type + " ("
+                        + memory.value(key).origin().description() + "). Remove it, or change"
+                        + " the memory type.");
+            }
+        }
     }
 }

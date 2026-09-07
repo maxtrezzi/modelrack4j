@@ -64,7 +64,8 @@ public record LlmBundle<T>(
      *     the case where that is the sole value its type has: a registry built without a
      *     {@link CustomPropertiesHandler} is an {@code LlmRegistry<Void>}, and {@code null} is
      *     the only {@code Void}. With a handler registered the object is always there, because
-     *     the handler is called even for a configuration that has no such block.
+     *     the handler is called even for a configuration that has no such block, and one that
+     *     returns {@code null} is refused rather than believed.
      */
     public LlmBundle {
         Objects.requireNonNull(config, "config");

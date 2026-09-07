@@ -272,7 +272,7 @@ class GlmProviderFactoryTest {
         }
     }
 
-    private LlmRegistry registryFrom(String hocon) throws IOException {
+    private LlmRegistry<?> registryFrom(String hocon) throws IOException {
         Path file = Files.createTempFile(dir, "glm", ".conf");
         Files.writeString(file, hocon, StandardCharsets.UTF_8);
         return LlmRegistry.builder().configFiles(List.of(file)).build();

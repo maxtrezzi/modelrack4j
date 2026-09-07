@@ -190,6 +190,17 @@ It applies at every depth, so a misspelling inside `memory` is named as `memory.
 A key a higher layer clears with `= null` is not reported, and neither is anything inside
 `custom-properties`.
 
+A key that belongs to the *other* memory type gets its own message, because it is a key this
+library knows rather than one it does not:
+
+```
+llm.SL.memory.allow-remote-token-counting does not apply to memory.type = message-window
+(llm.conf: 6). Remove it, or change the memory type.
+```
+
+It is still refused. A block that sets `max-messages` beside `type = token-window` says two
+different things, and the one it does not mean is the one that would be ignored.
+
 **Model names are not validated.** `model-name` goes straight to the provider's builder.
 LangChain4j ships model-name enums, but they are a convenience rather than a whitelist, and
 being compiled at release time they lag the providers — a model released after LangChain4j
@@ -308,6 +319,12 @@ bill.
 On a local counter the flag has no effect rather than being an error, because one
 configuration layer commonly spans several providers.
 
+**The two sets of keys do not mix.** `max-messages` belongs to `message-window` and
+`max-tokens` to `token-window`, and writing one beside the other type is refused rather than
+ignored: a block that sets both says two different things, and the one it does not mean is the
+one that would be dropped in silence. `allow-remote-token-counting` is a `token-window` key
+for the same reason.
+
 ---
 
 ## Values of your own
@@ -322,7 +339,7 @@ llm {
   SUPPORT {
     provider   = openai
     api-key    = ${OPENAI_API_KEY}
-    model-name = "gpt-4o-mini"
+    model-name = "gpt-5.1-mini"
 
     custom-properties {
       prompt-id      = "support-v3"
@@ -380,7 +397,7 @@ rejected in the same swap as the model it belongs to. A reload that carries a br
 changes nothing, keeps the previous configuration live and reports through `onReloadFailure`,
 exactly as a broken `model-name` does. A `store()` that carries one writes nothing.
 
-Four things to know about the handler:
+Five things to know about the handler:
 
 - **It receives the whole `LlmConfig`**, so a rule can depend on the block's name or on its
   provider — `config.provider()`, `config.name()` — not only on the block's own text.
@@ -392,6 +409,10 @@ Four things to know about the handler:
 - **Whatever it throws becomes a `ConfigValidationException`** naming the block, with yours as
   the cause. Its method declares `throws Exception` so that a lambda calling a binding library
   needs no `try`/`catch`.
+- **It must return an object.** Returning `null` is refused like any other rejection, because
+  the type says the object is there and a `null` would instead reach your code much later, far
+  from the handler that produced it. To say "nothing here", return a value of your own that
+  means it — an empty record, or an `Optional` as your `T`.
 
 The type parameter travels with the registry, so nothing is declared twice and nothing is cast.
 A registry built without a handler is an `LlmRegistry<Void>`, which still gives you
@@ -1238,9 +1259,11 @@ Deliberate and permanent:
 | Something escapes a `catch (ConfigValidationException)` that used to catch it | A layer that cannot be reached now throws `ConfigAccessException`, which is deliberately not a subclass | Catch both types where you want the previous behaviour. The split is what lets an application answer `400` for a text it cannot accept and `503` for a disk it cannot write. |
 | `Configuration sources must have distinct ids` | Two layers with the same id — often one file listed twice | Remove the repeat. File ids are the absolute path, so two spellings of one file count as one. |
 | `` llm.SL has a key this library does not know `` | A misspelling — `temperatur` for `temperature` — or a value your own application reads, written directly in the block | Fix the spelling, or move the value into that block's `custom-properties`, which is never checked. The message names every offending key with its layer and line. |
+| `` does not apply to memory.type `` | A memory key belonging to the other variant — `allow-remote-token-counting` or `max-tokens` on a `message-window` block, `max-messages` on a `token-window` one | Remove the key, or change `memory.type`. The library knows the key; only this block's type makes it wrong, which is why it is not reported as a key it does not know. |
 | `` llm.SL is set to null `` , `` llm is set to null `` | An attempt to remove a configuration from a higher layer | `= null` clears a *value* inside a block, not the block. Remove the configuration from the layer that defines it. |
 | `` llm.SL.custom-properties must be a block of values `` | `custom-properties` set to a number, a string or a list | It has to be a block: `custom-properties { … }`. |
 | `` the custom-properties handler rejected this configuration `` | Your own `CustomPropertiesHandler` threw | The message continues with yours, and the cause is the exception you threw. The previous configuration is still live. |
+| `` the custom-properties handler returned null `` | Your own `CustomPropertiesHandler` returned `null` instead of an object | Return a value. `null` is refused because the registry's type parameter says the object is there, so it would reach your code much later. To mean "nothing here", return an empty record of your own, or use `Optional` as your type. |
 | `` cannot find symbol: method added() `` — `` location: variable change of type Object `` | Code that mentions no generics, after upgrading. `LlmRegistry` now takes a type parameter, and a **raw** `LlmRegistry` erases every generic member of the class — including the `Optional<ReloadChange>` that `reload()` and `store()` return, which is why the error names a method of `ReloadChange` and blames `Object` | Write `LlmRegistry<Void>`, or `var` for a local. Assigning the result to a declared `Optional<ReloadChange>` also compiles, with an unchecked warning. **Build clean before you conclude anything**: Maven does not recompile a source file it thinks is unchanged, so an incremental build after the upgrade can pass while `clean compile` fails |
 | `names()` is empty and every `get(...)` throws | No layer defines a configuration — an empty file, or one whose `llm` block has no names | Not an error in itself: check for the names your application requires. See *[Missing and malformed files](#missing-and-malformed-files)*. |
 | An `include` in a layer adds nothing, and nothing is logged | The layer is not a file, so the include is looked up on the classpath, and a HOCON include that finds nothing is not an error | Includes work in file layers. For a layer from a database, assemble the text before handing it over. |

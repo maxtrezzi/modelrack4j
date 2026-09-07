@@ -263,7 +263,8 @@ Start with `AtomicSnapshot` if you want to see the least obvious guarantee at no
 ```
 
 One script per example — `run-atomic.sh`, `run-database.sh`, `run-properties.sh`,
-`run-swap.sh`, `run-chat.sh`, `run-council.sh` — each with a `--help` that says what it shows and what it costs. They
+`run-swap.sh`, `run-chat.sh`, `run-council.sh` — each with a `--help` that says what it shows
+and what it costs. They
 install the project first if they have to, because `exec:java` resolves `modelrack4j-core`
 from `~/.m2` rather than from the reactor. There are no `.bat` counterparts: on Windows,
 run the command `--help` prints.
@@ -337,9 +338,9 @@ Every named block lives under the `llm` root. Names are yours: `SL`, `CR`,
 | `memory.type` | string | *no memory* | `message-window` or `token-window` |
 | `memory.max-messages` | int | — | required by `message-window` |
 | `memory.max-tokens` | int | — | required by `token-window` |
-| `custom-properties` | block | *empty* | values of your own, carried and never read; see below |
 | `memory.allow-remote-token-counting` | boolean | `false` | see [Memory](#memory) |
 | `moderation.enabled` | boolean | `false` | builds a `ModerationModel` |
+| `custom-properties` | block | *empty* | values of your own, carried and never read; see below |
 
 **`description` is for whoever did not write the file.** Names like `SL` and `CR` are
 convenient to type and say nothing on their own, so a block can carry one line explaining
@@ -374,7 +375,7 @@ business understanding — which prompt template, how many retries, when to esca
 llm.SUPPORT {
   provider = openai
   api-key = ${OPENAI_API_KEY}
-  model-name = "gpt-4o-mini"
+  model-name = "gpt-5.1-mini"
 
   custom-properties { prompt-id = "support-v3", max-retries = 3 }
 }
@@ -481,7 +482,8 @@ the caller already knows what changed, and is given it as the return value. The 
 be a `WritableConfigSource`, which is the interface above plus a `write(String)` method;
 `ConfigSource.ofWritableFile(path)` gives you one for a file, and `registry.writableSources()`
 hands back the layers you may write, so code that is handed only the registry can find the
-target instead of having the reference threaded through to it. Where more than one writer is possible, `storeIfUnchanged(layer, base, newText)`
+target instead of having the reference threaded through to it. Where more than one writer is
+possible, `storeIfUnchanged(layer, base, newText)`
 refuses instead of erasing somebody else's change. See
 [Storing a layer back](docs/manual/part-2-reference.md#storing-a-layer-back).
 

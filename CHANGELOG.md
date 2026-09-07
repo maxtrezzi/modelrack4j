@@ -51,6 +51,21 @@ will not be held back for a major bump until the API settles at `1.0.0`.
   such block. Keep it quick: it runs while the reload holds the registry's lock
   ([ADR-0055](docs/adr/0055-custom-properties-are-carried-as-text.md)).
 
+- **`LlmRegistry.writableSources()`**, the layers this registry may write, in `sources()`
+  order. An application that lets a user edit configuration has to name the layer it may
+  write, and until now it either kept that reference beside the registry or filtered
+  `sources()` with an `instanceof` of its own:
+
+  ```java
+  WritableConfigSource userLayer = registry.writableSources().get(0);
+  registry.store(userLayer, editedText);
+  ```
+
+  A list rather than one value, because a registry may be built with any number of writable
+  layers and the library will not guess which of two you meant; empty when none is writable,
+  which is an ordinary registry rather than a mistake
+  ([ADR-0060](docs/adr/0060-the-registry-hands-over-its-writable-layers.md)).
+
 - **`ProviderFactory.supportsModeration()`**, a `default` method returning `true`. A provider
   reports whether it can build a `ModerationModel`, and core turns that into the rejection
   and its message. Your own factory keeps working unchanged: it does not override the method,
@@ -84,7 +99,9 @@ will not be held back for a major bump until the API settles at `1.0.0`.
   carries values your own application reads, move them into that block's `custom-properties`
   section, which is never checked. A key a higher layer clears with `= null` is not reported,
   and the rule applies at every depth, so a misspelling inside `memory` is named as
-  `memory.max-mesages`
+  `memory.max-mesages`. A key belonging to the other memory type — `max-messages` beside
+  `type = token-window` — is refused in its own words instead, because the library knows that
+  key and only the block's type makes it wrong
   ([ADR-0056](docs/adr/0056-an-unknown-key-is-an-error.md)).
 
 - **`LlmRegistry`, `LlmBundle` and `LlmSnapshot` take a type parameter**, which is what a
@@ -99,8 +116,11 @@ will not be held back for a major bump until the API settles at `1.0.0`.
   **Existing code may need a change.** Writing the type without an argument still compiles, but
   a raw type erases every generic member of the class, including the `Optional<ReloadChange>`
   that `reload()` and `store()` return — so `registry.reload().orElseThrow().updated()` stops
-  compiling against a raw `LlmRegistry`. Write `LlmRegistry<Void>`, or `var` for a local.
-  `LlmConfig` is unchanged, so a `ProviderFactory` of your own needs nothing.
+  compiling against a raw `LlmRegistry`. Write `LlmRegistry<Void>`, or `var` for a local. An
+  incremental build hides it: Maven does not recompile a source it thinks is unchanged, so
+  `mvn compile` after the upgrade can pass while `clean compile` fails. `LlmConfig` is
+  unchanged, so a `ProviderFactory` of your own needs nothing
+  ([ADR-0059](docs/adr/0059-the-generic-registry-is-a-source-break.md)).
 
 - **A configuration that defines no names is now valid.** An empty file, a file holding only
   comments, and an `llm {}` block all build a registry with nothing in it: `names()` is empty
