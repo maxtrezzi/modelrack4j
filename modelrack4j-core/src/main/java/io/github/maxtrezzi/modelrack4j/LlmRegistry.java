@@ -116,6 +116,7 @@ public final class LlmRegistry<T> implements AutoCloseable {
      *     per call for a value that cannot change.
      */
     private final List<ConfigSource> sources;
+    private final List<WritableConfigSource> writableSources;
 
     private final SnapshotLoader<T> loader;
 
@@ -151,6 +152,7 @@ public final class LlmRegistry<T> implements AutoCloseable {
             Map<String, LlmBundle<T>> bundles) {
         this.layers = layers;
         this.sources = Layer.sourcesOf(layers);
+        this.writableSources = writableAmong(this.sources);
         this.loader = loader;
         this.bundles = bundles;
     }
@@ -215,13 +217,8 @@ public final class LlmRegistry<T> implements AutoCloseable {
      * reload re-reads the same layers rather than replacing them. Use it to find the layer to
      * store into, instead of carrying the reference alongside the registry:
      *
-     * <pre>{@code
-     * WritableConfigSource userLayer = registry.sources().stream()
-     *         .filter(WritableConfigSource.class::isInstance)
-     *         .map(WritableConfigSource.class::cast)
-     *         .findFirst()
-     *         .orElseThrow();
-     * }</pre>
+     * <p>To find the layer you may write, use {@link #writableSources()} rather than filtering
+     * this list yourself.
      *
      * <p><strong>A writable layer found here is still written through
      * {@link #store(WritableConfigSource, String)}</strong>, never through its own
@@ -237,6 +234,52 @@ public final class LlmRegistry<T> implements AutoCloseable {
      */
     public List<ConfigSource> sources() {
         return sources;
+    }
+
+    /**
+     * Returns the layers this registry may write, in the same order as {@link #sources()}.
+     *
+     * <p>An application that lets a user edit configuration needs the layer it is allowed to
+     * change, and only a {@link WritableConfigSource} can be one — a base file shipped in the
+     * image usually is not.
+     *
+     * <pre>{@code
+     * WritableConfigSource userLayer = registry.writableSources().get(0);
+     * registry.store(userLayer, editedText);
+     * }</pre>
+     *
+     * <p>A list rather than one value, because a registry may be built with any number of
+     * writable layers and the library cannot know which of two you meant. Most applications
+     * configure exactly one, and take the first. The order is the layers' own, lowest
+     * precedence first, which is the only thing that distinguishes two of them.
+     *
+     * <p>Empty when no layer is writable, which is an ordinary registry rather than a mistake.
+     *
+     * <p><strong>Write it through {@link #store(WritableConfigSource, String)}</strong>, never
+     * through its own {@link WritableConfigSource#write(String)}: see {@link #sources()}.
+     *
+     * @return the writable layers, lowest precedence first, unmodifiable and possibly empty
+     */
+    public List<WritableConfigSource> writableSources() {
+        return writableSources;
+    }
+
+    /**
+     * Picks the writable layers out of the configured ones, once.
+     *
+     * @param sources every layer, in order
+     * @return those that can be written, in the same order
+     * @implNote Computed in the constructor because the layers are fixed at {@code build()},
+     *     the same reason {@link Layer#sourcesOf(List)} is called there.
+     */
+    private static List<WritableConfigSource> writableAmong(List<ConfigSource> sources) {
+        List<WritableConfigSource> writable = new ArrayList<>();
+        for (ConfigSource source : sources) {
+            if (source instanceof WritableConfigSource target) {
+                writable.add(target);
+            }
+        }
+        return List.copyOf(writable);
     }
 
     /**

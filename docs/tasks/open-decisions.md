@@ -3,8 +3,7 @@
 Items waiting on the owner rather than on work. Do not resolve these unilaterally — each
 one closes by writing an ADR (see [ADR-0001](../adr/0001-record-decisions-as-adrs.md)).
 
-**D1 to D8 are settled; [D9](#d9--finding-the-writable-layer) is open**, so this file is a queue
-again. A new
+**D1 to D9 are all settled**, so this file is a record rather than a queue right now. A new
 entry here is a question for the owner, not work to pick up, and an entry marked
 `Needs decision` blocks the code that depends on it rather than inviting a guess. Entries stay
 in number order and keep the framing they were decided under, with the outcome at the top.
@@ -669,8 +668,9 @@ ADR-0056; four points are worth having here because they are what a reader will 
 
 ### D9 — Finding the writable layer
 
-**Status:** Needs decision · **Raised by:** the consuming application on 2026-09-07, after
-writing the same filter twice
+**Status:** Settled 2026-09-07 — **`writableSources()`, returning a list** ·
+**Settled by:** [ADR-0060](../adr/0060-the-registry-hands-over-its-writable-layers.md) ·
+**Raised by:** the consuming application on 2026-09-07, after writing the same filter twice
 
 `LlmRegistry.sources()` returns `List<ConfigSource>`. An application with a configuration editor
 needs the layer it may write, and the only way to get it is to filter:
@@ -702,4 +702,13 @@ a list the caller already has.
 that flattens it back invites the assumption that a registry has *the* writable layer. The
 consuming application called it low priority.
 
-Nothing depends on this: the filter works today.
+**Answered: a list, not an `Optional`.** `sources(...)` allows any number of writable layers, so
+an `Optional` would have to pick one of two — arbitrary — or turn a legal configuration into a
+failure. `writableSources().get(0)` is clumsier than an `Optional` in the case everybody has, and
+that is the price of not guessing. The order is `sources()`'s own, which is the only thing that
+tells two writable layers apart; empty is an ordinary answer; and `sources()` keeps returning
+everything, with its javadoc pointing at the new method instead of carrying the filter.
+
+What tipped it was not the convenience. `sources()`'s javadoc had told applications to look the
+layer up **and shipped the five-line filter as its example**, so the friction was one this
+library's own documentation created.

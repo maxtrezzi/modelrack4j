@@ -112,6 +112,7 @@ by number, since the numbering only reflects the order of the original appendix.
 | [0057](0057-an-empty-configuration-is-valid.md) | A registry with no configurations is valid | Accepted |
 | [0058](0058-null-does-not-remove-a-configuration.md) | Null does not remove a configuration | Accepted |
 | [0059](0059-the-generic-registry-is-a-source-break.md) | Accept that a generic registry breaks source compatibility | Accepted |
+| [0060](0060-the-registry-hands-over-its-writable-layers.md) | The registry hands over its writable layers | Accepted |
 | [0030](0030-one-timeout-in-the-schema.md) | One `timeout` in the schema; providers map it onto their own client | Accepted |
 | [0018](0018-manage-langchain4j-versions-via-bom.md) | Manage LangChain4j versions by importing its BOM | Accepted — the BOM import set amended by ADR-0022 |
 | [0022](0022-glm-via-the-community-module-and-its-bom.md) | Take GLM from the community module, and import its BOM alongside the main one | Accepted |

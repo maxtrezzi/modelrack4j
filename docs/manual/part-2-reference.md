@@ -446,7 +446,8 @@ var registry = LlmRegistry.builder()
 | `get(String name)` | The current bundle. Throws `UnknownConfigurationException` if the name is not configured *now*. The bundle carries the models, and also `customPropertiesText()` and — when a handler was registered — `customProperties()`. |
 | `snapshot()` | The current generation, held still, as an `LlmSnapshot`. Every lookup on it belongs to that one generation. |
 | `names()` | The configured names, sorted. |
-| `sources()` | The layers the registry was built from, lowest precedence first, unmodifiable. The list never changes: a reload re-reads the same layers. Use it to find the layer to write instead of keeping the reference beside the registry — but write it through [`store()`](#storing-a-layer-back), never through its own `write(String)`. |
+| `sources()` | The layers the registry was built from, lowest precedence first, unmodifiable. The list never changes: a reload re-reads the same layers. |
+| `writableSources()` | The layers among those that can be written, in the same order — so you need not keep the reference beside the registry, and need not filter `sources()` yourself. A list rather than one value, because a registry may have any number; almost every application configures one and takes the first. Empty when none is writable. Write it through [`store()`](#storing-a-layer-back), never through its own `write(String)`. |
 | `onReload(Consumer<ReloadChange>)` | Registers a listener for successful reloads. |
 | `onReloadFailure(Consumer<ReloadFailure>)` | Registers a listener for rejected ones. |
 | `reload()` | Re-reads every layer now. Returns `Optional<ReloadChange>` — empty when nothing changed. Throws if the new configuration is rejected; the old one stays live. |
@@ -601,6 +602,19 @@ var registry = LlmRegistry.builder()
 
 Optional<ReloadChange> change = registry.store(userLayer, newText);
 ```
+
+The example above keeps `userLayer` in a variable, which is fine when the code that builds the
+registry is the code that writes it. When it is not — a controller, an editor screen, anything
+that is handed the registry and nothing else — ask the registry instead of threading the
+reference through:
+
+```java
+WritableConfigSource userLayer = registry.writableSources().get(0);
+```
+
+It returns a list because a registry may be built with any number of writable layers, in
+`sources()` order, and the library will not guess which of two you meant. Almost every
+application configures one.
 
 `watch(true)` and `store` work together: the registry saves the change your application made,
 and still picks up an edit someone makes in an editor.

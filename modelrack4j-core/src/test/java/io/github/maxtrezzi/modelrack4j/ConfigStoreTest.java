@@ -151,6 +151,95 @@ class ConfigStoreTest {
     }
 
     @Nested
+    @DisplayName("finding the layer to write")
+    class FindingTheWritableLayer {
+
+        @Test
+        @DisplayName("it is handed over rather than filtered out of sources()")
+        void writableSourcesReturnsTheWritableLayer() throws IOException {
+            Path base = dir.resolve("base-find.conf");
+            Path own = dir.resolve("own-find.conf");
+            Files.writeString(base, LAYER, StandardCharsets.UTF_8);
+            Files.writeString(own, "", StandardCharsets.UTF_8);
+            ConfigSource readOnly = ConfigSource.ofFile(base);
+            WritableConfigSource writable = ConfigSource.ofWritableFile(own);
+
+            try (LlmRegistry<Void> registry = LlmRegistry.builder()
+                    .sources(List.of(SECRETS, readOnly, writable))
+                    .build()) {
+
+                assertThat(registry.writableSources()).containsExactly(writable);
+                // The unfiltered list is unchanged, and still has all three.
+                assertThat(registry.sources()).containsExactly(SECRETS, readOnly, writable);
+            }
+        }
+
+        @Test
+        @DisplayName("two writable layers both appear, in the layers' own order")
+        void bothWritableLayersAppearInOrder() throws IOException {
+            Path lower = dir.resolve("lower-find.conf");
+            Path higher = dir.resolve("higher-find.conf");
+            Files.writeString(lower, LAYER, StandardCharsets.UTF_8);
+            Files.writeString(higher, "", StandardCharsets.UTF_8);
+            WritableConfigSource first = ConfigSource.ofWritableFile(lower);
+            WritableConfigSource second = ConfigSource.ofWritableFile(higher);
+
+            try (LlmRegistry<Void> registry = LlmRegistry.builder()
+                    .sources(List.of(SECRETS, first, second))
+                    .build()) {
+
+                // Order is the only thing that tells two writable layers apart, so it is part
+                // of the contract rather than an accident of iteration.
+                assertThat(registry.writableSources()).containsExactly(first, second);
+            }
+        }
+
+        @Test
+        @DisplayName("a registry with nothing writable gives an empty list, not a failure")
+        void noWritableLayerIsAnEmptyList() throws IOException {
+            Path base = dir.resolve("readonly-find.conf");
+            Files.writeString(base, LAYER, StandardCharsets.UTF_8);
+
+            try (LlmRegistry<Void> registry = LlmRegistry.builder()
+                    .sources(List.of(SECRETS, ConfigSource.ofFile(base)))
+                    .build()) {
+                assertThat(registry.writableSources()).isEmpty();
+            }
+        }
+
+        @Test
+        @DisplayName("the list it returns cannot be modified")
+        void theListIsUnmodifiable() throws IOException {
+            Path own = dir.resolve("unmod-find.conf");
+            Files.writeString(own, LAYER, StandardCharsets.UTF_8);
+
+            try (LlmRegistry<Void> registry = LlmRegistry.builder()
+                    .sources(List.of(SECRETS, ConfigSource.ofWritableFile(own)))
+                    .build()) {
+                assertThatThrownBy(() -> registry.writableSources().clear())
+                        .isInstanceOf(UnsupportedOperationException.class);
+            }
+        }
+
+        @Test
+        @DisplayName("what it hands back is what store() accepts")
+        void whatItReturnsCanBeStored() throws IOException {
+            Path own = dir.resolve("store-find.conf");
+            Files.writeString(own, LAYER, StandardCharsets.UTF_8);
+
+            try (LlmRegistry<Void> registry = LlmRegistry.builder()
+                    .sources(List.of(SECRETS, ConfigSource.ofWritableFile(own)))
+                    .build()) {
+
+                // requireOwnLayer compares by record equality, so a layer found this way has
+                // to be the same object the registry was built with, not a copy.
+                registry.store(registry.writableSources().get(0), LAYER_WITH_SECOND_MODEL);
+                assertThat(registry.get("SL").config().modelName()).isEqualTo("second");
+            }
+        }
+    }
+
+    @Nested
     @DisplayName("what a store does when it succeeds")
     class WhenItSucceeds {
 

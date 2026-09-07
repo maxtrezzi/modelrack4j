@@ -5229,16 +5229,28 @@ part the application supplied and that matters most: **an incremental build hide
 does not recompile a source it considers unchanged, so `mvn compile` after the bump can pass
 while `clean compile` fails.
 
-**A convenience the documentation asks for and does not provide.** `sources()`'s javadoc says to
-use it to find the layer to write, and offers no way to find the *writable* one, so every
-application with an editor writes the same `instanceof` filter. Raised as
-[D9](open-decisions.md#d9--finding-the-writable-layer) rather than added: it is public API on a
-release that has already taken one source break, and the shape is not obvious — `Optional` is
-wrong the moment two writable layers are configured.
+**A convenience the documentation asked for and did not provide.** `sources()`'s javadoc told
+applications to use it to find the layer to write and offered no way to find the *writable* one —
+worse, it carried the five-line `instanceof` filter as its documented example, so the library was
+shipping the boilerplate as the recommended usage. Raised as
+[D9](open-decisions.md#d9--finding-the-writable-layer), settled the same day and implemented here:
+`LlmRegistry.writableSources()` returns a `List<WritableConfigSource>`
+([ADR-0060](../adr/0060-the-registry-hands-over-its-writable-layers.md)).
+
+A list rather than an `Optional`, because `sources(...)` allows any number of writable layers and
+the library will not pick one of two; the order is `sources()`'s own, which is the only thing
+that tells two apart; empty is an ordinary answer. Five tests, of which two are about the parts
+a convenience gets wrong: that the order is contract rather than iteration order, and that what
+it hands back is the layer object `store()` accepts, since `requireOwnLayer` compares by record
+equality and an equal-but-rejected copy would be worse than no method at all.
+
+Writing those tests found something in the test suite rather than the code: `LAYER_WITH_SECOND_MODEL`
+in `ConfigStoreTest` changes the *model name* to `"second"` and adds no second block. An assertion
+written from the constant's name rather than its body passed the wrong claim, and failed.
 
 #### What this round says about the process
 
-Three of the four are documentation, and none of them would have been caught by any check this
+Three of the four were documentation, and none of them would have been caught by any check this
 repository runs: the links resolve, the ADRs are consistent, the snippets load, the tests pass.
 They were found by someone upgrading a real application against the manual. That is the only
 check that finds this class of defect, and it is worth more than another pass by the author.

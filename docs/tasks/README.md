@@ -128,7 +128,7 @@ Phase 0 gates everything else; nothing below M0 should start before its blockers
 | [D6](open-decisions.md#d6--cannot-store-is-not-your-configuration-is-invalid) | "Cannot store" is not "your configuration is invalid" | **Settled** — `ConfigAccessException`, standalone, covering reads as well as writes; ADR-0053 |
 | [D7](open-decisions.md#d7--custom-properties-on-a-configuration-block) | Custom properties on a configuration block | **Settled** — carried as text, interpreted by nobody but the application, with an optional caller handler whose parse *is* the validation; ADR-0055 |
 | [D8](open-decisions.md#d8--a-key-the-schema-does-not-know) | A key the schema does not know | **Settled** — an error listing every offending key, not a warning: a warning would repeat on every reload while the bad configuration stayed live; ADR-0056 |
-| [D9](open-decisions.md#d9--finding-the-writable-layer) | Finding the writable layer | **Needs decision** — every application with an editor writes the same `instanceof` filter over `sources()`, which the javadoc tells them to use for exactly this; raised by the consuming application, low priority |
+| [D9](open-decisions.md#d9--finding-the-writable-layer) | Finding the writable layer | **Settled** — `writableSources()` returns a list, because the library will not guess which of two writable layers a caller meant; ADR-0060 |
 
 **Phase 0 is complete except for one measurement, and M0 is done — the build is green.** Tasks 0.1–0.7 are
 done; Task 0.8 is done on Linux and open only on the macOS latency figure, which qualifies
