@@ -5168,3 +5168,77 @@ that `= null` does not remove a configuration. The reference already documents t
 `description`, which is exactly why the limit has to be stated: a reader who learned it one level
 down will try it one level up. The CHANGELOG entry belongs with the behaviour changes rather than the additions: an
 application relying on `build()` to fail will now start.
+
+---
+
+### P43 — What the consuming application found in 0.2.0
+
+**Status:** Done — four findings, three fixed here and one raised as a decision ·
+**Branch:** `feature/custom-properties-and-a-closed-schema`, shared with P40, P41 and P42,
+because three of the four are about what those items changed ·
+**Raised by:** the consuming application, reading the manual against a real upgrade
+
+#### The one that caused a bug, and it is not new
+
+**The manual never said what to do with `ReloadChange.removed()`.** It appeared nowhere in
+`part-2-reference.md` except as a component in the `ReloadChange` record — no sentence, no
+example. Beside it sits a second true statement, *"a store raises no reload event"*, filed as a
+note about listeners inside the store section.
+
+Both facts are correct and both are documented. What is missing is the rule an application needs,
+which is the two of them joined: **clean-up written only inside `onReload` runs for a file edit
+and not for your own `store()`.** An application that keeps state indexed by configuration name
+then deletes a connection through its own editor, the state survives, and reusing the name picks
+the old state straight back up. That is what happened: chat histories outlived the connections
+they belonged to, and a re-added name resumed a conversation from before its deletion.
+
+**The library is not at fault and needed no change.** Both halves are pinned by tests already —
+`ConfigStoreTest` asserts that a store reports the removed name in `removed()`, and that it fires
+no reload listener. The failure was entirely one of documentation: two true sentences, in two
+places, neither of them about the state the *application* keeps.
+
+Fixed as the application proposed, with no API change: a subsection under Reload semantics —
+*The state you keep beside the registry* — with the two-route table, the shape of a clean-up
+called from both, and a note that whether `updated()` belongs there is the caller's judgement
+while `removed()` is not. The `store()` contract row now leads with "no listener runs" and points
+at it, and the README's caching-trap section gains a paragraph, since this is the same trap one
+step out.
+
+#### Three that this branch caused, or should have prevented
+
+**The `Records` block was still at `0.1.0`.** `LlmBundle` without its type parameter and without
+`customProperties`, `LlmConfig` without `customPropertiesText` — while the prose, the tables and
+the examples around it had all been updated. Localised drift, and in the worst possible place:
+that block is what a reader copies signatures from. It is P19's lesson again — the diff was read
+and the file was not — and this time the fix was checked mechanically, by parsing the record's
+components out of `LlmConfig.java` and comparing them to the block, name by name.
+
+**The generic break had no troubleshooting row**, and its symptom does not name generics at all:
+
+```
+error: cannot find symbol
+        registry.reload().ifPresent(change -> System.out.println(change.added()));
+  symbol:   method added()
+  location: variable change of type Object
+```
+
+Reproduced exactly, compiling code written for `0.1.0` against the new jar. The CHANGELOG
+explains it; nobody reads the CHANGELOG while staring at a compiler error. The row now carries
+the message, the reason a raw type erases `Optional<ReloadChange>`, and the correction — plus the
+part the application supplied and that matters most: **an incremental build hides it.** Maven
+does not recompile a source it considers unchanged, so `mvn compile` after the bump can pass
+while `clean compile` fails.
+
+**A convenience the documentation asks for and does not provide.** `sources()`'s javadoc says to
+use it to find the layer to write, and offers no way to find the *writable* one, so every
+application with an editor writes the same `instanceof` filter. Raised as
+[D9](open-decisions.md#d9--finding-the-writable-layer) rather than added: it is public API on a
+release that has already taken one source break, and the shape is not obvious — `Optional` is
+wrong the moment two writable layers are configured.
+
+#### What this round says about the process
+
+Three of the four are documentation, and none of them would have been caught by any check this
+repository runs: the links resolve, the ADRs are consistent, the snippets load, the tests pass.
+They were found by someone upgrading a real application against the manual. That is the only
+check that finds this class of defect, and it is worth more than another pass by the author.

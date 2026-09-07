@@ -636,7 +636,7 @@ already live, and publishes nothing.
 
 | Method | Contract |
 |---|---|
-| `store(WritableConfigSource, String)` | Validates, applies, stores. Returns what changed, or empty when the new text means what was already live — a text that only reformats is stored, and reported as no change. A text that does not validate throws `ConfigValidationException`; a layer that cannot be written throws `ConfigAccessException`, and both leave the previous configuration live. |
+| `store(WritableConfigSource, String)` | Validates, applies, stores. **Returns what changed, and no listener runs** — so any state of your own keyed by configuration name must be updated from this return value as well as from `onReload`: see *[The state you keep beside the registry](#the-state-you-keep-beside-the-registry)*. Empty when the new text means what was already live — a text that only reformats is stored, and reported as no change. A text that does not validate throws `ConfigValidationException`; a layer that cannot be written throws `ConfigAccessException`, and both leave the previous configuration live. |
 | `storeIfUnchanged(WritableConfigSource, String, String)` | The same, but only while the layer still holds the text passed as `expected`. Otherwise throws `StaleLayerException`, which carries the text the layer holds now. |
 | `ConfigSource.ofWritableFile(Path)` | A file layer that can also be written. It writes through a temporary file beside the file it will replace, so a reader never sees half a write — which is why the **directory** is what needs write permission, not the file. It follows a symbolic link instead of replacing it, and it keeps the permissions the file already had. |
 | `WritableConfigSource.write(String)` | What the library calls to store the text. Implement it for a layer of your own: make it one statement, make sure it stores nothing at all if it throws, and throw `ConfigAccessException` when the medium fails. |
@@ -753,18 +753,21 @@ in a different shape. See
 ### Records
 
 ```java
-record LlmBundle(LlmConfig config,
-                 ChatModel chatModel,
-                 Optional<StreamingChatModel> streamingChatModel,
-                 Optional<ModerationModel> moderationModel,
-                 Optional<ChatMemoryProvider> chatMemoryProvider) {
-    String name();          // == config().name()
+record LlmBundle<T>(LlmConfig config,
+                    ChatModel chatModel,
+                    Optional<StreamingChatModel> streamingChatModel,
+                    Optional<ModerationModel> moderationModel,
+                    Optional<ChatMemoryProvider> chatMemoryProvider,
+                    T customProperties) {
+    String name();                    // == config().name()
+    String customPropertiesText();    // == config().customPropertiesText()
 }
 
 record LlmConfig(String name, Optional<String> description, String provider, String apiKey,
                  String modelName, Optional<Double> temperature, Duration timeout,
                  boolean logRequests, boolean logResponses, boolean streaming,
-                 Optional<MemoryConfig> memory, boolean moderationEnabled) { }
+                 Optional<MemoryConfig> memory, boolean moderationEnabled,
+                 String customPropertiesText) { }
 
 sealed interface MemoryConfig {
     record MessageWindow(int maxMessages) implements MemoryConfig { }
@@ -778,6 +781,12 @@ record ReloadChange(Set<String> updated, Set<String> added, Set<String> removed)
 
 record ReloadFailure(List<ConfigSource> sources, Exception cause) { }
 ```
+
+`T` is what a registered
+[`CustomPropertiesHandler`](#values-of-your-own) returns, and `Void` when none was registered —
+in which case `customProperties()` can only be `null` and `customPropertiesText()` is what you
+read. It is the one component of `LlmBundle` that may be null, because `null` is the only value
+`Void` has.
 
 `LlmConfig` validates in its compact constructor, so an instance that exists is valid.
 `MemoryConfig` is sealed with a record per variant rather than one record carrying unused
@@ -888,6 +897,42 @@ not a failure. What a higher layer cannot do is remove a name with `= null`; see
 
 **Superseded bundles are not closed.** An in-flight request may still hold one. They become
 eligible for garbage collection when nothing references them.
+
+### The state you keep beside the registry
+
+If your application keeps anything of its own **indexed by configuration name** — a chat
+history, a cache, a rate limiter, an open session — then a name disappearing has to reach that
+state too. The library will not do it for you: it manages bundles, and knows nothing about the
+map you keep next to it.
+
+**A change arrives by one of two routes, and they are not interchangeable.**
+
+| what changed the configuration | how you learn |
+|---|---|
+| a watched file, or your own `reload()` | `onReload(change)` fires |
+| your own [`store()`](#storing-a-layer-back) or `storeIfUnchanged()` | the **return value**. No listener runs |
+
+A store notifies nobody on purpose: the caller made the change and is handed the result, so
+firing a listener would tell it something it already knows. That is convenient right up to the
+moment you put your clean-up in the listener and nowhere else — and then a name deleted through
+your own editor leaves its state behind, while a name deleted by editing the file cleans up
+correctly. Reusing the deleted name later picks the old state straight back up.
+
+Write the clean-up once and call it from both:
+
+```java
+void applyChange(ReloadChange change) {
+    change.removed().forEach(histories::remove);      // and updated(), if a changed
+    change.updated().forEach(histories::remove);      // configuration invalidates yours
+}
+
+registry.onReload(this::applyChange);                 // the watcher's path, and reload()'s
+registry.store(layer, newText).ifPresent(this::applyChange);   // the store path
+```
+
+Whether `updated()` belongs there is yours to decide: it means the model behind that name was
+rebuilt, which may or may not invalidate what you hold. `removed()` is not a choice — the name
+is gone, and `get()` on it now throws.
 
 ---
 
@@ -1182,6 +1227,7 @@ Deliberate and permanent:
 | `` llm.SL is set to null `` , `` llm is set to null `` | An attempt to remove a configuration from a higher layer | `= null` clears a *value* inside a block, not the block. Remove the configuration from the layer that defines it. |
 | `` llm.SL.custom-properties must be a block of values `` | `custom-properties` set to a number, a string or a list | It has to be a block: `custom-properties { … }`. |
 | `` the custom-properties handler rejected this configuration `` | Your own `CustomPropertiesHandler` threw | The message continues with yours, and the cause is the exception you threw. The previous configuration is still live. |
+| `` cannot find symbol: method added() `` — `` location: variable change of type Object `` | Code that mentions no generics, after upgrading. `LlmRegistry` now takes a type parameter, and a **raw** `LlmRegistry` erases every generic member of the class — including the `Optional<ReloadChange>` that `reload()` and `store()` return, which is why the error names a method of `ReloadChange` and blames `Object` | Write `LlmRegistry<Void>`, or `var` for a local. Assigning the result to a declared `Optional<ReloadChange>` also compiles, with an unchecked warning. **Build clean before you conclude anything**: Maven does not recompile a source file it thinks is unchanged, so an incremental build after the upgrade can pass while `clean compile` fails |
 | `names()` is empty and every `get(...)` throws | No layer defines a configuration — an empty file, or one whose `llm` block has no names | Not an error in itself: check for the names your application requires. See *[Missing and malformed files](#missing-and-malformed-files)*. |
 | An `include` in a layer adds nothing, and nothing is logged | The layer is not a file, so the include is looked up on the classpath, and a HOCON include that finds nothing is not an error | Includes work in file layers. For a layer from a database, assemble the text before handing it over. |
 | `StaleLayerException` on an edit nobody else made | The `expected` text lost the layer's trailing newline on the way in — a shell `expected=$(cat layer.conf)` strips it, and the comparison is byte for byte | Carry the layer's text without reshaping it: start from `text()`, or read the file in a way that keeps the last byte. |

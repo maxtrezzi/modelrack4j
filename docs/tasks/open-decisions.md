@@ -3,7 +3,8 @@
 Items waiting on the owner rather than on work. Do not resolve these unilaterally — each
 one closes by writing an ADR (see [ADR-0001](../adr/0001-record-decisions-as-adrs.md)).
 
-**D1 to D8 are all settled**, so this file is a record rather than a queue right now. A new
+**D1 to D8 are settled; [D9](#d9--finding-the-writable-layer) is open**, so this file is a queue
+again. A new
 entry here is a question for the owner, not work to pick up, and an entry marked
 `Needs decision` blocks the code that depends on it rather than inviting a guess. Entries stay
 in number order and keep the framing they were decided under, with the outcome at the top.
@@ -663,3 +664,42 @@ ADR-0056; four points are worth having here because they are what a reader will 
   and the ones whose absence is meaningful.
 
 **Target: 0.2.0.** Implementation is [P41](post-v1.md#p41--reject-a-key-the-schema-does-not-know).
+
+---
+
+### D9 — Finding the writable layer
+
+**Status:** Needs decision · **Raised by:** the consuming application on 2026-09-07, after
+writing the same filter twice
+
+`LlmRegistry.sources()` returns `List<ConfigSource>`. An application with a configuration editor
+needs the layer it may write, and the only way to get it is to filter:
+
+```java
+WritableConfigSource target = registry.sources().stream()
+        .filter(WritableConfigSource.class::isInstance)
+        .map(WritableConfigSource.class::cast)
+        .findFirst()
+        .orElseThrow();
+```
+
+Every such application writes that. The proposal is `Optional<WritableConfigSource>
+writableSource()`, or the list form, so it does not have to.
+
+**What makes this more than a convenience.** `sources()`'s own javadoc says to *"use it to find
+the layer to write instead of keeping the reference beside the registry"* — so the library
+recommends the lookup and then supplies no way to perform it. The friction is one the
+documentation creates.
+
+**The questions.** Whether it returns one or many: `sources(...)` accepts any number of writable
+layers, so `Optional` is a lie the moment somebody configures two, while a list makes the common
+case — exactly one — read worse. Whether an empty result is an `Optional`, an empty list, or a
+refusal at `build()`. And whether this belongs on the registry at all, since it is a filter over
+a list the caller already has.
+
+**Against doing it.** It is public API on a `0.x` library that has just taken one source break;
+`ConfigSource` and `WritableConfigSource` are a deliberate split (ADR-0042), and a convenience
+that flattens it back invites the assumption that a registry has *the* writable layer. The
+consuming application called it low priority.
+
+Nothing depends on this: the filter works today.

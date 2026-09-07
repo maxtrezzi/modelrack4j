@@ -308,6 +308,14 @@ are secondary.
 
 If you use a DI container, inject the **registry**, not a `ChatModel`.
 
+**The same trap, one step out:** if you keep state of your own indexed by configuration name —
+a chat history, a cache, a session — remember that a `store()` fires no listener. The caller
+made the change and is handed the result, so clean-up written only inside `onReload` runs for a
+file edit and not for your own editor: the name disappears, its state does not, and reusing the
+name later picks the old state back up. Call the same clean-up from both, driven by
+`ReloadChange.removed()`. The reference has the shape, under
+[The state you keep beside the registry](docs/manual/part-2-reference.md#the-state-you-keep-beside-the-registry).
+
 ---
 
 ## Configuration reference
