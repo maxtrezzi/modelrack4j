@@ -79,7 +79,7 @@ public final class ProviderSwap {
         Files.writeString(config, anthropic(), StandardCharsets.UTF_8);
         System.out.println("config: " + config);
 
-        try (LlmRegistry registry = LlmRegistry.builder()
+        try (LlmRegistry<?> registry = LlmRegistry.builder()
                 .configFiles(List.of(config))
                 .watch(true)
                 .debounce(DEBOUNCE)
@@ -107,8 +107,8 @@ public final class ProviderSwap {
      * @implNote This method is the point of the example: it names no provider, imports no
      *     provider type, and has no branch. It cannot tell which provider it just used.
      */
-    private static void ask(LlmRegistry registry) {
-        LlmBundle bundle = registry.get(NAME);
+    private static void ask(LlmRegistry<?> registry) {
+        var bundle = registry.get(NAME);
         System.out.println();
         System.out.println("provider   : " + bundle.config().provider());
         System.out.println("model      : " + bundle.config().modelName());
@@ -123,7 +123,7 @@ public final class ProviderSwap {
     }
 
     /** Waits for the watcher to publish a snapshot whose provider is the expected one. */
-    private static void awaitProvider(LlmRegistry registry, String expected)
+    private static void awaitProvider(LlmRegistry<?> registry, String expected)
             throws InterruptedException {
         long deadline = System.nanoTime() + Duration.ofMillis(RELOAD_TIMEOUT_MILLIS).toNanos();
         while (System.nanoTime() - deadline < 0) {

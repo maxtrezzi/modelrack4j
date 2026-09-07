@@ -76,7 +76,7 @@ class ReloadTest {
     private final AtomicInteger reloads = new AtomicInteger();
     private final List<ReloadChange> changes = new CopyOnWriteArrayList<>();
     private final List<ReloadFailure> failures = new CopyOnWriteArrayList<>();
-    private LlmRegistry registry;
+    private LlmRegistry<Void> registry;
 
     @AfterEach
     void closeRegistry() {
@@ -196,7 +196,7 @@ class ReloadTest {
     void invalidBlockSwapsNothing() throws IOException {
         Path file = write("app.conf", block("SL", "good") + "\n" + block("SH", "good"));
         watch(file);
-        LlmBundle liveBundle = registry.get("SL");
+        LlmBundle<Void> liveBundle = registry.get("SL");
 
         // SL is edited correctly in the same save; ADR-0012 holds it back deliberately,
         // because half a snapshot matches no file the user ever wrote.
@@ -221,7 +221,7 @@ class ReloadTest {
     void unchangedBundlesAreCarriedOver() throws IOException {
         Path file = write("app.conf", block("SL", "m") + "\n" + block("SH", "m"));
         watch(file);
-        LlmBundle beforeReload = registry.get("SL");
+        LlmBundle<Void> beforeReload = registry.get("SL");
 
         write("app.conf", block("SL", "m") + "\n" + block("SH", "changed"));
 
@@ -360,7 +360,7 @@ class ReloadTest {
                 reading.add(pool.submit(() -> {
                     ready.countDown();
                     while (stop.getCount() > 0) {
-                        LlmBundle bundle = registry.get("SL");
+                        LlmBundle<Void> bundle = registry.get("SL");
                         // The bundle and the config it reports must belong together: a
                         // reader must never see a name bound to another block's model.
                         assertThat(bundle.config().name()).isEqualTo("SL");
@@ -423,7 +423,7 @@ class ReloadTest {
         Path file = write("llm.conf", twoBlocks("gen-1"));
         watch(file);
 
-        LlmSnapshot held = registry.snapshot();
+        LlmSnapshot<Void> held = registry.snapshot();
         assertThat(held.get("SL").config().modelName()).isEqualTo("gen-1");
 
         Files.writeString(file, twoBlocks("gen-2"), StandardCharsets.UTF_8);
@@ -450,7 +450,7 @@ class ReloadTest {
         for (int generation = 2; generation <= 6; generation++) {
             Files.writeString(file, twoBlocks("gen-" + generation), StandardCharsets.UTF_8);
             awaitModel("SL", "gen-" + generation);
-            LlmSnapshot snapshot = registry.snapshot();
+            LlmSnapshot<Void> snapshot = registry.snapshot();
             assertThat(snapshot.get("SL").config().modelName())
                     .isEqualTo(snapshot.get("SH").config().modelName());
         }
@@ -462,7 +462,7 @@ class ReloadTest {
         Path file = write("llm.conf", twoBlocks("gen-1"));
         watch(file);
 
-        LlmSnapshot held = registry.snapshot();
+        LlmSnapshot<Void> held = registry.snapshot();
         assertThat(held.names()).containsExactlyInAnyOrder("SL", "SH");
         assertThat(held.contains("SH")).isTrue();
 
@@ -478,7 +478,7 @@ class ReloadTest {
     void snapshotRejectsUnknownName() throws IOException {
         watch(write("llm.conf", twoBlocks("gen-1")));
 
-        LlmSnapshot snapshot = registry.snapshot();
+        LlmSnapshot<Void> snapshot = registry.snapshot();
         assertThat(snapshot.contains("CR")).isFalse();
         assertThatThrownBy(() -> snapshot.get("CR"))
                 .isInstanceOf(UnknownConfigurationException.class)

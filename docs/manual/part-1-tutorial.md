@@ -41,6 +41,7 @@ the output depends on a model's answer, it says so instead of inventing one.
 | [8. Layering](#8-layering) | defaults, environment, local override | offline |
 | [9. Three models at once](#9-three-models-at-once) | the council | **sends requests** |
 | [10. In your own project](#10-in-your-own-project) | the dependency and ten lines of Java | offline |
+| [Values of your own](#values-of-your-own) | a few application values inside the block | offline |
 | [If your configuration is not in a file](#if-your-configuration-is-not-in-a-file) | a layer from a database, and `reload()` | offline |
 
 ---
@@ -268,7 +269,7 @@ The configuration decides; the code adapts. That is the shape the library is for
 
 ## 6. What it refuses to build
 
-Three configurations that fail, on purpose. Each one fails **when the file loads**, not on
+Four configurations that fail, on purpose. Each one fails **when the file loads**, not on
 the first request — which is the entire point of validating against what the provider can
 actually do.
 
@@ -307,6 +308,27 @@ This one is not a refusal, it is a question. Anthropic *can* count tokens — by
 call, inside what your code assumes is in-memory bookkeeping. Add the flag if that is what
 you want. On OpenAI, which counts locally, no flag is needed. On GLM, which cannot count at
 all, the flag makes no difference and the answer stays no.
+
+**A misspelled key** — the one you are most likely to meet first:
+
+```hocon
+llm.SL { provider = anthropic, api-key = ${ANTHROPIC_API_KEY}
+         model-name = "claude-sonnet-5"
+         temperatur = 0.7 }
+```
+
+```
+ConfigValidationException: llm.SL has a key this library does not know:
+  temperatur (llm.conf: 3)
+Check the spelling. Values your own application reads belong in the block's custom-properties
+section, which this library carries without reading.
+```
+
+Every key the schema does not list is reported this way, with the layer and the line it came
+from, and all of them at once rather than one per run. Without that check a misspelling does
+nothing at all — the provider's own default applies and the file looks fine — which is the kind
+of thing you find out weeks later. Values your *own* code reads are a different matter: those
+go in `custom-properties`, and are never checked.
 
 **A missing environment variable:**
 
@@ -440,9 +462,9 @@ three requests.
 Look at what the code does *not* do:
 
 ```java
-LlmSnapshot round = registry.snapshot();
+var round = registry.snapshot();
 for (String name : round.names()) {
-    LlmBundle bundle = round.get(name);
+    var bundle = round.get(name);
     ...
 }
 ```
@@ -493,7 +515,7 @@ itself through `ServiceLoader`. Add an SLF4J binding too, or you will not see th
 from step 7.
 
 ```java
-try (LlmRegistry registry = LlmRegistry.builder()
+try (var registry = LlmRegistry.builder()
         .configFiles(List.of(Path.of("/etc/myapp/llm.conf")))
         .watch(true)
         .build()) {
@@ -509,7 +531,7 @@ One rule to take with you, and it is the only one that fails silently:
 String ask(String q) { return registry.get("SL").chatModel().chat(q); }
 
 // ❌  captured once at construction — reload will never reach it
-Council(LlmRegistry registry) { this.model = registry.get("SL").chatModel(); }
+Council(LlmRegistry<Void> registry) { this.model = registry.get("SL").chatModel(); }
 ```
 
 Nothing throws when you get this wrong. The reload happens, the file changes, and your model
@@ -520,6 +542,87 @@ quietly stays as it was. Inject the **registry**, not a `ChatModel`.
 would without this library — and you build them at the point of use, for the reason above. Part 2 has the code in [What you still write
 yourself](part-2-reference.md#what-you-still-write-yourself), and `./run-chat.sh` runs it:
 type `/tools` during a chat and ask what time it is.
+
+---
+
+## Values of your own
+
+Applications usually have a few values that belong to a connection but that this library has no
+business understanding: which prompt template to use, how many times to retry. Put them in the
+block, under `custom-properties`. Add one to the `SL` block in `llm.conf`:
+
+```hocon
+llm {
+  SL {
+    description = "my first model"
+    provider    = anthropic
+    api-key     = ${ANTHROPIC_API_KEY}
+    model-name  = "claude-sonnet-5"
+
+    custom-properties {
+      prompt-id   = "support-v3"
+      max-retries = 3
+    }
+  }
+}
+```
+
+The library carries that block and never reads inside it. Ask a bundle for it as text:
+
+```java
+System.out.println(registry.get("SL").customPropertiesText());
+// {"max-retries":3,"prompt-id":"support-v3"}
+```
+
+A block that has no `custom-properties` gives `{}`, so you never have to check first.
+
+### Letting the reload check them for you
+
+Reading text is not the point. The point is that your own rules can run *inside* the reload.
+Give the registry a handler that turns the text into an object of yours:
+
+```java
+record SupportProps(String promptId, int maxRetries) { }
+
+var registry = LlmRegistry.builder()
+        .configFiles(List.of(Path.of("llm.conf")))
+        .customPropertiesHandler(config -> parse(config.customPropertiesText()))
+        .build();
+
+SupportProps props = registry.get("SL").customProperties();
+```
+
+`parse` is yours, and the library has no opinion about it: a JSON library you already depend on
+— `mapper.readValue(json, SupportProps.class)` with Jackson — or a dozen lines of your own for
+two fields. This tutorial's project has no JSON library, so nothing here adds one for you.
+
+If `parse` throws, the configuration is rejected — on the first build, and on every reload
+afterwards. In a program of your own, written like the one above, editing the file to
+`max-retries = "three"` gets the same treatment step 7 showed for a broken `model-name`:
+nothing swaps, the previous configuration stays live, and the rejection is reported. Your
+prompt template can never end up beside a model it was not meant for.
+
+(None of the shipped examples registers a handler, so this is the one part of the tutorial you
+try in your own code rather than by running something here.)
+
+The handler receives the whole configuration, not only the block, so a rule may depend on the
+provider or the name:
+
+```java
+.customPropertiesHandler(config -> {
+    SupportProps props = parse(config.customPropertiesText());
+    if (config.provider().equals("anthropic") && props.promptId() == null) {
+        throw new IllegalArgumentException("prompt-id is required for anthropic");
+    }
+    return props;
+})
+```
+
+Two things to keep in mind. The handler runs while the reload holds the registry's lock, so it
+must be quick — parse, check, return; no network. And these values are part of the
+configuration's identity: editing one rebuilds that bundle, exactly as editing `temperature`
+would. That is what makes the check meaningful, and it is why `custom-properties` is for a few
+small stable values rather than for data.
 
 ---
 
@@ -535,7 +638,7 @@ ConfigSource row = new ConfigSource() {
     public String text() { return jdbc.readConfigText(42); }
 };
 
-LlmRegistry registry = LlmRegistry.builder()
+var registry = LlmRegistry.builder()
         .sources(List.of(ConfigSource.ofFile(basePath), row))   // a file, then the row
         .build();
 ```

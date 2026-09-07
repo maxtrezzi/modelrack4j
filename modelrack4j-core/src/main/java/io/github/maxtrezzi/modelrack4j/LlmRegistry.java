@@ -93,8 +93,11 @@ import org.slf4j.LoggerFactory;
  *     caused that reload — a notifier's, or the caller's of {@link #reload()} — and a
  *     listener that blocks delays the next reload. A store takes the same lock and holds it
  *     across the layer's own write, so a slow store delays the next reload too.
+ *
+ * @param <T> what a registered {@link CustomPropertiesHandler} turns each block's
+ *     {@code custom-properties} into, or {@link Void} when none was registered
  */
-public final class LlmRegistry implements AutoCloseable {
+public final class LlmRegistry<T> implements AutoCloseable {
 
     private static final Logger log = LoggerFactory.getLogger(LlmRegistry.class);
 
@@ -114,7 +117,7 @@ public final class LlmRegistry implements AutoCloseable {
      */
     private final List<ConfigSource> sources;
 
-    private final SnapshotLoader loader;
+    private final SnapshotLoader<T> loader;
 
     /**
      * Serialises reloads. Private, so no caller can take it and interfere: a public lock —
@@ -130,7 +133,7 @@ public final class LlmRegistry implements AutoCloseable {
      * {@link #reloadLock}, which is what keeps two writers — reloads and stores alike — from
      * racing to publish.
      */
-    private volatile Map<String, LlmBundle> bundles;
+    private volatile Map<String, LlmBundle<T>> bundles;
 
     /**
      * Empty when nothing notifies this registry, and again once closed.
@@ -144,8 +147,8 @@ public final class LlmRegistry implements AutoCloseable {
      */
     private final AtomicReference<ChangeNotifier> notifier = new AtomicReference<>();
 
-    private LlmRegistry(List<Layer> layers, SnapshotLoader loader,
-            Map<String, LlmBundle> bundles) {
+    private LlmRegistry(List<Layer> layers, SnapshotLoader<T> loader,
+            Map<String, LlmBundle<T>> bundles) {
         this.layers = layers;
         this.sources = Layer.sourcesOf(layers);
         this.loader = loader;
@@ -157,7 +160,7 @@ public final class LlmRegistry implements AutoCloseable {
      *
      * @return a new builder
      */
-    public static Builder builder() {
+    public static Builder<Void> builder() {
         return new Builder();
     }
 
@@ -174,7 +177,7 @@ public final class LlmRegistry implements AutoCloseable {
      * @throws UnknownConfigurationException if no bundle is bound to the name, either
      *     because it was never configured or because a reload removed it
      */
-    public LlmBundle get(String name) {
+    public LlmBundle<T> get(String name) {
         return snapshot().get(name);
     }
 
@@ -200,8 +203,8 @@ public final class LlmRegistry implements AutoCloseable {
      *
      * @return the current generation
      */
-    public LlmSnapshot snapshot() {
-        return new LlmSnapshot(bundles);
+    public LlmSnapshot<T> snapshot() {
+        return new LlmSnapshot<>(bundles);
     }
 
     /**
@@ -358,8 +361,8 @@ public final class LlmRegistry implements AutoCloseable {
         // snapshot, both build, and the later write discards the earlier one in silence,
         // after its listeners have already announced it. Readers never take this lock.
         synchronized (reloadLock) {
-            Map<String, LlmBundle> previous = bundles;
-            Map<String, LlmBundle> staged;
+            Map<String, LlmBundle<T>> previous = bundles;
+            Map<String, LlmBundle<T>> staged;
             ReloadChange change;
             try {
                 staged = loader.load(previous);
@@ -548,8 +551,8 @@ public final class LlmRegistry implements AutoCloseable {
             WritableConfigSource target, String text) {
         StagedWrite staged = StagedWrite.prepare(target, text);
         try {
-            Map<String, LlmBundle> previous = bundles;
-            Map<String, LlmBundle> next = loader.load(previous, staging(target, staged));
+            Map<String, LlmBundle<T>> previous = bundles;
+            Map<String, LlmBundle<T>> next = loader.load(previous, staging(target, staged));
             ReloadChange change = ReloadChange.between(previous, next);
 
             bundles = next;   // published, but nobody is told: this is the caller's change
@@ -615,15 +618,66 @@ public final class LlmRegistry implements AutoCloseable {
         }
     }
 
-    /** Collects the inputs for a registry and builds it. */
-    public static final class Builder {
+    /**
+     * Collects the inputs for a registry and builds it.
+     *
+     * @param <T> what {@link #customPropertiesHandler(CustomPropertiesHandler)} was given, or
+     *     {@link Void} until it is called
+     */
+    public static final class Builder<T> {
 
         private List<ConfigSource> sources = List.of();
         private boolean watch;
         private Duration debounce = DEFAULT_DEBOUNCE;
         private ChangeNotifier notifier;
+        private CustomPropertiesHandler<T> customPropertiesHandler;
 
         private Builder() {
+        }
+
+        /**
+         * Sets what turns each configuration's {@code custom-properties} block into an object
+         * of your own, and fixes the type this registry hands back.
+         *
+         * <p>Optional. Without it the block is still readable as text through
+         * {@link LlmBundle#customPropertiesText()}; what a handler adds is that your own rules
+         * run <em>inside</em> the reload, so a block your application cannot use is rejected in
+         * the same swap as the model it belongs to instead of failing later.
+         *
+         * <pre>{@code
+         * LlmRegistry<SupportProps> registry = LlmRegistry.builder()
+         *         .configFiles(List.of(base, local))
+         *         .customPropertiesHandler(config -> mapper.readValue(
+         *                 config.customPropertiesText(), SupportProps.class))
+         *         .build();
+         * }</pre>
+         *
+         * <p>One handler serves every configuration; a rule that applies to one branches on
+         * {@link LlmConfig#name()}, and one that depends on the provider on
+         * {@link LlmConfig#provider()}.
+         *
+         * @param <U> the type the handler produces, which becomes this builder's own
+         * @param handler the handler, or null for none
+         * @return this builder, now typed to {@code U}
+         * @implNote It changes the builder's type parameter, and it does that by setting the
+         *     field and returning {@code this} rather than by building a new
+         *     {@code Builder<U>}. Constructing a fresh one compiles and silently drops
+         *     everything already set — the sources, {@code watch}, {@code debounce}, the
+         *     notifier — so the order in which a caller chains these methods would change the
+         *     result.
+         *     <p>Because the returned builder <em>is</em> this one, a reference kept under the
+         *     old type describes an object that no longer matches it. Chain the calls, as every
+         *     example here does, rather than storing an intermediate builder and using it
+         *     again afterwards.
+         */
+        @SuppressWarnings("unchecked")
+        public <U> Builder<U> customPropertiesHandler(CustomPropertiesHandler<U> handler) {
+            // Safe because the next statement overwrites the field: no handler of the old type
+            // survives the call, and the field is read only by build(), by which time the
+            // builder's type parameter and its handler's agree.
+            Builder<U> retyped = (Builder<U>) this;
+            retyped.customPropertiesHandler = handler;
+            return retyped;
         }
 
         /**
@@ -639,7 +693,7 @@ public final class LlmRegistry implements AutoCloseable {
          *     entry wins on conflict
          * @return this builder
          */
-        public Builder configFiles(List<Path> files) {
+        public Builder<T> configFiles(List<Path> files) {
             List<Path> copy = List.copyOf(Objects.requireNonNull(files, "files"));
             List<ConfigSource> asSources = new ArrayList<>(copy.size());
             for (Path file : copy) {
@@ -667,7 +721,7 @@ public final class LlmRegistry implements AutoCloseable {
          * @param sources the layers, <strong>lowest precedence first</strong>
          * @return this builder
          */
-        public Builder sources(List<ConfigSource> sources) {
+        public Builder<T> sources(List<ConfigSource> sources) {
             this.sources = List.copyOf(Objects.requireNonNull(sources, "sources"));
             return this;
         }
@@ -688,7 +742,7 @@ public final class LlmRegistry implements AutoCloseable {
          * @param notifier the notifier, or {@code null} for none
          * @return this builder
          */
-        public Builder notifier(ChangeNotifier notifier) {
+        public Builder<T> notifier(ChangeNotifier notifier) {
             this.notifier = notifier;
             return this;
         }
@@ -713,7 +767,7 @@ public final class LlmRegistry implements AutoCloseable {
          * @param watch whether to watch the configured files for changes
          * @return this builder
          */
-        public Builder watch(boolean watch) {
+        public Builder<T> watch(boolean watch) {
             this.watch = watch;
             return this;
         }
@@ -732,7 +786,7 @@ public final class LlmRegistry implements AutoCloseable {
          * @return this builder
          * @throws IllegalArgumentException if the duration is zero or negative
          */
-        public Builder debounce(Duration debounce) {
+        public Builder<T> debounce(Duration debounce) {
             Objects.requireNonNull(debounce, "debounce");
             if (debounce.isZero() || debounce.isNegative()) {
                 throw new IllegalArgumentException(
@@ -748,13 +802,15 @@ public final class LlmRegistry implements AutoCloseable {
          *
          * @return the registry
          * @throws ConfigValidationException if no layer was given, two layers share an id,
-         *     any block is invalid, any provider rejects its configuration, or watching was
-         *     asked for and no layer is a file
+         *     any block is invalid or carries a key the schema does not know, a configuration
+         *     is set to {@code null}, any provider or the custom-properties handler rejects a
+         *     configuration, or watching was asked for and no layer is a file. A configuration
+         *     that defines no names is not an error: the registry is simply empty
          * @throws ConfigAccessException if any layer cannot be read
          * @throws UncheckedIOException if watching is enabled and a configured directory
          *     cannot be watched
          */
-        public LlmRegistry build() {
+        public LlmRegistry<T> build() {
             List<Layer> layers = Layer.of(ConfigSources.validated(sources));
             // Chosen before the layers are loaded so that an impossible combination —
             // watch(true) with no files — is reported before any work, rather than after a
@@ -762,7 +818,7 @@ public final class LlmRegistry implements AutoCloseable {
             ChangeNotifier chosen = chooseNotifier(layers);
             LlmRegistry registry;
             try {
-                SnapshotLoader loader = new SnapshotLoader(layers);
+                SnapshotLoader<T> loader = new SnapshotLoader<>(layers, customPropertiesHandler);
                 registry = new LlmRegistry(layers, loader, loader.load(Map.of()));
             } catch (RuntimeException e) {
                 // A bad layer must not leave a notifier the caller thinks we took ownership

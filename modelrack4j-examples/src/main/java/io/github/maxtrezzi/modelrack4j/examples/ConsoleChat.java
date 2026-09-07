@@ -121,7 +121,7 @@ public final class ConsoleChat {
         BufferedReader console =
                 new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
 
-        try (LlmRegistry registry = LlmRegistry.builder()
+        try (LlmRegistry<?> registry = LlmRegistry.builder()
                 .configFiles(layers)
                 .watch(true)
                 .build()) {
@@ -161,7 +161,8 @@ public final class ConsoleChat {
      *
      * @return the chosen name, or empty when the user is done
      */
-    private static Optional<String> chooseConfiguration(LlmRegistry registry, BufferedReader console)
+    private static Optional<String> chooseConfiguration(
+            LlmRegistry<?> registry, BufferedReader console)
             throws IOException {
         while (true) {
             // Re-read on every pass rather than once: a name may have appeared or
@@ -173,13 +174,13 @@ public final class ConsoleChat {
             // to edit the file while it runs, so that gap is open by invitation. A snapshot
             // is one generation held still, which is what a list of names and their bundles
             // has to be to agree with itself.
-            LlmSnapshot generation = registry.snapshot();
+            var generation = registry.snapshot();
             List<String> names = List.copyOf(generation.names());
 
             System.out.println();
             System.out.println("configured models");
             for (int i = 0; i < names.size(); i++) {
-                LlmBundle bundle = generation.get(names.get(i));
+                var bundle = generation.get(names.get(i));
                 System.out.printf("  %d  %-12s %s / %s%s%n",
                         i + 1,
                         names.get(i),
@@ -225,7 +226,7 @@ public final class ConsoleChat {
         }
     }
 
-    private static String capabilitiesOf(LlmBundle bundle) {
+    private static String capabilitiesOf(LlmBundle<?> bundle) {
         StringBuilder parts = new StringBuilder();
         if (bundle.streamingChatModel().isPresent()) {
             parts.append("  streaming");
@@ -238,9 +239,9 @@ public final class ConsoleChat {
     }
 
     /** Runs one conversation until the user asks for the menu or for the exit. */
-    private static Outcome chat(LlmRegistry registry, String name, BufferedReader console)
+    private static Outcome chat(LlmRegistry<?> registry, String name, BufferedReader console)
             throws IOException {
-        LlmBundle entered;
+        LlmBundle<?> entered;
         try {
             entered = registry.get(name);
         } catch (UnknownConfigurationException e) {
@@ -290,7 +291,7 @@ public final class ConsoleChat {
                 continue;
             }
 
-            LlmBundle bundle;
+            LlmBundle<?> bundle;
             try {
                 // Per turn, deliberately. This is the line that makes a reload visible, and
                 // caching it in a field is the one mistake that silently disables reloading.
@@ -312,7 +313,7 @@ public final class ConsoleChat {
     }
 
     /** Moderates the question when the configuration asked for moderation. */
-    private static boolean isFlagged(LlmBundle bundle, String question) {
+    private static boolean isFlagged(LlmBundle<?> bundle, String question) {
         Optional<Moderation> moderation =
                 bundle.moderationModel().map(model -> model.moderate(question).content());
         if (moderation.isPresent() && moderation.get().flagged()) {
@@ -323,7 +324,7 @@ public final class ConsoleChat {
         return false;
     }
 
-    private static void answer(LlmBundle bundle, Optional<ChatMemory> memory, String question) {
+    private static void answer(LlmBundle<?> bundle, Optional<ChatMemory> memory, String question) {
         UserMessage asked = UserMessage.from(question);
         List<ChatMessage> conversation;
         if (memory.isPresent()) {
@@ -369,7 +370,7 @@ public final class ConsoleChat {
      *     a different method signature rather than a different object.
      */
     private static void answerThroughAiService(
-            LlmBundle bundle, Optional<ChatMemory> memory, String question) {
+            LlmBundle<?> bundle, Optional<ChatMemory> memory, String question) {
         AiServices<Assistant> building = AiServices.builder(Assistant.class)
                 .chatModel(bundle.chatModel())
                 .tools(new ClockTool());
@@ -420,7 +421,7 @@ public final class ConsoleChat {
     }
 
     /** Streams the answer to the console as it arrives, and returns the complete response. */
-    private static ChatResponse streamed(LlmBundle bundle, List<ChatMessage> conversation) {
+    private static ChatResponse streamed(LlmBundle<?> bundle, List<ChatMessage> conversation) {
         ConsolePrinter printer = new ConsolePrinter();
         bundle.streamingChatModel().orElseThrow().chat(conversation, printer);
         return printer.awaitCompletion();

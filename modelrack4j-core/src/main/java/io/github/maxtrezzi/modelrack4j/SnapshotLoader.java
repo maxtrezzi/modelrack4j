@@ -18,6 +18,7 @@ package io.github.maxtrezzi.modelrack4j;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigObject;
 import com.typesafe.config.ConfigValue;
+import com.typesafe.config.ConfigValueType;
 import dev.langchain4j.memory.chat.ChatMemoryProvider;
 import dev.langchain4j.memory.chat.MessageWindowChatMemory;
 import dev.langchain4j.memory.chat.TokenWindowChatMemory;
@@ -50,7 +51,7 @@ import java.util.TreeSet;
  * because the classpath cannot change between reloads and a duplicate provider should fail
  * at startup rather than at the first edit.
  */
-final class SnapshotLoader {
+final class SnapshotLoader<T> {
 
     /** Root path holding the named blocks. */
     static final String ROOT_PATH = "llm";
@@ -58,9 +59,13 @@ final class SnapshotLoader {
     private final List<Layer> layers;
     private final Map<String, ProviderFactory> factories;
 
-    SnapshotLoader(List<Layer> layers) {
+    /** What turns a block's custom properties into the application's own object; may be null. */
+    private final CustomPropertiesHandler<T> customPropertiesHandler;
+
+    SnapshotLoader(List<Layer> layers, CustomPropertiesHandler<T> customPropertiesHandler) {
         this.layers = List.copyOf(layers);
         this.factories = discoverFactories();
+        this.customPropertiesHandler = customPropertiesHandler;
     }
 
     /**
@@ -68,12 +73,14 @@ final class SnapshotLoader {
      *
      * @param previous the live snapshot, whose bundles are carried over where the parsed
      *     configuration is unchanged; empty on the first load
-     * @return a complete snapshot, sorted by name
-     * @throws ConfigValidationException if any block is invalid, or any provider rejects or
-     *     fails to build its configuration
+     * @return a complete snapshot, sorted by name, which may be empty when no layer defines a
+     *     configuration (ADR-0057)
+     * @throws ConfigValidationException if any block is invalid, carries a key the schema does
+     *     not know, is set to {@code null}, or any provider rejects or fails to build its
+     *     configuration
      * @throws ConfigAccessException if any layer cannot be read
      */
-    Map<String, LlmBundle> load(Map<String, LlmBundle> previous) {
+    Map<String, LlmBundle<T>> load(Map<String, LlmBundle<T>> previous) {
         return load(previous, layers);
     }
 
@@ -84,26 +91,44 @@ final class SnapshotLoader {
      *     configuration is unchanged
      * @param layers the layers to read, which during a store is this registry's list with
      *     the layer being written replaced by its staged text
-     * @return a complete snapshot, sorted by name
-     * @throws ConfigValidationException if any block is invalid, or any provider rejects or
-     *     fails to build its configuration
+     * @return a complete snapshot, sorted by name, which may be empty when no layer defines a
+     *     configuration (ADR-0057)
+     * @throws ConfigValidationException if any block is invalid, carries a key the schema does
+     *     not know, is set to {@code null}, or any provider rejects or fails to build its
+     *     configuration
      * @throws ConfigAccessException if any layer cannot be read
      */
-    Map<String, LlmBundle> load(Map<String, LlmBundle> previous, List<Layer> layers) {
+    Map<String, LlmBundle<T>> load(Map<String, LlmBundle<T>> previous, List<Layer> layers) {
         Config resolved = ConfigLoader.load(layers);
-        if (!resolved.hasPath(ROOT_PATH)) {
-            throw new ConfigValidationException(
-                    "No '" + ROOT_PATH + "' block found in any configuration layer");
+        ConfigValue rootValue = resolved.root().get(ROOT_PATH);
+        if (rootValue == null) {
+            // No layer mentions the block at all. That is a registry with nothing in it,
+            // which ADR-0057 makes a valid result rather than a failure: whether an empty
+            // configuration is a problem depends on what the application needs from it.
+            return Map.of();
+        }
+        if (rootValue.valueType() == ConfigValueType.NULL) {
+            throw removalRefused(ROOT_PATH, rootValue);
+        }
+        if (!(rootValue instanceof ConfigObject root)) {
+            // Otherwise getObject below throws Typesafe Config's own WrongType, which
+            // escapes as a foreign exception type from a method documented to throw this
+            // library's.
+            throw new ConfigValidationException("'" + ROOT_PATH + "' must be a block of named"
+                    + " configurations, but is of type " + rootValue.valueType() + " ("
+                    + rootValue.origin().description() + ")");
         }
 
         Config defaults = ConfigLoader.defaults();
-        ConfigObject root = resolved.getObject(ROOT_PATH);
 
-        Map<String, LlmBundle> built = new TreeMap<>();
+        Map<String, LlmBundle<T>> built = new TreeMap<>();
         // Sorted so that when several blocks are invalid, which one is reported is stable
         // between runs instead of following map iteration order.
         for (String name : new TreeSet<>(root.keySet())) {
             ConfigValue value = root.get(name);
+            if (value.valueType() == ConfigValueType.NULL) {
+                throw removalRefused(ROOT_PATH + "." + name, value);
+            }
             if (!(value instanceof ConfigObject block)) {
                 throw new ConfigValidationException("llm." + name
                         + " must be a configuration block, but is of type "
@@ -115,20 +140,36 @@ final class SnapshotLoader {
             // ADR-0006: the per-name diff is record equality on the parsed config. An
             // unchanged block keeps its existing instance, so a reload rebuilds only what
             // the user actually edited.
-            LlmBundle carried = previous.get(name);
+            LlmBundle<T> carried = previous.get(name);
             built.put(name, carried != null && carried.config().equals(config)
                     ? carried
                     : buildBundle(config));
         }
 
-        if (built.isEmpty()) {
-            throw new ConfigValidationException(
-                    "The '" + ROOT_PATH + "' block is empty: no configurations to build");
-        }
         return Collections.unmodifiableMap(built);
     }
 
-    private LlmBundle buildBundle(LlmConfig config) {
+    /**
+     * Refuses {@code = null} where a configuration is expected.
+     *
+     * @param path what was set to null, as the file spells it
+     * @param value the null itself, which carries the layer and line that wrote it
+     * @return the exception to throw
+     * @implNote ADR-0058. The idiom is real — ADR-0032 clears {@code description} from a
+     *     higher layer this way — so a reader will try it one level up and has to be told why
+     *     it does not extend. Both {@code llm} and {@code llm.<name>} are refused in the same
+     *     words: once an empty registry is legal, nulling the root would otherwise be a
+     *     working version of the removal the other refusal declines. A key that is simply
+     *     absent is not a removal and stays legal.
+     */
+    private static ConfigValidationException removalRefused(String path, ConfigValue value) {
+        return new ConfigValidationException(path + " is set to null ("
+                + value.origin().description() + "). A configuration cannot be removed from a"
+                + " higher layer: null clears a value inside a block, not the block itself."
+                + " Remove it from the layer that defines it instead.");
+    }
+
+    private LlmBundle<T> buildBundle(LlmConfig config) {
         ProviderFactory factory = factories.get(config.provider());
         if (factory == null) {
             List<String> available = new ArrayList<>(factories.keySet());
@@ -149,7 +190,7 @@ final class SnapshotLoader {
                     + " must have.");
         }
 
-        return new LlmBundle(
+        return new LlmBundle<>(
                 config,
                 chatModel,
                 config.streaming()
@@ -160,7 +201,46 @@ final class SnapshotLoader {
                         ? requireProduced(factory.createModerationModel(config), config,
                                 "moderation.enabled = true", "moderation model")
                         : Optional.empty(),
-                buildMemoryProvider(config, factory));
+                buildMemoryProvider(config, factory),
+                buildCustomProperties(config));
+    }
+
+    /**
+     * Runs the application's handler, if it registered one.
+     *
+     * @param config the configuration being built, which carries the block as text
+     * @return whatever the handler returned, or {@code null} when there is no handler — which
+     *     is then the only value {@code T} has, because the registry is an
+     *     {@code LlmRegistry<Void>}
+     * @throws ConfigValidationException if the handler rejects the configuration
+     * @implNote ADR-0055. The handler runs here rather than after {@code fromBlock} so that it
+     *     sees a provider that exists and rules the provider has already accepted, and before
+     *     {@code createChatModel} so that a rejected configuration does not first build a model
+     *     that is then discarded. It is called for every configuration, including one whose
+     *     file has no such block, which arrives as {@code "{}"}: a rule of the form "an openai
+     *     block needs a prompt id" is broken exactly in that case.
+     *     <p>Whatever it throws is wrapped, and unconditionally. The interface declares
+     *     {@code throws Exception}, so a checked exception has to become something this
+     *     library's API declares; and wrapping only the unexpected types would make the block's
+     *     name appear in the message or not depending on how careful the caller had been.
+     */
+    private T buildCustomProperties(LlmConfig config) {
+        if (customPropertiesHandler == null) {
+            return null;
+        }
+        try {
+            return customPropertiesHandler.handle(config);
+        } catch (InterruptedException interrupted) {
+            // The handler declares throws Exception, so this one can arrive. Wrapping it
+            // without restoring the flag would discard a cancellation the caller's thread is
+            // waiting on, and this runs on the caller's thread during build() and reload().
+            Thread.currentThread().interrupt();
+            throw new ConfigValidationException(path(config) + ": the custom-properties handler"
+                    + " was interrupted", interrupted);
+        } catch (Exception rejected) {
+            throw new ConfigValidationException(path(config) + ": the custom-properties handler"
+                    + " rejected this configuration: " + rejected.getMessage(), rejected);
+        }
     }
 
     /** Anchors a message to the block the user wrote, e.g. {@code llm.SL}. */

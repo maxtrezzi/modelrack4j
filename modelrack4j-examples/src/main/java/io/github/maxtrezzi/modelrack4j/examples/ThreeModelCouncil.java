@@ -78,7 +78,7 @@ public final class ThreeModelCouncil {
             return;
         }
 
-        try (LlmRegistry registry = LlmRegistry.builder()
+        try (LlmRegistry<?> registry = LlmRegistry.builder()
                 .configFiles(List.of(Path.of(args[0])))
                 .build()) {
 
@@ -139,18 +139,18 @@ public final class ThreeModelCouncil {
      * the end says the round was incomplete — a council of three that quietly reports two
      * answers is worse than one that says so.
      */
-    private static void askEveryModel(LlmRegistry registry, String question) {
+    private static void askEveryModel(LlmRegistry<?> registry, String question) {
         // One snapshot per round, taken at the point of use and dropped at the end of it.
         // A council is the case snapshot() exists for: asking registry.get() once per model
         // would let a reload land mid-round and have one member answer under a configuration
         // its partners never saw. Nothing watches this registry, so no reload can arrive
         // here — but this is the loop people copy, and it should be the shape that stays
         // correct when they do.
-        LlmSnapshot round = registry.snapshot();
+        var round = registry.snapshot();
         int answered = 0;
         int failed = 0;
         for (String name : round.names()) {
-            LlmBundle bundle = round.get(name);
+            var bundle = round.get(name);
             System.out.println();
             System.out.println("=== " + name + " (" + bundle.config().provider()
                     + " / " + bundle.config().modelName() + ") ===");

@@ -17,7 +17,7 @@ llm {
 ```
 
 ```java
-LlmRegistry registry = LlmRegistry.builder().configFiles(List.of(Path.of("llm.conf"))).build();
+var registry = LlmRegistry.builder().configFiles(List.of(Path.of("llm.conf"))).build();
 String answer = registry.get("SL").chatModel().chat("Why is the sky blue?");
 ```
 
@@ -218,12 +218,12 @@ temperature fixed in a builder call.
 ### 3. Use it
 
 ```java
-try (LlmRegistry registry = LlmRegistry.builder()
+try (var registry = LlmRegistry.builder()
         .configFiles(List.of(Path.of("llm.conf")))
         .watch(true)
         .build()) {
 
-    LlmBundle sl = registry.get("SL");
+    var sl = registry.get("SL");
     String answer = sl.chatModel().chat("In one sentence: why merge before resolving?");
 
     registry.get("SH").streamingChatModel()
@@ -282,7 +282,7 @@ mvn -q -pl modelrack4j-examples exec:java \
 ```java
 // ✅ correct — always the current bundle
 class Council {
-    private final LlmRegistry registry;
+    private final LlmRegistry<Void> registry;
 
     String ask(String q) {
         return registry.get("SL").chatModel().chat(q);
@@ -293,7 +293,7 @@ class Council {
 class Council {
     private final ChatModel model;
 
-    Council(LlmRegistry registry) {
+    Council(LlmRegistry<Void> registry) {
         this.model = registry.get("SL").chatModel();   // captured once, forever
     }
 }
@@ -328,6 +328,7 @@ Every named block lives under the `llm` root. Names are yours: `SL`, `CR`,
 | `memory.type` | string | *no memory* | `message-window` or `token-window` |
 | `memory.max-messages` | int | — | required by `message-window` |
 | `memory.max-tokens` | int | — | required by `token-window` |
+| `custom-properties` | block | *empty* | values of your own, carried and never read; see below |
 | `memory.allow-remote-token-counting` | boolean | `false` | see [Memory](#memory) |
 | `moderation.enabled` | boolean | `false` | builds a `ModerationModel` |
 
@@ -354,6 +355,47 @@ Omitting a key is meaningful: no `temperature` means the provider's default, no 
 block means no `ChatMemoryProvider` is built at all, no `moderation` block means no
 moderation model. The defaults above are the ones in
 [`modelrack4j-reference.conf`](modelrack4j-core/src/main/resources/modelrack4j-reference.conf).
+
+### Values of your own
+
+A block may carry a few values that belong to that connection but that this library has no
+business understanding — which prompt template, how many retries, when to escalate:
+
+```hocon
+llm.SUPPORT {
+  provider = openai
+  api-key = ${OPENAI_API_KEY}
+  model-name = "gpt-4o-mini"
+
+  custom-properties { prompt-id = "support-v3", max-retries = 3 }
+}
+```
+
+The library renders that block as JSON and hands you the text; it never reads inside it.
+
+```java
+String json = registry.get("SUPPORT").customPropertiesText();   // "{}" when there is none
+```
+
+Register a handler and it becomes an object of yours, checked *inside* the reload:
+
+```java
+LlmRegistry<SupportProps> registry = LlmRegistry.builder()
+        .configFiles(List.of(base, local))
+        .customPropertiesHandler(config -> mapper.readValue(
+                config.customPropertiesText(), SupportProps.class))
+        .build();
+
+SupportProps props = registry.get("SUPPORT").customProperties();
+```
+
+That is the reason to put them here rather than in a file of your own: **parsing is
+validation**. A reload carrying a property your application cannot use is rejected whole, so it
+can never leave a new prompt template beside an old model.
+
+**A key the table above does not list is an error**, naming the layer and the line it came
+from, so a misspelled `temperatur` is caught rather than silently ignored. Anything inside
+`custom-properties` is yours, and is never checked.
 
 ### Layering
 
@@ -402,7 +444,7 @@ ConfigSource row = new ConfigSource() {
     public String text() { return jdbc.readConfigText(42); }
 };
 
-LlmRegistry registry = LlmRegistry.builder()
+var registry = LlmRegistry.builder()
         .sources(List.of(ConfigSource.ofFile(basePath), row))
         .build();
 
@@ -437,7 +479,7 @@ refuses instead of erasing somebody else's change. See
 ## Hot reload
 
 ```java
-LlmRegistry registry = LlmRegistry.builder()
+var registry = LlmRegistry.builder()
         .configFiles(files)
         .watch(true)                        // off by default
         .debounce(Duration.ofMillis(300))   // the default
@@ -461,7 +503,7 @@ registry.onReloadFailure(failure ->
   reproducible, and a correctness hazard wherever several models must agree. Where they must, take a snapshot:
 
   ```java
-  LlmSnapshot models = registry.snapshot();   // one read of the current generation
+  var models = registry.snapshot();           // one read of the current generation
   var fast = models.get("SL");
   var deep = models.get("SH");                // guaranteed same generation as fast
   ```

@@ -17,7 +17,12 @@ package io.github.maxtrezzi.modelrack4j;
 
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigException;
+import com.typesafe.config.ConfigObject;
+import com.typesafe.config.ConfigRenderOptions;
+import com.typesafe.config.ConfigValue;
+import com.typesafe.config.ConfigValueType;
 import java.time.Duration;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -47,6 +52,8 @@ import java.util.Optional;
  * @param streaming whether a {@code StreamingChatModel} is built alongside the chat model
  * @param memory how conversation memory is bounded, or empty for no memory provider
  * @param moderationEnabled whether a {@code ModerationModel} is built
+ * @param customPropertiesText the block's {@code custom-properties} section rendered as JSON,
+ *     or {@code "{}"} when it has none. The library carries it and never reads inside it
  */
 public record LlmConfig(
         String name,
@@ -60,7 +67,14 @@ public record LlmConfig(
         boolean logResponses,
         boolean streaming,
         Optional<MemoryConfig> memory,
-        boolean moderationEnabled) {
+        boolean moderationEnabled,
+        String customPropertiesText) {
+
+    /** The optional sub-block whose contents this library carries but never interprets. */
+    static final String CUSTOM_PROPERTIES = "custom-properties";
+
+    /** What {@link #customPropertiesText()} holds when the file has no such block. */
+    static final String EMPTY_CUSTOM_PROPERTIES = "{}";
 
     /**
      * Validates every component.
@@ -72,6 +86,7 @@ public record LlmConfig(
         Objects.requireNonNull(description, "description");
         Objects.requireNonNull(temperature, "temperature");
         Objects.requireNonNull(memory, "memory");
+        Objects.requireNonNull(customPropertiesText, "customPropertiesText");
         requireText(name, name, "name");
         requireText(name, provider, "provider");
         requireText(name, apiKey, "api-key");
@@ -132,6 +147,9 @@ public record LlmConfig(
                 + ", streaming=" + streaming
                 + ", memory=" + memory
                 + ", moderationEnabled=" + moderationEnabled
+                + ", customPropertiesText=" + (EMPTY_CUSTOM_PROPERTIES.equals(customPropertiesText)
+                        ? EMPTY_CUSTOM_PROPERTIES
+                        : "***")
                 + ']';
     }
 
@@ -147,48 +165,108 @@ public record LlmConfig(
     public static LlmConfig fromBlock(String name, Config block) {
         Objects.requireNonNull(name, "name");
         Objects.requireNonNull(block, "block");
+        BlockReader reader = new BlockReader(block);
         try {
-            return new LlmConfig(
-                    name,
-                    block.hasPath("description")
-                            ? Optional.of(block.getString("description"))
-                            : Optional.empty(),
-                    block.getString("provider"),
-                    block.getString("api-key"),
-                    block.getString("model-name"),
-                    block.hasPath("temperature")
-                            ? Optional.of(block.getDouble("temperature"))
-                            : Optional.empty(),
-                    block.getDuration("timeout"),
-                    block.getBoolean("log-requests"),
-                    block.getBoolean("log-responses"),
-                    block.getBoolean("streaming"),
-                    readMemory(name, block),
-                    block.hasPath("moderation.enabled") && block.getBoolean("moderation.enabled"));
+            Optional<String> description = reader.has("description")
+                    ? Optional.of(reader.string("description"))
+                    : Optional.<String>empty();
+            String provider = reader.requiredString("provider");
+            String apiKey = reader.requiredString("api-key");
+            String modelName = reader.requiredString("model-name");
+            Optional<Double> temperature = reader.has("temperature")
+                    ? Optional.of(reader.dbl("temperature"))
+                    : Optional.<Double>empty();
+            Duration timeout = reader.duration("timeout");
+            boolean logRequests = reader.bool("log-requests");
+            boolean logResponses = reader.bool("log-responses");
+            boolean streaming = reader.bool("streaming");
+            Optional<MemoryConfig> memory = readMemory(name, reader);
+            boolean moderation =
+                    reader.has("moderation.enabled") && reader.bool("moderation.enabled");
+            String customProperties = readCustomProperties(name, reader);
+
+            // Before the record is built, so that a value the schema does not know is named
+            // rather than reported as whatever the missing real key would have been. A block
+            // that is invalid in both ways is told about the unknown key first, because that
+            // is usually what caused the other (ADR-0056).
+            reader.requireNoUnknownKeys(name);
+            reader.rethrowFirstMissing();
+
+            return new LlmConfig(name, description, provider, apiKey, modelName, temperature,
+                    timeout, logRequests, logResponses, streaming, memory, moderation,
+                    customProperties);
         } catch (ConfigException e) {
             throw new ConfigValidationException(
                     "llm." + name + " is not a valid configuration block: " + e.getMessage(), e);
         }
     }
 
-    private static Optional<MemoryConfig> readMemory(String name, Config block) {
-        if (!block.hasPath("memory")) {
+    /**
+     * Renders the {@code custom-properties} block as the text a handler receives.
+     *
+     * @param name the configuration name, for the message
+     * @param block the merged block
+     * @return the block as JSON, or {@code "{}"} when the file has none
+     * @throws ConfigValidationException if it is present but is not a block
+     * @implNote The library carries this as text and interprets none of it (ADR-0055).
+     *     Rendering happens here, beside the parse, so that the recording of which paths the
+     *     schema knows sees this one asked for like any other.
+     */
+    private static String readCustomProperties(String name, BlockReader reader) {
+        if (!reader.has(CUSTOM_PROPERTIES)) {
+            return EMPTY_CUSTOM_PROPERTIES;
+        }
+        ConfigValue value = reader.value(CUSTOM_PROPERTIES);
+        if (!(value instanceof ConfigObject properties)) {
+            throw new ConfigValidationException("llm." + name + "." + CUSTOM_PROPERTIES
+                    + " must be a block of values, but is of type " + value.valueType()
+                    + " (" + value.origin().description() + ")");
+        }
+        return withoutClearedKeys(properties).render(ConfigRenderOptions.concise());
+    }
+
+    /**
+     * Drops the keys a higher layer cleared with {@code = null}, at every depth.
+     *
+     * @param object the merged sub-block
+     * @return the same block with cleared keys gone
+     * @implNote Rendering the merged object keeps them, as {@code "max-retries":null}, so
+     *     without this a cleared key would reach the application as an explicit null rather
+     *     than as absent — which is not what clearing means, and disagrees with
+     *     {@code hasPath}, which already answers false for it. ADR-0032 established the idiom
+     *     for a value inside a block, and this is that same block one level down.
+     */
+    private static ConfigObject withoutClearedKeys(ConfigObject object) {
+        ConfigObject kept = object;
+        for (Map.Entry<String, ConfigValue> entry : object.entrySet()) {
+            ConfigValue value = entry.getValue();
+            if (value.valueType() == ConfigValueType.NULL) {
+                kept = kept.withoutKey(entry.getKey());
+            } else if (value instanceof ConfigObject nested) {
+                kept = kept.withValue(entry.getKey(), withoutClearedKeys(nested));
+            }
+        }
+        return kept;
+    }
+
+    private static Optional<MemoryConfig> readMemory(String name, BlockReader block) {
+        if (!block.has("memory")) {
             return Optional.empty();
         }
-        Config memory = block.getConfig("memory");
-        if (!memory.hasPath("type")) {
+        BlockReader memory = block.scoped("memory");
+        if (!memory.has("type")) {
             throw new ConfigValidationException(
                     "llm." + name + ".memory is present but memory.type is missing."
                             + " Supported values are message-window and token-window");
         }
-        String type = memory.getString("type");
+        String type = memory.string("type");
         return switch (type) {
-            case "message-window" ->
-                    Optional.of(new MemoryConfig.MessageWindow(memory.getInt("max-messages")));
+            case "message-window" -> Optional.of(
+                    new MemoryConfig.MessageWindow(memory.requiredInt("max-messages")));
             case "token-window" -> Optional.of(new MemoryConfig.TokenWindow(
-                    memory.getInt("max-tokens"),
-                    memory.hasPath("allow-remote-token-counting")
-                            && memory.getBoolean("allow-remote-token-counting")));
+                    memory.requiredInt("max-tokens"),
+                    memory.has("allow-remote-token-counting")
+                            && memory.bool("allow-remote-token-counting")));
             default -> throw MemoryConfig.unknownType(type);
         };
     }

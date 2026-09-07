@@ -406,6 +406,52 @@ and it is not redundant.
 `ChatMemoryProvider` is built in core (provider-independent), except the
 `TokenCountEstimator` needed by token-window memory, which comes from the factory.
 
+**A block's custom properties are text in `LlmConfig` and an object on `LlmBundle`
+(ADR-0055).** The `custom-properties` sub-block is rendered from the merged configuration with
+`ConfigRenderOptions.concise()` and carried as a JSON string; an optional
+`CustomPropertiesHandler<T>` registered on the builder turns it into the application's own
+object, in `buildBundle`, after `factory.validate` and before `createChatModel`. Four things
+here are load-bearing:
+
+- **The parsed object must not go into the record.** The reload diff is record equality on
+  `LlmConfig` (ADR-0006), so an application type without `equals` would compare by identity and
+  every block would look changed on every reload — every bundle rebuilt, every model
+  reconstructed, nothing to warn about it. The text compares exactly and asks the application
+  for nothing.
+- **The render strips keys a higher layer cleared with `= null`, at every depth.** Without that
+  a cleared property reaches the application as an explicit JSON null rather than as absent,
+  which is not what clearing means and disagrees with `hasPath`, which already answers false.
+  A test clears a key inside a nested object, so the recursion is covered.
+- **`customPropertiesHandler` changes the builder's type parameter by casting `this`, not by
+  building a new `Builder<U>`.** The obvious `return new Builder<>(handler)` compiles and
+  silently drops the sources, `watch`, `debounce` and the notifier, so the order a caller
+  chains the methods in would change the result. A test registers the handler last.
+- **The generic reaches `LlmRegistry`, `LlmBundle` and `LlmSnapshot`, and stops at
+  `LlmConfig`** — which is why no provider is affected. It **is** a source break for callers
+  who used the raw type and chained through `reload()` or `store()`: a raw type erases every
+  generic member, including their `Optional<ReloadChange>`. Assigning to a declared type still
+  compiles, with an unchecked warning.
+
+**A key the schema does not know is an error, and the known keys are produced by the parse
+(ADR-0056).** `LlmConfig.fromBlock` reads through `BlockReader`, which records every path it is
+asked for; the unknown keys are the leaf paths of `entrySet()` it never touched, minus anything
+under `custom-properties`. **Never replace that with a declared `Set<String>`**: it is the
+obvious implementation and it reintroduces the same silent drift with the sign reversed — add a
+key to the parse, forget the list, and every file using that key is rejected. Two details that
+look incidental and are not: a required value is *collected* rather than thrown on, so the
+recorded set is complete even when the block is invalid — otherwise a misspelled `model-name`
+would report every key after it as unknown — and `rethrowFirstMissing` reproduces the original
+failure by asking Typesafe Config again, because the tutorial prints that message as real
+output three times.
+
+**An empty configuration is valid and `null` never removes one (ADR-0057, ADR-0058).** No `llm`
+block, or one defining no names, gives an empty registry rather than a failure; that is what
+lets a reload remove the *last* configuration, which ADR-0014 always promised and the old
+refusal made impossible. `llm.<name> = null` and `llm = null` are refused in their own words —
+tell an explicit null from a genuinely absent root with `root().containsKey`, not `hasPath`,
+which answers false for both. **Do not turn either refusal into a skip**: that converts a
+refusal into a silent removal, which is the decision ADR-0058 declined.
+
 **Registry keys are config names, never provider names (ADR-0006).** Two named blocks may share
 a provider and differ only in parameters. Change detection is per-name diff by *record
 equality* on the parsed config, so `LlmConfig` must be an immutable record with validation

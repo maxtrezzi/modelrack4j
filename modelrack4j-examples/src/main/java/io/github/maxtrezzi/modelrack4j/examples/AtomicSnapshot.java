@@ -102,7 +102,7 @@ public final class AtomicSnapshot {
         System.out.println();
         System.out.println(configuration("gen-1"));
 
-        try (LlmRegistry registry = LlmRegistry.builder()
+        try (LlmRegistry<?> registry = LlmRegistry.builder()
                 .configFiles(List.of(config))
                 .watch(true)
                 .debounce(DEBOUNCE)
@@ -215,13 +215,13 @@ public final class AtomicSnapshot {
     /** Reads both names as one observation, as fast as it can, until told to stop. */
     private static final class Reader implements Runnable {
 
-        private final LlmRegistry registry;
+        private final LlmRegistry<?> registry;
         private final CountDownLatch stop;
         private final Map<String, Long> observed = new LinkedHashMap<>();
         private long torn;
         private long tornSnapshot;
 
-        Reader(LlmRegistry registry, CountDownLatch stop) {
+        Reader(LlmRegistry<?> registry, CountDownLatch stop) {
             this.registry = registry;
             this.stop = stop;
         }
@@ -239,7 +239,7 @@ public final class AtomicSnapshot {
                 observed.merge("SL=" + sl + "  SH=" + sh, 1L, Long::sum);
 
                 // The same question asked of one generation held still. This must never tear.
-                LlmSnapshot held = registry.snapshot();
+                var held = registry.snapshot();
                 if (!generationOf(held, "SL").equals(generationOf(held, "SH"))) {
                     tornSnapshot++;
                 }
@@ -250,7 +250,7 @@ public final class AtomicSnapshot {
             return registry.get(name).config().description().orElse("(none)");
         }
 
-        private static String generationOf(LlmSnapshot snapshot, String name) {
+        private static String generationOf(LlmSnapshot<?> snapshot, String name) {
             return snapshot.get(name).config().description().orElse("(none)");
         }
     }

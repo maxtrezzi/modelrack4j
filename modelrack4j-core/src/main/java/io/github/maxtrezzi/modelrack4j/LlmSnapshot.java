@@ -52,11 +52,13 @@ import java.util.Set;
  * point of it. Take one per unit of work, not one at startup, or you have re-created the
  * caching trap {@link LlmBundle} warns about.
  *
+ * @param <T> what the registry's {@link CustomPropertiesHandler} turns a
+ *     {@code custom-properties} block into, or {@link Void} when none was registered
  * @see LlmRegistry#snapshot()
  */
-public final class LlmSnapshot {
+public final class LlmSnapshot<T> {
 
-    private final Map<String, LlmBundle> bundles;
+    private final Map<String, LlmBundle<T>> bundles;
 
     /**
      * Package-private: a snapshot only ever comes from the registry that published it.
@@ -68,7 +70,7 @@ public final class LlmSnapshot {
      * pay on every call to {@link LlmRegistry#get(String)}, which delegates here and is the
      * API's declared cheap path (see the README).
      */
-    LlmSnapshot(Map<String, LlmBundle> bundles) {
+    LlmSnapshot(Map<String, LlmBundle<T>> bundles) {
         this.bundles = Collections.unmodifiableMap(Objects.requireNonNull(bundles, "bundles"));
     }
 
@@ -79,8 +81,8 @@ public final class LlmSnapshot {
      * @return the bundle bound to that name in this generation
      * @throws UnknownConfigurationException if this generation had no bundle for the name
      */
-    public LlmBundle get(String name) {
-        LlmBundle bundle = bundles.get(Objects.requireNonNull(name, "name"));
+    public LlmBundle<T> get(String name) {
+        LlmBundle<T> bundle = bundles.get(Objects.requireNonNull(name, "name"));
         if (bundle == null) {
             throw new UnknownConfigurationException(name);
         }

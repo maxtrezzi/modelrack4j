@@ -24,6 +24,33 @@ will not be held back for a major bump until the API settles at `1.0.0`.
 
 ### Added
 
+- **`custom-properties`: values of your own, carried inside the block they belong to.** A named
+  configuration may now hold a `custom-properties` section — a prompt id, a retry count, an
+  escalation delay. The library renders it as JSON and never reads inside it;
+  `LlmBundle.customPropertiesText()` hands you the text, and gives `{}` when the file has no
+  such block, so it is always something a parser will accept.
+
+  Register a `CustomPropertiesHandler` and it becomes an object of yours:
+
+  ```java
+  LlmRegistry<SupportProps> registry = LlmRegistry.builder()
+          .configFiles(List.of(base, local))
+          .customPropertiesHandler(config -> mapper.readValue(
+                  config.customPropertiesText(), SupportProps.class))
+          .build();
+
+  SupportProps props = registry.get("SUPPORT").customProperties();
+  ```
+
+  The handler is the reason to keep these values here rather than in a file of your own:
+  **parsing is validation**. It runs inside the reload, so a property your application cannot
+  use is rejected in the same swap as the model it belongs to — the reload changes nothing, the
+  previous configuration stays live, and `onReloadFailure` reports it. A `store()` carrying one
+  writes nothing. The handler receives the whole `LlmConfig`, so a rule can depend on the
+  block's name or its provider, and it is called for every configuration, including one with no
+  such block. Keep it quick: it runs while the reload holds the registry's lock
+  ([ADR-0055](docs/adr/0055-custom-properties-are-carried-as-text.md)).
+
 - **`ProviderFactory.supportsModeration()`**, a `default` method returning `true`. A provider
   reports whether it can build a `ModerationModel`, and core turns that into the rejection
   and its message. Your own factory keeps working unchanged: it does not override the method,
@@ -41,6 +68,60 @@ will not be held back for a major bump until the API settles at `1.0.0`.
   configuration until something reloads it.
 
 ### Changed
+
+- **A key this library's schema does not know is now an error.** Before, a misspelling such as
+  `temperatur` or `timeuot` was ignored in silence: the value you wrote did nothing and the
+  default applied instead. The configuration is now rejected, with every offending key named
+  together with the layer and line it came from:
+
+  ```
+  llm.SL has 2 keys this library does not know:
+    temperatur (base.conf: 5)
+    timeuot (overrides.conf: 2)
+  ```
+
+  **This can stop a configuration that loads under `0.1.0` from loading.** If a block of yours
+  carries values your own application reads, move them into that block's `custom-properties`
+  section, which is never checked. A key a higher layer clears with `= null` is not reported,
+  and the rule applies at every depth, so a misspelling inside `memory` is named as
+  `memory.max-mesages`
+  ([ADR-0056](docs/adr/0056-an-unknown-key-is-an-error.md)).
+
+- **`LlmRegistry`, `LlmBundle` and `LlmSnapshot` take a type parameter**, which is what a
+  registered `CustomPropertiesHandler` fills in. `LlmRegistry.builder()` returns a
+  `Builder<Void>`, and `customPropertiesHandler(...)` changes the builder's type, so nothing
+  has to be declared in advance:
+
+  ```java
+  var registry = LlmRegistry.builder().configFiles(files).build();   // LlmRegistry<Void>
+  ```
+
+  **Existing code may need a change.** Writing the type without an argument still compiles, but
+  a raw type erases every generic member of the class, including the `Optional<ReloadChange>`
+  that `reload()` and `store()` return — so `registry.reload().orElseThrow().updated()` stops
+  compiling against a raw `LlmRegistry`. Write `LlmRegistry<Void>`, or `var` for a local.
+  `LlmConfig` is unchanged, so a `ProviderFactory` of your own needs nothing.
+
+- **A configuration that defines no names is now valid.** An empty file, a file holding only
+  comments, and an `llm {}` block all build a registry with nothing in it: `names()` is empty
+  and `get(...)` throws `UnknownConfigurationException`. Before, each was refused at startup.
+  Whether an empty configuration is a problem depends on what your application needs, which the
+  library cannot know, so check for what you require:
+
+  ```java
+  if (!registry.names().contains("SL")) { throw new IllegalStateException("no SL"); }
+  ```
+
+  This is also what lets a reload remove the *last* configuration — which was refused before,
+  leaving the registry serving a name no layer defined any more
+  ([ADR-0057](docs/adr/0057-an-empty-configuration-is-valid.md)).
+
+- **`= null` on a whole configuration now says why it is refused.** `llm.SL = null` in a higher
+  layer answered with a message about an internal value type; it now says that a configuration
+  cannot be removed from a higher layer, that `null` clears a value inside a block rather than
+  the block itself, and where to remove it instead. `llm = null` is refused in the same terms.
+  Clearing a *value* with `= null` is unchanged and works at every depth, inside
+  `custom-properties` too ([ADR-0058](docs/adr/0058-null-does-not-remove-a-configuration.md)).
 
 - **Breaking: a layer that cannot be read or written now throws `ConfigAccessException`, not
   `ConfigValidationException`.** The new type is public, unchecked, and deliberately **not** a

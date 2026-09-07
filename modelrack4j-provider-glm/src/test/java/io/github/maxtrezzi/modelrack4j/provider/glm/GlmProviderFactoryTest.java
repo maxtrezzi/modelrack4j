@@ -280,11 +280,12 @@ class GlmProviderFactoryTest {
 
     private static LlmConfig withKey(String apiKey) {
         return new LlmConfig("SL", Optional.empty(), "glm", apiKey, MODEL, Optional.empty(),
-                Duration.ofSeconds(60), false, false, false, Optional.empty(), false);
+                Duration.ofSeconds(60), false, false, false, Optional.empty(), false, "{}");
     }
 
     private static LlmConfig config(Optional<Double> temperature, boolean moderation) {
         return new LlmConfig("SL", Optional.empty(), "glm", KEY, MODEL,
-                temperature, Duration.ofSeconds(60), false, false, false, Optional.empty(), moderation);
+                temperature, Duration.ofSeconds(60), false, false, false, Optional.empty(),
+                moderation, "{}");
     }
 }

@@ -94,7 +94,7 @@ class ConfigSourceTest {
     @Test
     @DisplayName("a registry can be built from configuration that never touches the disk")
     void buildsFromTextAlone() {
-        try (LlmRegistry registry = LlmRegistry.builder()
+        try (LlmRegistry<Void> registry = LlmRegistry.builder()
                 .sources(List.of(ConfigSource.of("row#1", block("SL", "m"))))
                 .build()) {
             assertThat(registry.names()).containsExactly("SL");
@@ -108,7 +108,7 @@ class ConfigSourceTest {
         ConfigSource base = ConfigSource.of("row#base", block("SL", "from-base"));
         ConfigSource over = ConfigSource.of("row#over", block("SL", "from-over"));
 
-        try (LlmRegistry registry = LlmRegistry.builder().sources(List.of(base, over))
+        try (LlmRegistry<Void> registry = LlmRegistry.builder().sources(List.of(base, over))
                 .build()) {
             // Lowest precedence first, which is the order sources(...) documents and the
             // order the winning value proves: the last layer is the one that wins.
@@ -122,7 +122,7 @@ class ConfigSourceTest {
     void sourcesCannotBeModified() {
         ConfigSource row = ConfigSource.of("row#1", block("SL", "m"));
 
-        try (LlmRegistry registry = LlmRegistry.builder().sources(List.of(row)).build()) {
+        try (LlmRegistry<Void> registry = LlmRegistry.builder().sources(List.of(row)).build()) {
             List<ConfigSource> reported = registry.sources();
 
             assertThatThrownBy(() -> reported.add(ConfigSource.of("row#2", "")))
@@ -138,7 +138,7 @@ class ConfigSourceTest {
         Files.writeString(file, block("SL", "before"), StandardCharsets.UTF_8);
         ConfigSource base = ConfigSource.of("row#base", block("SH", "fixed"));
 
-        try (LlmRegistry registry = LlmRegistry.builder()
+        try (LlmRegistry<Void> registry = LlmRegistry.builder()
                 .sources(List.of(base, ConfigSource.ofWritableFile(file)))
                 .build()) {
             // The example in sources()'s javadoc, run: an application that did not keep the
@@ -162,7 +162,7 @@ class ConfigSourceTest {
         MutableSource row = new MutableSource("row#1", block("SL", "m"));
         List<ReloadFailure> failures = new ArrayList<>();
 
-        try (LlmRegistry registry = LlmRegistry.builder().sources(List.of(row)).build()) {
+        try (LlmRegistry<Void> registry = LlmRegistry.builder().sources(List.of(row)).build()) {
             registry.onReloadFailure(failures::add);
             row.store("llm { SL { provider = nope } }");
 
@@ -180,7 +180,7 @@ class ConfigSourceTest {
     @DisplayName("reload() publishes what the source now says, and reports what changed")
     void manualReloadPublishesTheNewText() {
         MutableSource row = new MutableSource("row#1", block("SL", "before"));
-        try (LlmRegistry registry = LlmRegistry.builder().sources(List.of(row)).build()) {
+        try (LlmRegistry<Void> registry = LlmRegistry.builder().sources(List.of(row)).build()) {
             row.store(block("SL", "after"));
 
             // Nothing watches a database row, so until it is asked the registry is right to
@@ -199,7 +199,7 @@ class ConfigSourceTest {
     @DisplayName("reload() re-reads the source rather than trusting what it read before")
     void manualReloadRereadsTheSource() {
         MutableSource row = new MutableSource("row#1", block("SL", "m"));
-        try (LlmRegistry registry = LlmRegistry.builder().sources(List.of(row)).build()) {
+        try (LlmRegistry<Void> registry = LlmRegistry.builder().sources(List.of(row)).build()) {
             int afterBuild = row.reads();
 
             registry.reload();
@@ -212,8 +212,8 @@ class ConfigSourceTest {
     @DisplayName("reload() reports nothing when the configuration did not actually change")
     void unchangedReloadIsEmpty() {
         MutableSource row = new MutableSource("row#1", block("SL", "m"));
-        try (LlmRegistry registry = LlmRegistry.builder().sources(List.of(row)).build()) {
-            LlmBundle before = registry.get("SL");
+        try (LlmRegistry<Void> registry = LlmRegistry.builder().sources(List.of(row)).build()) {
+            LlmBundle<Void> before = registry.get("SL");
 
             assertThat(registry.reload()).isEmpty();
             assertThat(registry.get("SL")).isSameAs(before);
@@ -224,8 +224,8 @@ class ConfigSourceTest {
     @DisplayName("a rejected manual reload throws to the caller and keeps the old snapshot")
     void rejectedManualReloadThrowsAndChangesNothing() {
         MutableSource row = new MutableSource("row#1", block("SL", "good"));
-        try (LlmRegistry registry = LlmRegistry.builder().sources(List.of(row)).build()) {
-            LlmBundle live = registry.get("SL");
+        try (LlmRegistry<Void> registry = LlmRegistry.builder().sources(List.of(row)).build()) {
+            LlmBundle<Void> live = registry.get("SL");
             row.store("llm { SL { provider = nope-not-a-provider, api-key = \"k\""
                     + ", model-name = \"m\" } }");
 
@@ -242,7 +242,7 @@ class ConfigSourceTest {
     @DisplayName("a rejected manual reload reaches the failure listeners as well as the caller")
     void rejectedManualReloadAlsoNotifiesListeners() {
         MutableSource row = new MutableSource("row#1", block("SL", "good"));
-        try (LlmRegistry registry = LlmRegistry.builder().sources(List.of(row)).build()) {
+        try (LlmRegistry<Void> registry = LlmRegistry.builder().sources(List.of(row)).build()) {
             AtomicReference<ReloadFailure> seen = new AtomicReference<>();
             registry.onReloadFailure(seen::set);
             row.store("llm { SL { provider = fake-local } }");   // no api-key
@@ -273,7 +273,7 @@ class ConfigSourceTest {
         Files.writeString(base, "include \"extra.conf\"\n" + block("SL", "own"),
                 StandardCharsets.UTF_8);
 
-        try (LlmRegistry registry =
+        try (LlmRegistry<Void> registry =
                 LlmRegistry.builder().configFiles(List.of(base)).build()) {
             // Reading the file and parsing the text loses this: the includer then resolves
             // against the working directory and the classpath instead of the file's own
@@ -302,7 +302,7 @@ class ConfigSourceTest {
             Files.writeString(base, "include \"p39-extra.conf\"\n" + block("SL", "own"),
                     StandardCharsets.UTF_8);
 
-            try (LlmRegistry registry = LlmRegistry.builder()
+            try (LlmRegistry<Void> registry = LlmRegistry.builder()
                     .configFiles(List.of(Path.of("p39-base.conf")))
                     .build()) {
                 assertThat(registry.names()).containsExactly("SH", "SL");
@@ -347,7 +347,7 @@ class ConfigSourceTest {
         Files.writeString(file, block("SL", "first"), StandardCharsets.UTF_8);
 
         // Every layer here is a file, and this was refused for having none (ADR-0050).
-        try (LlmRegistry registry = LlmRegistry.builder()
+        try (LlmRegistry<Void> registry = LlmRegistry.builder()
                 .sources(List.of(ConfigSource.ofFile(file)))
                 .watch(true)
                 .debounce(DEBOUNCE)
@@ -365,7 +365,7 @@ class ConfigSourceTest {
         Files.writeString(file, block("SL", "first"), StandardCharsets.UTF_8);
         MutableSource row = new MutableSource("row#1", block("SH", "unwatched"));
 
-        try (LlmRegistry registry = LlmRegistry.builder()
+        try (LlmRegistry<Void> registry = LlmRegistry.builder()
                 .sources(List.of(ConfigSource.ofFile(file), row))
                 .watch(true)
                 .debounce(DEBOUNCE)
@@ -388,7 +388,7 @@ class ConfigSourceTest {
         Files.writeString(user, block("SH", "first"), StandardCharsets.UTF_8);
         WritableConfigSource target = ConfigSource.ofWritableFile(user);
 
-        try (LlmRegistry registry = LlmRegistry.builder()
+        try (LlmRegistry<Void> registry = LlmRegistry.builder()
                 .sources(List.of(ConfigSource.ofFile(base), target))
                 .watch(true)
                 .debounce(DEBOUNCE)
@@ -473,7 +473,7 @@ class ConfigSourceTest {
         Files.writeString(file, block("SL", "first"), StandardCharsets.UTF_8);
         List<ReloadFailure> failures = new ArrayList<>();
 
-        try (LlmRegistry registry =
+        try (LlmRegistry<Void> registry =
                 LlmRegistry.builder().configFiles(List.of(file)).build()) {
             registry.onReloadFailure(failures::add);
             Files.delete(file);
@@ -521,7 +521,7 @@ class ConfigSourceTest {
     void aSuppliedNotifierDrivesTheReload() {
         MutableSource row = new MutableSource("row#1", block("SL", "before"));
         NoopNotifier notifier = new NoopNotifier();
-        try (LlmRegistry registry =
+        try (LlmRegistry<Void> registry =
                 LlmRegistry.builder().sources(List.of(row)).notifier(notifier).build()) {
             row.store(block("SL", "after"));
 
@@ -538,7 +538,7 @@ class ConfigSourceTest {
         MutableSource row = new MutableSource("row#1", block("SL", "good"));
         NoopNotifier notifier = new NoopNotifier();
         AtomicInteger failures = new AtomicInteger();
-        try (LlmRegistry registry =
+        try (LlmRegistry<Void> registry =
                 LlmRegistry.builder().sources(List.of(row)).notifier(notifier).build()) {
             registry.onReloadFailure(f -> failures.incrementAndGet());
             row.store("llm { SL { provider = fake-local } }");   // no api-key
@@ -594,7 +594,7 @@ class ConfigSourceTest {
 
         ExecutorService pool = Executors.newFixedThreadPool(threads);
         List<Future<?>> running = new ArrayList<>(threads);
-        try (LlmRegistry registry = LlmRegistry.builder().sources(List.of(slow)).build()) {
+        try (LlmRegistry<Void> registry = LlmRegistry.builder().sources(List.of(slow)).build()) {
             for (int i = 0; i < threads; i++) {
                 running.add(pool.submit(() -> {
                     ready.countDown();
@@ -736,7 +736,7 @@ class ConfigSourceTest {
         try {
             for (int round = 0; round < rounds; round++) {
                 AtomicInteger closes = new AtomicInteger();
-                LlmRegistry registry = LlmRegistry.builder()
+                LlmRegistry<Void> registry = LlmRegistry.builder()
                         .sources(List.of(ConfigSource.of("row#1", block("SL", "m"))))
                         .notifier(new CountingNotifier(closes))
                         .build();
@@ -810,7 +810,7 @@ class ConfigSourceTest {
         }
     }
 
-    private static void awaitModel(LlmRegistry registry, String name, String modelName) {
+    private static void awaitModel(LlmRegistry<Void> registry, String name, String modelName) {
         await().atMost(TIMEOUT)
                 .until(() -> registry.names().contains(name)
                         && registry.get(name).config().modelName().equals(modelName));

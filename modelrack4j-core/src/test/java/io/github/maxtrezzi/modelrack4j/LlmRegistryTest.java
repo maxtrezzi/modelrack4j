@@ -30,6 +30,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -442,7 +443,7 @@ class LlmRegistryTest {
             assertThat(memory.messages()).isNotEmpty().hasSizeLessThanOrEqualTo(3);
         }
 
-        private ChatMemory memoryOf(LlmRegistry registry, Object memoryId) {
+        private ChatMemory memoryOf(LlmRegistry<Void> registry, Object memoryId) {
             return registry.get("SL").chatMemoryProvider()
                     .orElseThrow(() -> new AssertionError("SL has no chat memory provider"))
                     .get(memoryId);
@@ -455,14 +456,148 @@ class LlmRegistryTest {
         }
     }
 
+    @Nested
+    @DisplayName("an empty configuration, and null where a block is expected")
+    class EmptyAndNull {
+
+        private static final String SL =
+                "llm.SL { provider = fake-local, api-key = \"k\", model-name = \"m\" }\n";
+
+        @Test
+        @DisplayName("a file with nothing in it builds a registry with no configurations")
+        void anEmptyFileBuilds() throws IOException {
+            try (LlmRegistry<Void> registry = registryOf("")) {
+                assertThat(registry.names()).isEmpty();
+                assertThatThrownBy(() -> registry.get("SL"))
+                        .isInstanceOf(UnknownConfigurationException.class);
+            }
+        }
+
+        @Test
+        @DisplayName("a file holding only comments builds one too")
+        void onlyCommentsBuilds() throws IOException {
+            try (LlmRegistry<Void> registry = registryOf("# nothing here\n")) {
+                assertThat(registry.names()).isEmpty();
+            }
+        }
+
+        @Test
+        @DisplayName("an llm block that defines no names builds one too")
+        void anEmptyLlmBlockBuilds() throws IOException {
+            try (LlmRegistry<Void> registry = registryOf("llm {}\n")) {
+                assertThat(registry.names()).isEmpty();
+            }
+        }
+
+        @Test
+        @DisplayName("a reload may remove the last configuration")
+        void reloadMayEmptyTheRegistry() throws Exception {
+            Path file = dir.resolve("empties.conf");
+            Files.writeString(file, SL, StandardCharsets.UTF_8);
+            try (LlmRegistry<Void> registry =
+                    LlmRegistry.builder().configFiles(List.of(file)).build()) {
+                assertThat(registry.names()).containsExactly("SL");
+
+                Files.writeString(file, "llm {}\n", StandardCharsets.UTF_8);
+                Optional<ReloadChange> change = registry.reload();
+
+                // ADR-0014 says removed names are honoured. Before ADR-0057 the last one was
+                // not: the reload was rejected and the registry went on serving SL.
+                assertThat(registry.names()).isEmpty();
+                assertThat(change).isPresent();
+                assertThat(change.orElseThrow().removed()).containsExactly("SL");
+            }
+        }
+
+        @Test
+        @DisplayName("a higher layer cannot remove a configuration with null")
+        void nullOnABlockIsRefused() throws IOException {
+            Path base = dir.resolve("base.conf");
+            Path higher = dir.resolve("higher.conf");
+            Files.writeString(base, SL, StandardCharsets.UTF_8);
+            Files.writeString(higher, "llm.SL = null\n", StandardCharsets.UTF_8);
+
+            assertThatThrownBy(() -> LlmRegistry.builder()
+                    .configFiles(List.of(base, higher))
+                    .build())
+                    .isInstanceOf(ConfigValidationException.class)
+                    .hasMessageContaining("llm.SL is set to null")
+                    .hasMessageContaining("higher.conf")
+                    .hasMessageContaining("cannot be removed from a higher layer");
+        }
+
+        @Test
+        @DisplayName("nulling the whole llm block is refused in the same terms")
+        void nullOnTheRootIsRefused() throws IOException {
+            Path base = dir.resolve("root-base.conf");
+            Path higher = dir.resolve("root-higher.conf");
+            Files.writeString(base, SL, StandardCharsets.UTF_8);
+            Files.writeString(higher, "llm = null\n", StandardCharsets.UTF_8);
+
+            // Without this the empty registry ADR-0057 allows would be a working back door
+            // to the removal the test above refuses.
+            assertThatThrownBy(() -> LlmRegistry.builder()
+                    .configFiles(List.of(base, higher))
+                    .build())
+                    .isInstanceOf(ConfigValidationException.class)
+                    .hasMessageContaining("llm is set to null")
+                    .hasMessageContaining("cannot be removed from a higher layer");
+        }
+
+        @Test
+        @DisplayName("an empty object in a higher layer clears nothing")
+        void anEmptyObjectClearsNothing() throws IOException {
+            Path base = dir.resolve("obj-base.conf");
+            Path higher = dir.resolve("obj-higher.conf");
+            Files.writeString(base, SL, StandardCharsets.UTF_8);
+            Files.writeString(higher, "llm = {}\n", StandardCharsets.UTF_8);
+
+            // HOCON merges objects, which is also what makes an empty layer harmless.
+            try (LlmRegistry<Void> registry = LlmRegistry.builder()
+                    .configFiles(List.of(base, higher))
+                    .build()) {
+                assertThat(registry.names()).containsExactly("SL");
+            }
+        }
+
+        @Test
+        @DisplayName("a block that is not an object is still refused, naming its type")
+        void aNonObjectBlockIsStillRefused() {
+            assertThatThrownBy(() -> registryOf("llm.SL = \"a string\"\n"))
+                    .isInstanceOf(ConfigValidationException.class)
+                    .hasMessageContaining("must be a configuration block")
+                    .hasMessageContaining("STRING");
+        }
+
+        @Test
+        @DisplayName("an llm that is not a block at all is refused by this library")
+        void aNonObjectRootIsRefused() {
+            // Without its own check this reaches Typesafe Config's getObject and escapes as
+            // that library's WrongType, from a method documented to throw ours.
+            assertThatThrownBy(() -> registryOf("llm = 5\n"))
+                    .isInstanceOf(ConfigValidationException.class)
+                    .hasMessageContaining("must be a block of named configurations")
+                    .hasMessageContaining("NUMBER");
+        }
+
+        @Test
+        @DisplayName("a registry with no sources at all is still refused")
+        void noSourcesIsStillRefused() {
+            // Having nowhere to read from is not the same as reading and finding nothing.
+            assertThatThrownBy(() -> LlmRegistry.builder().sources(List.of()).build())
+                    .isInstanceOf(ConfigValidationException.class)
+                    .hasMessageContaining("At least one configuration source");
+        }
+    }
+
     private int fileCounter;
 
-    private LlmRegistry registryOf(String hocon) throws IOException {
+    private LlmRegistry<Void> registryOf(String hocon) throws IOException {
         // A counter, not a hash: Math.abs(Integer.MIN_VALUE) is still negative, and a hash
         // collision between two cases in one test would silently reuse a file.
         Path file = dir.resolve("test-" + (++fileCounter) + ".conf");
         Files.writeString(file, hocon, StandardCharsets.UTF_8);
-        LlmRegistry registry = LlmRegistry.builder().configFiles(List.of(file)).build();
+        LlmRegistry<Void> registry = LlmRegistry.builder().configFiles(List.of(file)).build();
         built.add(registry);
         return registry;
     }

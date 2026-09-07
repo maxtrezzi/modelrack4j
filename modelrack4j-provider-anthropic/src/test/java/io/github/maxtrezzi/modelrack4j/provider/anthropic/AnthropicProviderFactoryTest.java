@@ -160,6 +160,6 @@ class AnthropicProviderFactoryTest {
     private static LlmConfig config(Optional<Double> temperature, boolean moderation) {
         return new LlmConfig("SL", Optional.empty(), "anthropic", "test-key-not-used",
                 "claude-sonnet-4-5", temperature, Duration.ofSeconds(60), false, false, false, Optional.empty(),
-                moderation);
+                moderation, "{}");
     }
 }

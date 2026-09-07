@@ -178,8 +178,8 @@ class LayeredResolutionTest {
     }
 
     /** Builds over the given layers, lowest precedence first, and closes it afterwards. */
-    private LlmRegistry registryOver(Path... files) {
-        LlmRegistry registry = LlmRegistry.builder().configFiles(List.of(files)).build();
+    private LlmRegistry<Void> registryOver(Path... files) {
+        LlmRegistry<Void> registry = LlmRegistry.builder().configFiles(List.of(files)).build();
         built.add(registry);
         return registry;
     }

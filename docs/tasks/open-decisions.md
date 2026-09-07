@@ -523,9 +523,10 @@ which is what actually goes wrong.
   class token at each read, `LlmRegistry.builder()` returns a `Builder<Void>` and
   `customPropertiesHandler` is a type-changing method returning a `Builder<T>`, so a caller
   declares nothing in advance and reads an object with no cast. One registry therefore binds one
-  custom-properties type, which the owner accepted. It reaches `LlmRegistry` and `LlmBundle` but
-  not `LlmConfig`, so no provider is affected, and existing callers keep compiling because a raw
-  type is legal and generics are erased.
+  custom-properties type, which the owner accepted. It reaches `LlmRegistry`, `LlmBundle` and
+  `LlmSnapshot` but not `LlmConfig`, so no provider is affected. It **is** a source break for
+  some existing code — see P40, which measured it; the claim first written here, that a raw type
+  keeps everything compiling, is wrong.
 - **The handler takes the `LlmConfig`, not the text alone.** This corrects the shape as first
   written: two sentences in this entry already said that a rule "branches on `config.name()`",
   which the text-only signature made impossible — and it also silently dropped the ability to

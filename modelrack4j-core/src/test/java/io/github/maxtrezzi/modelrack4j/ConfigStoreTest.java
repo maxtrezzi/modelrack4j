@@ -131,7 +131,7 @@ class ConfigStoreTest {
         return file;
     }
 
-    private LlmRegistry registryOver(ConfigSource... layers) {
+    private LlmRegistry<Void> registryOver(ConfigSource... layers) {
         List<ConfigSource> all = new ArrayList<>();
         all.add(SECRETS);
         all.addAll(List.of(layers));
@@ -160,7 +160,7 @@ class ConfigStoreTest {
             Path file = writeLayer("app.conf", LAYER);
             WritableConfigSource target = ConfigSource.ofWritableFile(file);
 
-            try (LlmRegistry registry = registryOver(target)) {
+            try (LlmRegistry<Void> registry = registryOver(target)) {
                 Optional<ReloadChange> change =
                         registry.store(target, LAYER_WITH_SECOND_MODEL);
 
@@ -188,7 +188,7 @@ class ConfigStoreTest {
                     }
                     """;
 
-            try (LlmRegistry registry = registryOver(target)) {
+            try (LlmRegistry<Void> registry = registryOver(target)) {
                 registry.store(target, formatted);
             }
 
@@ -201,7 +201,7 @@ class ConfigStoreTest {
             Path file = writeLayer("app.conf", LAYER);
             WritableConfigSource target = ConfigSource.ofWritableFile(file);
 
-            try (LlmRegistry registry = registryOver(target)) {
+            try (LlmRegistry<Void> registry = registryOver(target)) {
                 // What the application holds is resolved: this is the value that must not leak.
                 assertThat(registry.get("SL").config().apiKey()).isEqualTo(SECRET_VALUE);
 
@@ -222,7 +222,7 @@ class ConfigStoreTest {
             Path top = writeLayer("top.conf", "llm { SL { model-name = \"from-top\" } }");
             WritableConfigSource target = ConfigSource.ofWritableFile(top);
 
-            try (LlmRegistry registry = registryOver(ConfigSource.ofFile(base), target)) {
+            try (LlmRegistry<Void> registry = registryOver(ConfigSource.ofFile(base), target)) {
                 assertThat(registry.get("SL").config().modelName()).isEqualTo("from-top");
 
                 registry.store(target, "llm { }");
@@ -237,7 +237,7 @@ class ConfigStoreTest {
             Path file = writeLayer("app.conf", LAYER);
             WritableConfigSource target = ConfigSource.ofWritableFile(file);
 
-            try (LlmRegistry registry = registryOver(target)) {
+            try (LlmRegistry<Void> registry = registryOver(target)) {
                 Optional<ReloadChange> change = registry.store(target, LAYER + """
                         llm.SH {
                           provider   = fake-local
@@ -265,7 +265,7 @@ class ConfigStoreTest {
                     """);
             WritableConfigSource target = ConfigSource.ofWritableFile(file);
 
-            try (LlmRegistry registry = registryOver(target)) {
+            try (LlmRegistry<Void> registry = registryOver(target)) {
                 Optional<ReloadChange> change = registry.store(target, LAYER);
 
                 assertThat(change).isPresent();
@@ -283,7 +283,7 @@ class ConfigStoreTest {
             String reformatted =
                     "llm.SL { provider = fake-local, api-key = ${secret}, model-name = \"first\" }\n";
 
-            try (LlmRegistry registry = registryOver(target)) {
+            try (LlmRegistry<Void> registry = registryOver(target)) {
                 Optional<ReloadChange> change = registry.store(target, reformatted);
 
                 assertThat(change).as("the parsed configuration is the same").isEmpty();
@@ -297,7 +297,7 @@ class ConfigStoreTest {
         void store_stagesANonFileLayerAsText() {
             MemoryRow row = new MemoryRow(LAYER);
 
-            try (LlmRegistry registry = registryOver(row)) {
+            try (LlmRegistry<Void> registry = registryOver(row)) {
                 registry.store(row, LAYER_WITH_SECOND_MODEL);
 
                 assertThat(row.writes).hasValue(1);
@@ -318,7 +318,7 @@ class ConfigStoreTest {
             WritableConfigSource target = ConfigSource.ofWritableFile(file);
             String before = read(file);
 
-            try (LlmRegistry registry = registryOver(target)) {
+            try (LlmRegistry<Void> registry = registryOver(target)) {
                 assertThatThrownBy(() -> registry.store(target,
                         LAYER.replace("fake-local", "not-a-provider")))
                         .isInstanceOf(ConfigValidationException.class)
@@ -336,7 +336,7 @@ class ConfigStoreTest {
             WritableConfigSource target = ConfigSource.ofWritableFile(file);
             String before = read(file);
 
-            try (LlmRegistry registry = registryOver(target)) {
+            try (LlmRegistry<Void> registry = registryOver(target)) {
                 assertThatThrownBy(() -> registry.store(target, "llm { SL { unclosed = "))
                         .isInstanceOf(ConfigValidationException.class);
 
@@ -361,7 +361,7 @@ class ConfigStoreTest {
                     "root ignores the permissions this test relies on");
             WritableConfigSource target = ConfigSource.ofWritableFile(file);
 
-            try (LlmRegistry registry = registryOver(target)) {
+            try (LlmRegistry<Void> registry = registryOver(target)) {
                 // Read and executable, not writable: the layer still loads, and staging beside
                 // it cannot. That is the commonest storage failure, and it happens before the
                 // new text is validated at all.
@@ -394,7 +394,7 @@ class ConfigStoreTest {
         void store_whenTheWriteFails_rollsBack() {
             MemoryRow row = new MemoryRow(LAYER);
 
-            try (LlmRegistry registry = registryOver(row)) {
+            try (LlmRegistry<Void> registry = registryOver(row)) {
                 row.refuseWrites = true;
 
                 assertThatThrownBy(() -> registry.store(row, LAYER_WITH_SECOND_MODEL))
@@ -413,7 +413,7 @@ class ConfigStoreTest {
             MemoryRow mine = new MemoryRow(LAYER);
             MemoryRow theirs = new MemoryRow(LAYER);   // a different instance, same id
 
-            try (LlmRegistry registry = registryOver(mine)) {
+            try (LlmRegistry<Void> registry = registryOver(mine)) {
                 assertThatThrownBy(() -> registry.store(theirs, LAYER_WITH_SECOND_MODEL))
                         .isInstanceOf(ConfigValidationException.class)
                         .hasMessageContaining("not one of");
@@ -427,7 +427,7 @@ class ConfigStoreTest {
         void store_withNullArguments_throws() {
             MemoryRow row = new MemoryRow(LAYER);
 
-            try (LlmRegistry registry = registryOver(row)) {
+            try (LlmRegistry<Void> registry = registryOver(row)) {
                 assertThatNullPointerException()
                         .isThrownBy(() -> registry.store(null, LAYER));
                 assertThatNullPointerException()
@@ -442,7 +442,7 @@ class ConfigStoreTest {
             Path file = writeLayer("app.conf", LAYER);
             WritableConfigSource target = ConfigSource.ofWritableFile(file);
 
-            try (LlmRegistry registry = registryOver(target)) {
+            try (LlmRegistry<Void> registry = registryOver(target)) {
                 assertThatThrownBy(() -> registry.store(target,
                         LAYER.replace("fake-local", "not-a-provider")))
                         .isInstanceOf(ConfigValidationException.class);
@@ -463,7 +463,7 @@ class ConfigStoreTest {
             MemoryRow row = new MemoryRow(LAYER);
             AtomicInteger reloads = new AtomicInteger();
 
-            try (LlmRegistry registry = registryOver(row)) {
+            try (LlmRegistry<Void> registry = registryOver(row)) {
                 registry.onReload(change -> reloads.incrementAndGet());
 
                 registry.store(row, LAYER_WITH_SECOND_MODEL);
@@ -479,7 +479,7 @@ class ConfigStoreTest {
             MemoryRow row = new MemoryRow(LAYER);
             AtomicInteger failures = new AtomicInteger();
 
-            try (LlmRegistry registry = registryOver(row)) {
+            try (LlmRegistry<Void> registry = registryOver(row)) {
                 registry.onReloadFailure(failure -> failures.incrementAndGet());
 
                 assertThatThrownBy(() -> registry.store(row,
@@ -497,7 +497,7 @@ class ConfigStoreTest {
             WritableConfigSource target = ConfigSource.ofWritableFile(file);
             AtomicInteger reloads = new AtomicInteger();
 
-            try (LlmRegistry registry = LlmRegistry.builder()
+            try (LlmRegistry<Void> registry = LlmRegistry.builder()
                     .sources(List.of(SECRETS, target))
                     .notifier(FileChangeNotifier.of(List.of(file), Duration.ofMillis(50)))
                     .build()) {
@@ -530,7 +530,7 @@ class ConfigStoreTest {
                     """);
             WritableConfigSource target = ConfigSource.ofWritableFile(file);
 
-            try (LlmRegistry registry = registryOver(target)) {
+            try (LlmRegistry<Void> registry = registryOver(target)) {
                 assertThat(registry.get("SL").config().modelName()).isEqualTo("from-include");
 
                 registry.store(target, """
@@ -557,7 +557,7 @@ class ConfigStoreTest {
                     """);
             WritableConfigSource target = ConfigSource.ofWritableFile(file);
 
-            try (LlmRegistry registry = registryOver(target)) {
+            try (LlmRegistry<Void> registry = registryOver(target)) {
                 registry.store(target, """
                         include "provider.conf"
                         llm { SL { api-key = ${secret}, model-name = "second" } }
@@ -579,7 +579,7 @@ class ConfigStoreTest {
             WritableConfigSource target = ConfigSource.ofWritableFile(file);
             String before = read(file);
 
-            try (LlmRegistry registry = registryOver(target)) {
+            try (LlmRegistry<Void> registry = registryOver(target)) {
                 assertThatThrownBy(() -> registry.store(target,
                         "llm { SL { api-key = ${secret}, model-name = \"second\" } }"))
                         .isInstanceOf(ConfigValidationException.class)
@@ -601,7 +601,7 @@ class ConfigStoreTest {
                     """);
             WritableConfigSource target = ConfigSource.ofWritableFile(file);
 
-            try (LlmRegistry registry = registryOver(target)) {
+            try (LlmRegistry<Void> registry = registryOver(target)) {
                 assertThat(registry.get("SL").config().temperature()).contains(0.5);
 
                 // The library cannot tell a deliberate removal from an accidental one, and
@@ -631,7 +631,7 @@ class ConfigStoreTest {
             WritableConfigSource target = ConfigSource.ofWritableFile(link);
             String before = read(real);
 
-            try (LlmRegistry registry = registryOver(target)) {
+            try (LlmRegistry<Void> registry = registryOver(target)) {
                 assertThatThrownBy(() -> registry.store(target, """
                         include "provider.conf"
                         llm { SL { api-key = ${secret}, model-name = "second" } }
@@ -654,7 +654,7 @@ class ConfigStoreTest {
             Files.createSymbolicLink(link, real);
             WritableConfigSource target = ConfigSource.ofWritableFile(link);
 
-            try (LlmRegistry registry = registryOver(target)) {
+            try (LlmRegistry<Void> registry = registryOver(target)) {
                 registry.store(target, LAYER_WITH_SECOND_MODEL);
 
                 assertThat(registry.get("SL").config().modelName()).isEqualTo("second");
@@ -680,7 +680,7 @@ class ConfigStoreTest {
             Files.setPosixFilePermissions(file, PosixFilePermissions.fromString("rw-r--r--"));
             WritableConfigSource target = ConfigSource.ofWritableFile(file);
 
-            try (LlmRegistry registry = registryOver(target)) {
+            try (LlmRegistry<Void> registry = registryOver(target)) {
                 registry.store(target, LAYER_WITH_SECOND_MODEL);
             }
 
@@ -696,7 +696,7 @@ class ConfigStoreTest {
             Files.createSymbolicLink(link, data);
             WritableConfigSource target = ConfigSource.ofWritableFile(link);
 
-            try (LlmRegistry registry = registryOver(target)) {
+            try (LlmRegistry<Void> registry = registryOver(target)) {
                 registry.store(target, LAYER_WITH_SECOND_MODEL);
             }
 
@@ -723,7 +723,7 @@ class ConfigStoreTest {
             Files.setPosixFilePermissions(file, PosixFilePermissions.fromString("r--r--r--"));
             WritableConfigSource target = ConfigSource.ofWritableFile(file);
 
-            try (LlmRegistry registry = registryOver(target)) {
+            try (LlmRegistry<Void> registry = registryOver(target)) {
                 registry.store(target, LAYER_WITH_SECOND_MODEL);
 
                 assertThat(registry.get("SL").config().modelName()).isEqualTo("second");
@@ -741,7 +741,7 @@ class ConfigStoreTest {
             Path file = writeLayer("app.conf", LAYER);
             WritableConfigSource target = ConfigSource.ofWritableFile(file);
 
-            try (LlmRegistry registry = registryOver(target)) {
+            try (LlmRegistry<Void> registry = registryOver(target)) {
                 registry.store(target, LAYER_WITH_SECOND_MODEL);
             }
 
@@ -761,7 +761,7 @@ class ConfigStoreTest {
             try {
                 for (int round = 0; round < rounds; round++) {
                     MemoryRow row = new MemoryRow(LAYER);
-                    try (LlmRegistry registry = registryOver(row)) {
+                    try (LlmRegistry<Void> registry = registryOver(row)) {
                         CountDownLatch go = new CountDownLatch(1);
                         Future<?> first = pool.submit(() -> {
                             go.await();
@@ -797,7 +797,7 @@ class ConfigStoreTest {
         void store_doesNotHoldAReadModifyWriteTogether() {
             MemoryRow row = new MemoryRow(LAYER);
 
-            try (LlmRegistry registry = registryOver(row)) {
+            try (LlmRegistry<Void> registry = registryOver(row)) {
                 // One writer reads the layer, meaning to change the model name.
                 String readByFirstWriter = row.text();
 
@@ -828,7 +828,7 @@ class ConfigStoreTest {
         void storeIfUnchanged_whenTheLayerIsUnchanged_stores() {
             MemoryRow row = new MemoryRow(LAYER);
 
-            try (LlmRegistry registry = registryOver(row)) {
+            try (LlmRegistry<Void> registry = registryOver(row)) {
                 Optional<ReloadChange> change =
                         registry.storeIfUnchanged(row, row.text(), LAYER_WITH_SECOND_MODEL);
 
@@ -844,7 +844,7 @@ class ConfigStoreTest {
         void storeIfUnchanged_whenTheLayerMoved_isRefused() {
             MemoryRow row = new MemoryRow(LAYER);
 
-            try (LlmRegistry registry = registryOver(row)) {
+            try (LlmRegistry<Void> registry = registryOver(row)) {
                 String base = row.text();
                 String otherWriter = LAYER.replace("\"first\"", "\"from-somebody-else\"");
                 registry.store(row, otherWriter);
@@ -867,7 +867,7 @@ class ConfigStoreTest {
         void storeIfUnchanged_tellsTheCallerWhatTheLayerHoldsNow() {
             MemoryRow row = new MemoryRow(LAYER);
 
-            try (LlmRegistry registry = registryOver(row)) {
+            try (LlmRegistry<Void> registry = registryOver(row)) {
                 String base = row.text();
                 String otherWriter = LAYER + "llm.SL.log-requests = true\n";
                 registry.store(row, otherWriter);
@@ -894,7 +894,7 @@ class ConfigStoreTest {
         void storeIfUnchanged_comparesTheTextExactly() {
             MemoryRow row = new MemoryRow(LAYER);
 
-            try (LlmRegistry registry = registryOver(row)) {
+            try (LlmRegistry<Void> registry = registryOver(row)) {
                 // Same meaning, different characters — a comment a person added on purpose.
                 String base = "# an older comment\n" + LAYER;
 
@@ -913,7 +913,7 @@ class ConfigStoreTest {
             Path file = writeLayer("app.conf", LAYER);
             WritableConfigSource target = ConfigSource.ofWritableFile(file);
 
-            try (LlmRegistry registry = registryOver(target)) {
+            try (LlmRegistry<Void> registry = registryOver(target)) {
                 // What a shell $(cat app.conf) hands back, and what an HTTP client trimming a
                 // response body hands back: the same configuration, one byte shorter. Nobody
                 // wrote the layer, so the message has to explain a refusal that otherwise
@@ -936,7 +936,7 @@ class ConfigStoreTest {
             Path file = writeLayer("app.conf", LAYER);
             WritableConfigSource target = ConfigSource.ofWritableFile(file);
 
-            try (LlmRegistry registry = registryOver(target)) {
+            try (LlmRegistry<Void> registry = registryOver(target)) {
                 String base = target.text();
                 String byHand = LAYER.replace("\"first\"", "\"edited-by-hand\"");
                 Files.writeString(file, byHand, StandardCharsets.UTF_8);
@@ -958,7 +958,7 @@ class ConfigStoreTest {
             WritableConfigSource target = ConfigSource.ofWritableFile(file);
             String before = read(file);
 
-            try (LlmRegistry registry = registryOver(target)) {
+            try (LlmRegistry<Void> registry = registryOver(target)) {
                 assertThatThrownBy(() -> registry.storeIfUnchanged(target, target.text(),
                         LAYER.replace("fake-local", "not-a-provider")))
                         .isInstanceOf(ConfigValidationException.class)
@@ -974,7 +974,7 @@ class ConfigStoreTest {
         void storeIfUnchanged_whenTheWriteFails_rollsBack() {
             MemoryRow row = new MemoryRow(LAYER);
 
-            try (LlmRegistry registry = registryOver(row)) {
+            try (LlmRegistry<Void> registry = registryOver(row)) {
                 row.refuseWrites = true;
 
                 assertThatThrownBy(() ->
@@ -993,7 +993,7 @@ class ConfigStoreTest {
             MemoryRow row = new MemoryRow(LAYER);
             AtomicInteger reloads = new AtomicInteger();
 
-            try (LlmRegistry registry = registryOver(row)) {
+            try (LlmRegistry<Void> registry = registryOver(row)) {
                 registry.onReload(change -> reloads.incrementAndGet());
 
                 registry.storeIfUnchanged(row, row.text(), LAYER_WITH_SECOND_MODEL);
@@ -1008,7 +1008,7 @@ class ConfigStoreTest {
             MemoryRow mine = new MemoryRow(LAYER);
             MemoryRow theirs = new MemoryRow(LAYER);
 
-            try (LlmRegistry registry = registryOver(mine)) {
+            try (LlmRegistry<Void> registry = registryOver(mine)) {
                 assertThatThrownBy(() ->
                         registry.storeIfUnchanged(theirs, LAYER, LAYER_WITH_SECOND_MODEL))
                         .isInstanceOf(ConfigValidationException.class)
@@ -1023,7 +1023,7 @@ class ConfigStoreTest {
         void storeIfUnchanged_withNullArguments_throws() {
             MemoryRow row = new MemoryRow(LAYER);
 
-            try (LlmRegistry registry = registryOver(row)) {
+            try (LlmRegistry<Void> registry = registryOver(row)) {
                 assertThatNullPointerException()
                         .isThrownBy(() -> registry.storeIfUnchanged(null, LAYER, LAYER));
                 assertThatNullPointerException()
@@ -1045,7 +1045,7 @@ class ConfigStoreTest {
             try {
                 for (int round = 0; round < rounds; round++) {
                     MemoryRow row = new MemoryRow(LAYER);
-                    try (LlmRegistry registry = registryOver(row)) {
+                    try (LlmRegistry<Void> registry = registryOver(row)) {
                         CountDownLatch go = new CountDownLatch(1);
                         Future<?> first = pool.submit(() -> {
                             go.await();
@@ -1084,7 +1084,7 @@ class ConfigStoreTest {
          *     with two writers that is a defect, and failing beats spinning until the pool's
          *     shutdown times out with nothing to say
          */
-        private String appendWithRetry(LlmRegistry registry, MemoryRow row, String line) {
+        private String appendWithRetry(LlmRegistry<Void> registry, MemoryRow row, String line) {
             String base = row.text();
             for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
                 try {
