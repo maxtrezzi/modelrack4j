@@ -75,13 +75,25 @@ Three artifacts, different audiences (ADR-0001, ADR-0015):
 Seed the session task list from `docs/tasks/` when starting work, and treat the files as
 the durable record — the session list is a working copy, not a second source of truth.
 
-**Branch before starting.** Every task gets its own branch and nothing is committed
-directly to `main` (ADR-0016). Name it after the work item — `task/0.1-pin-langchain4j-version`,
-`milestone/m0-skeleton`, `decision/d2-repository-visibility`, or `docs/<slug>` for work with
-no task ID. One branch carries the work, its status update in `docs/tasks/`, and any ADR it
-produces.
+**Branch before starting, and branch from `dev`.** Every task gets its own branch and
+nothing is committed directly to either protected branch (ADR-0016). Name it after the work
+item — `task/0.1-pin-langchain4j-version`, `milestone/m0-skeleton`,
+`decision/d2-repository-visibility`, or `docs/<slug>` for work with no task ID. One branch
+carries the work, its status update in `docs/tasks/`, and any ADR it produces.
 
-**`main` is protected on the remote (ADR-0040), but not against you.** A pull request is
+**`dev` is the default branch and `main` carries releases only (ADR-0061).** Every pull
+request targets `dev`. `main` holds one commit per released version, each with its tag, so its
+tree is always what Maven Central has — which is what makes `git log main..dev` the list of
+what an unreleased version would contain. A release is a pull request from `dev` to `main`,
+squashed, whose subject is the version; the version commit itself — the eight POMs, the
+CHANGELOG heading, `project.build.outputTimestamp` — lands on `dev` first like any other work.
+**Never merge `main` into `dev`, never branch from `main`, never rebase `dev` onto it.** After
+a release the two hold the same tree and unrelated histories, because the merge was a squash;
+`dev` simply carries on. Nothing enforces that — the protection rules cannot express it — so
+it is a rule kept because it is right, the same trade ADR-0040 already takes.
+
+**Both `dev` and `main` are protected on the remote (ADR-0040, widened by ADR-0061), but
+not against you.** A pull request is
 required, force-pushing and deleting are blocked, and the five checks in
 `.github/workflows/build.yml` must pass and be current with the branch before a merge, with
 no approving review needed — so for an outside contributor a green build is the whole gate.
@@ -96,7 +108,7 @@ One branch may carry several `docs/tasks/` entries when they are genuinely one p
 work — see the convention note in `docs/tasks/README.md`, and say so in the entries, so a
 branch matching no identifier reads as a decision rather than as drift.
 
-**ADR numbers are only safe once they are on `main`.** Two branches that each take "the next
+**ADR numbers are only safe once they are on `dev`.** Two branches that each take "the next
 free number" are both correct and still collide, and `build/check-docs.py` cannot warn about
 it because from inside either branch nothing is wrong. Renumbering is cheap while nothing is
 pushed and the ADR is referenced from nowhere outside the repository, and stops being cheap
@@ -562,7 +574,7 @@ in-flight requests may still hold them.
   against one commit and the work spanned several. One of them was not a miscount at all: the
   entry listed a metaphor it had *written* among the metaphors it had *removed*, and no count
   of anything would have caught it. Before you describe a change, run
-  `git diff main..HEAD` over it and read the output to the end — including when it is long,
+  `git diff dev..HEAD` over it and read the output to the end — including when it is long,
   which is exactly when the previous session stopped. **P15 shows the rule reaches a write-up's
   account of its own fix.** P14 wrote that it had put a dated marker on all three of its
   miscounts and had put one on two of them, and named a missing date as the fix for a stale
@@ -643,10 +655,10 @@ in-flight requests may still hold them.
   `if (!awaitTermination(...)) shutdownNow();`, and the check belongs after the `try`.
 - **`docs/tasks/open-decisions.md` needs the owner.** Ask; do not decide unilaterally. A new
   entry there is a question for the owner, not work to pick up, and an entry marked
-  `Needs decision` blocks the code that depends on it rather than inviting a guess. **D1–D9
+  `Needs decision` blocks the code that depends on it rather than inviting a guess. **D1–D10
   are all settled**, so that file is a record rather than a queue right now. Read it for the
   current list rather than trusting this sentence — it said "all settled" for a day after two
-  entries had been added (P29). D7, D8 and D9 were each added with this line changed in the same
+  entries had been added (P29). D7 to D10 were each added with this line changed in the same
   commit, which is the only thing that keeps a sentence like this true.
 - The §2 decision table in `brainstorm/PLAN.md` is closed: do not reopen those choices
   without asking. The ADRs carry the same decisions with their reasoning.
