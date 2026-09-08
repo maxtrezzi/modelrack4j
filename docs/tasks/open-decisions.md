@@ -743,6 +743,17 @@ the five required contexts were configured on `main`'s protection, so a pull req
 silently gone. Both branches now trigger the workflow and both carry the same five required
 checks.
 
+**`main`'s own documentation stays at the last release, on purpose.** The owner asked the day
+after the switch whether `CONTRIBUTING.md` and the branch rules needed revising on `main` too:
+they are stale there, and leaving them stale is the decision. `main` holds what Central holds,
+so its files describe the project as it was on the day of that release — `CONTRIBUTING.md`
+saying to branch from `main` was true when `0.2.0` shipped. Correcting it there would put a
+non-release commit on `main`, which is the one thing the decision above forbids, and the next
+release carries the correction with everything else. What made this safe to leave was measured
+rather than assumed: GitHub serves the community files, the repository home and a pull
+request's default base from the *default* branch, and the `CONTRIBUTING.md` its API returns
+matches `dev`'s blob, not `main`'s.
+
 **What is not enforceable, and is written down instead:** `main` is never merged back into
 `dev`. The merge that makes a release is a squash, so afterwards the two hold the same tree and
 unrelated histories; branching from `main` or rebasing `dev` onto it brings every conflict back

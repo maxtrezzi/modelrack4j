@@ -92,6 +92,19 @@ a release the two hold the same tree and unrelated histories, because the merge 
 `dev` simply carries on. Nothing enforces that — the protection rules cannot express it — so
 it is a rule kept because it is right, the same trade ADR-0040 already takes.
 
+**`main`'s documentation is frozen at release time, and that is the design rather than drift.**
+`main` holds what Maven Central holds, so everything on it — `CONTRIBUTING.md`, this file, the
+ADR index — describes the project as it was on the day of that release. Right now `main`'s
+`CONTRIBUTING.md` still says to branch from `main` and its `build.yml` still triggers on `main`
+alone, because both were true when `0.2.0` shipped. **Do not "fix" them there**: a commit on
+`main` that is not a release is what ADR-0061 point 2 forbids, and the next release carries the
+correction across with everything else. The exposure is small because GitHub reads the
+community files, the repository home and a new pull request's base from the *default* branch,
+which is `dev` — checked on 2026-09-08, `CONTRIBUTING.md` served by the API matched `dev`'s
+blob and not `main`'s. The one thing to confirm rather than assume at each release is that the
+release pull request still runs the five checks: it does, because a `pull_request` event uses
+the workflow from the merge result, and `dev`'s lists both branches.
+
 **Both `dev` and `main` are protected on the remote (ADR-0040, widened by ADR-0061), but
 not against you.** A pull request is
 required, force-pushing and deleting are blocked, and the five checks in
