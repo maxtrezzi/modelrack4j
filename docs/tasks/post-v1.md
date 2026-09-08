@@ -4329,6 +4329,11 @@ One README line did change: the build comment said `mvn clean install` "installs
 5. Then ADR-0045's own steps: `mvn -Prelease clean deploy`, `autoPublish=false` stops at
    `VALIDATED`, a human presses Publish, verify from an empty local repository, and only then
    tag `v0.2.0` on `main` after the merge.
+6. **Create the GitHub release from the tag.** A tag is not a release: the Releases page stays
+   on the previous version until one is made, and `--latest` is what moves the badge.
+7. **Put `dev` back on the next `-SNAPSHOT`, and reopen `[Unreleased]`.** This list ended at
+   the tag until P46, and that omission is why the defect this entry describes came back after
+   `0.2.0`: the checklist was followed to the end, and the end was in the wrong place.
 
 **`versions:set` has a side effect worth knowing about.** It rewrote
 `project.build.outputTimestamp` from `2026-09-02T00:00:00Z` to the second the command ran.
@@ -5448,3 +5453,57 @@ The dependency snippets moved to `0.2.0` only here, after the artifacts existed 
 counted: four in the README including the BOM block, one in the tutorial, one in the
 reference. The README's status line and the reference's *On Maven Central* sentence changed
 with them, and `AGENTS.md`'s Project state names `0.2.0` as the current release.
+
+---
+
+### P46 — `dev` returns to a snapshot, and the checklist gains its last two steps
+
+**Status:** Done ·
+**Branch:** `task/p46-dev-returns-to-a-snapshot` ·
+**Raised by:** the owner on 2026-09-07, asking whether `dev` still carried the released version
+
+`dev` was cut from `main` after the release commit, so its eight POMs said `0.2.0` — a
+published version. Every `mvn install` from `dev` therefore wrote an unpublished build over the
+cached copy of a released artifact, and anything else on the machine depending on
+`io.github.maxtrezzi:modelrack4j-core:0.2.0` would have silently received `dev` instead of what
+Central serves. Now `0.3.0-SNAPSHOT`, with `[Unreleased]` reopened.
+
+**This is P36's finding, returning after the next release.** P36 caught it after `0.1.0`, wrote
+it up, and left a checklist — which ended at the tag. Nothing in it said to put the version
+back afterwards, so the list was followed to the end and the defect came back anyway. The fix
+that matters is step 7, not the bump: a checklist that stops one step early produces this
+exactly once per release.
+
+**The damage this time was nothing, and the reason is worth keeping.** The cached
+`modelrack4j-core-0.2.0.jar` was compared with the one downloaded from Central and they are
+identical byte for byte, `sha256` `6f2ce0b9…`. `D10` had changed only YAML and Markdown, so the
+rebuild produced the same bytes — which it could only do because
+`project.build.outputTimestamp` holds the release date rather than a build instant. The
+property that P45 had to restore by hand is what made an accidental overwrite harmless here.
+
+`versions:set` rewrote that timestamp for the third time today, to the second it ran. Put back
+to `2026-09-07T00:00:00Z`: a snapshot bump is not a release, so the value stays at the last
+release's date.
+
+**Which number goes on the snapshot is the weakest part of this, and it is worth saying so
+rather than dressing it up.** What the version on `dev` has to be is *not a published one* —
+that is the whole defect, and the `-SNAPSHOT` suffix is what fixes it. The number in front of
+it is a placeholder for a release that does not exist yet: at this moment `git diff v0.2.0 dev`
+touches no `.java` file at all, so nothing has happened that could tell a patch from a minor.
+
+`0.3.0` is a default, not a deduction. P36 chose `0.2.0-SNAPSHOT` on an actual argument —
+`[Unreleased]` already carried an entry marked *Breaking*, so the CHANGELOG's own policy made a
+minor mandatory. Today `[Unreleased]` says *Nothing yet*, so that argument is unavailable and
+reusing its conclusion would be borrowing a reason. The default is a minor because this project
+is `0.x` and its CHANGELOG reserves the right to break in one, so a minor is the case that
+needs no permission; the one release transition there has been, `0.1.0` to `0.2.0`, was
+breaking, which is one data point and not a pattern.
+
+**Nothing rests on the guess.** Step 1 of the release checklist runs `versions:set` with the
+real number, decided from what `[Unreleased]` says on the day. If the next release turns out to
+be a patch, the release commit writes `0.2.1` and the snapshot's number was never anything a
+reader saw.
+
+**The other missing step was the GitHub release itself.** The tag existed and the Releases page
+still showed `0.1.0` as the latest, because a tag is not a release. Both are now steps 6 and 7
+of P36's list.

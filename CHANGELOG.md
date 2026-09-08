@@ -9,6 +9,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 release. Breaking changes will be called out under **Changed** with the migration, but they
 will not be held back for a major bump until the API settles at `1.0.0`.
 
+## [Unreleased]
+
+Nothing yet.
+
 ## [0.2.0] — 2026-09-07
 
 ### Security
