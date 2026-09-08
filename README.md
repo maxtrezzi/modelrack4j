@@ -17,15 +17,13 @@ llm {
 ```
 
 ```java
-LlmRegistry<Void> registry =
-        LlmRegistry.builder().configFiles(List.of(Path.of("llm.conf"))).build();
-
+var registry = LlmRegistry.builder().configFiles(List.of(Path.of("llm.conf"))).build();
 String answer = registry.get("SL").chatModel().chat("Why is the sky blue?");
 ```
 
-That is the whole idea. The type parameter is `Void` only because these two blocks carry no
-[values of your own](#values-of-your-own); register a handler and it is your own class.
-[Quick start](#quick-start) has the dependencies and the full schema.
+That is the whole idea. A block can also carry [values of your own](#values-of-your-own), and
+then the registry hands them back as a type you define. [Quick start](#quick-start) has the
+dependencies and the full schema.
 
 > **Unofficial and independent.** modelrack4j is not affiliated with, endorsed by, or part
 > of the LangChain4j project. It depends on LangChain4j; it does not speak for it. That is
@@ -76,7 +74,7 @@ llm.SL {
 
 ```java
 // modelrack4j — the code asks for the name, and the file decides everything else
-LlmRegistry<Void> registry = LlmRegistry.builder()
+var registry = LlmRegistry.builder()
         .configFiles(List.of(Path.of("llm.conf")))
         .build();
 
@@ -106,9 +104,9 @@ Four things follow, and they are the whole library:
 
 4. **A block can carry values of your own.** A prompt identifier, a retry count, a routing
    rule — settings the library has no business understanding — go in a `custom-properties`
-   block and come back as text, or as an object of yours once you register a handler. That is
-   what the registry's type parameter names: `LlmRegistry<Void>` above,
-   `LlmRegistry<SupportProps>` once a handler is registered. See
+   block and come back as text, or as an object of yours once you register a handler. The
+   registry is then typed to what that handler produces — `LlmRegistry<SupportProps>` — which
+   is why the examples above, registering none, are plain `var`. See
    [Values of your own](#values-of-your-own).
 
 One more thing makes all four safe to rely on: **mistakes fail when the file loads, not at
@@ -269,7 +267,7 @@ model to show one temperature moving out of a builder call and into a file.
 ### 3. Use it
 
 ```java
-try (LlmRegistry<Void> registry = LlmRegistry.builder()
+try (var registry = LlmRegistry.builder()
         .configFiles(List.of(Path.of("llm.conf")))
         .watch(true)
         .build()) {
@@ -294,11 +292,11 @@ try (LlmRegistry<Void> registry = LlmRegistry.builder()
 | `chatMemoryProvider()` | `Optional<ChatMemoryProvider>` | a `memory` block is configured |
 | `customProperties()` | `T` | a handler is registered; `null` otherwise |
 
-**The type parameter, and why it is `Void` here.** `LlmRegistry`, `LlmBundle` and
-`LlmSnapshot` all carry one, and it holds whatever your handler makes of a block's
-[`custom-properties`](#values-of-your-own). The registry above has no handler, so there is
-nothing of yours to hand back and the parameter is `Void` — the empty case, and where
-`LlmRegistry.builder()` starts. Register one and the same chain is typed to your own class:
+**The type parameter.** `LlmRegistry`, `LlmBundle` and `LlmSnapshot` all carry one, and it
+holds whatever your handler makes of a block's [`custom-properties`](#values-of-your-own).
+The examples so far register no handler, so there is nothing of yours to hand back: the `var`
+above is an `LlmRegistry<Void>`, which is where `LlmRegistry.builder()` starts. Register one
+and the same chain is typed to your own class:
 
 ```java
 record SupportProps(@JsonProperty("prompt-id") String promptId,
@@ -322,8 +320,11 @@ message as the cause. A mapper set to `PropertyNamingStrategies.KEBAB_CASE` does
 for a whole class. [Values of your own](#values-of-your-own) has the configuration block this
 reads, and what a refusal does to a reload.
 
-`var` would hide all of this, which is why every example here that assigns a registry writes
-the type out; in your own code `var` is fine once you know what it stands for.
+`var` carries the type without showing it, which is what the examples here use wherever no
+handler is registered — the alternative reads `LlmRegistry<Void>`, which is more to type and
+says less. A field or a method parameter has no `var`, so those write the name out: the
+`Council` example below is `LlmRegistry<Void>` for that reason, not because a field is
+special.
 
 ### Runnable examples
 
@@ -485,6 +486,14 @@ SupportProps props = registry.get("SUPPORT").customProperties();
 `SupportProps` is the record from [step 3](#3-use-it), where the `@JsonProperty` names that
 map `prompt-id` onto `promptId` are also explained.
 
+**The handler runs for every configuration, not only the ones carrying the section.** A block
+without `custom-properties` reaches it as `"{}"`, so the registry above gives a name like `SL`
+a `SupportProps[promptId=null, maxRetries=0]` instead of skipping it. That is deliberate: a
+rule such as *"an openai block must name a prompt id"* is broken by exactly the block that
+leaves the section out, so skipping those would skip the rule. The handler is given the whole
+`LlmConfig`, so one that should apply to some names only branches on `config.name()` or
+`config.provider()`.
+
 That is the reason to put them here rather than in a file of your own: **parsing is
 validation**. A reload carrying a property your application cannot use is rejected whole, so it
 can never leave a new prompt template beside an old model.
@@ -540,7 +549,7 @@ ConfigSource row = new ConfigSource() {
     public String text() { return jdbc.readConfigText(42); }
 };
 
-LlmRegistry<Void> registry = LlmRegistry.builder()
+var registry = LlmRegistry.builder()
         .sources(List.of(ConfigSource.ofFile(basePath), row))
         .build();
 
@@ -576,7 +585,7 @@ refuses instead of erasing somebody else's change. See
 ## Hot reload
 
 ```java
-LlmRegistry<Void> registry = LlmRegistry.builder()
+var registry = LlmRegistry.builder()
         .configFiles(files)
         .watch(true)                        // off by default
         .debounce(Duration.ofMillis(300))   // the default

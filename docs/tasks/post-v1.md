@@ -5533,19 +5533,16 @@ registry with `var registry = LlmRegistry.builder()`, so `LlmRegistry<Void>` app
 old lines 287 and 298, as a field and a constructor parameter inside `Do not cache the bundle`,
 and at 393 as `<SupportProps>`. A reader therefore met the generic first in a section about a
 mistake, and never as the result of `builder()` — for the source break of `0.2.0` (ADR-0059)
-that is the wrong order. The five sites that assign a `Void` registry now write the type out,
-beside the one that always assigned a `<SupportProps>` one; the seventh `builder()` call, in
-`Layering`, assigns nothing and was left alone, which is why the sentence saying so is scoped
-to assignment.
+that is the wrong order. The first fix wrote the type out at all five sites that assign a
+registry. It did not survive the owner's next two readings, for the reasons below, and this
+paragraph is kept because the finding was right even though its fix was not.
 
 **The owner's second reading turned that into a different requirement: not `Void`.** Writing
 the type out had made every example say `LlmRegistry<Void>`, which shows the syntax and hides
 the reason — a reader learns that the class takes a parameter and that its value is the empty
 one. `Quick start` step 3 now carries a worked example with a real type beside the `Void` one;
 before this branch the only one was at old line 393, in `Values of your own`. The header and
-`Why` both say that `Void` is the case with no handler rather than the shape of the API. Five sites still assign a `Void` registry, because
-in those snippets no handler is registered and any other type would be a lie; two assign a
-`SupportProps` one.
+`Why` both say that `Void` is the case with no handler rather than the shape of the API.
 
 **Writing that example found a defect in the obvious version of it.** The first draft declared
 `record SupportProps(String promptId, int maxRetries)`, which is what a reader would write, and
@@ -5558,6 +5555,24 @@ were written together. The snippet now carries `@JsonProperty` on both component
 and names `PropertyNamingStrategies.KEBAB_CASE` as the whole-class alternative. Both were run:
 the annotated record and the kebab-case mapper each yield
 `promptId=support-v3, maxRetries=3`.
+
+**The third reading settled the rule: `var` wherever no handler is registered.** Spelling
+`LlmRegistry<Void>` out at five sites had taught the syntax while hiding the reason, and `Void`
+is the one value of that parameter a reader never needs to name. A snippet now writes the type
+only where a handler makes it mean something: the two `SupportProps` registries say theirs, the
+five that register none are `var`. `LlmRegistry<Void>` survives in five places and each earns
+it — three sentences that explain what the `var` resolves to, and the `Council` example's field
+and constructor parameter, where there is no `var` to use. That last pair is worth its own
+clause in the README, because a reader who has just been told to use `var` needs to know why
+the next example does not.
+
+**The handler runs for every configuration, and the README never said so.** A block with no
+`custom-properties` reaches it as `"{}"`, so a `SupportProps` handler gives such a name a
+`SupportProps[promptId=null, maxRetries=0]` rather than skipping it — measured on a file
+holding one block with the section and one without. It is in `CustomPropertiesHandler`'s
+javadoc, with the reason: a rule like *"an openai block must name a prompt id"* is broken by
+exactly the block that omits the section. `Values of your own` now carries it, and points at
+`config.name()` and `config.provider()` for a handler that should apply to some names only.
 
 **`custom-properties` was reachable only from the schema table**, at old line 343 of 766, and
 the `LlmBundle` table listed five components without `customProperties()`. It is now the fourth
