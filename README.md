@@ -17,11 +17,15 @@ llm {
 ```
 
 ```java
-var registry = LlmRegistry.builder().configFiles(List.of(Path.of("llm.conf"))).build();
+LlmRegistry<Void> registry =
+        LlmRegistry.builder().configFiles(List.of(Path.of("llm.conf"))).build();
+
 String answer = registry.get("SL").chatModel().chat("Why is the sky blue?");
 ```
 
-That is the whole idea. [Quick start](#quick-start) has the dependencies and the full schema.
+That is the whole idea. The `<Void>` is there because these blocks carry no
+[values of your own](#values-of-your-own) yet. [Quick start](#quick-start) has the
+dependencies and the full schema.
 
 > **Unofficial and independent.** modelrack4j is not affiliated with, endorsed by, or part
 > of the LangChain4j project. It depends on LangChain4j; it does not speak for it. That is
@@ -44,6 +48,7 @@ What is *not* agnostic is the act of **choosing**. Picking a provider, naming a 
 setting a temperature and a timeout is a constructor call — which means it is code:
 
 ```java
+// plain LangChain4j — this is the code modelrack4j replaces, not code you write with it
 ChatModel model = AnthropicChatModel.builder()
         .apiKey(System.getenv("ANTHROPIC_API_KEY"))
         .modelName("claude-sonnet-4-6")
@@ -56,8 +61,33 @@ Changing the provider means editing that, recompiling and redeploying. So does r
 temperature by 0.1. The abstraction is real, but the decision it was supposed to free you
 from is tied to the build.
 
-**modelrack4j moves that decision into a file.** Three things follow, and they are the whole
-library:
+**modelrack4j moves that decision into a file.** The same five values, given a name:
+
+```hocon
+# llm.conf
+llm.SL {
+  provider    = anthropic
+  api-key     = ${ANTHROPIC_API_KEY}
+  model-name  = "claude-sonnet-4-6"
+  temperature = 0.2
+  timeout     = 60s
+}
+```
+
+```java
+// modelrack4j — the code asks for the name, and the file decides everything else
+LlmRegistry<Void> registry = LlmRegistry.builder()
+        .configFiles(List.of(Path.of("llm.conf")))
+        .build();
+
+ChatModel model = registry.get("SL").chatModel();
+```
+
+Both Java blocks end on the same `ChatModel`, and whatever your application does with it
+afterwards is unchanged. What moved is the choosing: those five values now live in the file,
+and the code names only `SL`.
+
+Four things follow, and they are the whole library:
 
 1. **The provider becomes configuration.** `provider = anthropic` → `provider = openai` is an
    edit, not a release. Nothing in your code selects a provider, and nothing needs to know
@@ -74,12 +104,20 @@ library:
    from the same version of the file by asking for a [snapshot](#hot-reload). If the new file
    is broken, nothing swaps and the previous configuration keeps serving.
 
-The fourth thing is what makes the first three safe to rely on: **mistakes fail when the file
-loads, not at the first request.** Providers differ in what they can actually do — moderation
+4. **A block can carry values of your own.** A prompt identifier, a retry count, a routing
+   rule — settings the library has no business understanding — go in a `custom-properties`
+   block and come back as text, or as an object of yours once you register a handler. That is
+   what the registry's type parameter names: `LlmRegistry<Void>` above,
+   `LlmRegistry<SupportProps>` once a handler is registered. See
+   [Values of your own](#values-of-your-own).
+
+One more thing makes all four safe to rely on: **mistakes fail when the file loads, not at
+the first request.** Providers differ in what they can actually do — moderation
 is OpenAI-only among the four here, and token counting is local, remote or absent depending
 on the provider — so the configuration is validated against the provider's real capabilities.
 Enabling moderation on Anthropic is a startup error naming the block, not an empty `Optional`
-you discover in production.
+you discover in production. A handler of your own runs in the same step, so a block your
+application cannot use is rejected there too.
 
 It configures models, and nothing else. Prompt templating, `AiServices`, `@Tool` methods and
 RAG stay in your code, where they keep working on the models it hands you —
@@ -173,6 +211,20 @@ Requires **Java 17+**. Built against **LangChain4j 1.20.0**.
 
 ### 2. Write the configuration
 
+Three keys are required and everything else is optional, so the smallest file that works is
+this:
+
+```hocon
+# llm.conf
+llm.SL {
+  provider   = anthropic
+  api-key    = ${ANTHROPIC_API_KEY}
+  model-name = "claude-sonnet-5"
+}
+```
+
+A fuller one, with three names on two providers:
+
 ```hocon
 # llm.conf
 llm {
@@ -207,9 +259,8 @@ Note `SL` and `SH`: **two names, one provider, one model, different parameters.*
 keys are configuration names, never provider names, which is what makes that work. Neither
 sets `temperature`: `claude-sonnet-5`'s adaptive thinking controls its own sampling, and the
 API rejects a non-default value with a 400. The `gpt-5.1` block above still accepts one, and
-so does
-`claude-sonnet-4-6` — which is why the Java example in [Why](#why) uses that model to show a
-temperature fixed in a builder call.
+so does `claude-sonnet-4-6` — which is why the pair of examples in [Why](#why) uses that
+model to show one temperature moving out of a builder call and into a file.
 
 > **Use `${VAR}`, not `${?VAR}`, for secrets.** The mandatory form fails loudly at load time
 > when the variable is unset. The optional form silently yields no value, and the failure
@@ -218,7 +269,7 @@ temperature fixed in a builder call.
 ### 3. Use it
 
 ```java
-try (var registry = LlmRegistry.builder()
+try (LlmRegistry<Void> registry = LlmRegistry.builder()
         .configFiles(List.of(Path.of("llm.conf")))
         .watch(true)
         .build()) {
@@ -241,6 +292,15 @@ try (var registry = LlmRegistry.builder()
 | `streamingChatModel()` | `Optional<StreamingChatModel>` | `streaming = true` |
 | `moderationModel()` | `Optional<ModerationModel>` | `moderation.enabled = true` |
 | `chatMemoryProvider()` | `Optional<ChatMemoryProvider>` | a `memory` block is configured |
+| `customProperties()` | `T` | a handler is registered; `null` otherwise |
+
+**What the `<Void>` means.** `LlmRegistry`, `LlmBundle` and `LlmSnapshot` all carry one type
+parameter, and it is whatever your own [`custom-properties`](#values-of-your-own) handler
+produces. With no handler there is nothing to hand back, so the type is `Void` and
+`LlmRegistry.builder()` starts there. Register a handler and the same chain gives you
+`LlmRegistry<SupportProps>` instead. `var` would hide this, so every example here that
+assigns a registry writes the type out; in your own code `var` is fine once you know what it
+stands for.
 
 ### Runnable examples
 
@@ -454,7 +514,7 @@ ConfigSource row = new ConfigSource() {
     public String text() { return jdbc.readConfigText(42); }
 };
 
-var registry = LlmRegistry.builder()
+LlmRegistry<Void> registry = LlmRegistry.builder()
         .sources(List.of(ConfigSource.ofFile(basePath), row))
         .build();
 
@@ -490,7 +550,7 @@ refuses instead of erasing somebody else's change. See
 ## Hot reload
 
 ```java
-var registry = LlmRegistry.builder()
+LlmRegistry<Void> registry = LlmRegistry.builder()
         .configFiles(files)
         .watch(true)                        // off by default
         .debounce(Duration.ofMillis(300))   // the default

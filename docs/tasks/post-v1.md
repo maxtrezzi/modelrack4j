@@ -5507,3 +5507,53 @@ reader saw.
 **The other missing step was the GitHub release itself.** The tag existed and the Releases page
 still showed `0.1.0` as the latest, because a tag is not a release. Both are now steps 6 and 7
 of P36's list.
+
+---
+
+### P47 — The README shows the library beside what it replaces
+
+**Status:** Done ·
+**Branch:** `task/p47-the-readme-shows-what-it-replaces` ·
+**Raised by:** the owner on 2026-09-08, reading the README
+
+Three findings, all in the first 350 lines, and all of them the same failure: the page argued
+for the library without showing it.
+
+**The `Why` section's only Java block was the code the library replaces.** `AnthropicChatModel
+.builder()` sat at line 47 under the words *"which means it is code"*, and the nearest
+modelrack4j registry example was line 221 — 174 lines later, in `Quick start`. So the one code
+block in the section that makes the case read, to anyone skimming, as this library's own API.
+The owner said exactly that: *the LangChain4j example seems to be modelrack's*. The section now
+carries a labelled pair — the same five values as a builder call, then as a HOCON block with
+three lines of Java under it — and both end on the same `ChatModel`, which is the point the
+prose was making without a picture.
+
+**The type parameter was invisible where a reader meets the API.** Four examples built a
+registry with `var registry = LlmRegistry.builder()`, so `LlmRegistry<Void>` appeared only at
+old lines 287 and 298, as a field and a constructor parameter inside `Do not cache the bundle`,
+and at 393 as `<SupportProps>`. A reader therefore met the generic first in a section about a
+mistake, and never as the result of `builder()` — for the source break of `0.2.0` (ADR-0059)
+that is the wrong order. The five sites that assign a `Void` registry now write the type out,
+beside the one that always assigned a `<SupportProps>` one; the seventh `builder()` call, in
+`Layering`, assigns nothing and was left alone, which is why the sentence saying so is scoped
+to assignment. One paragraph in `Quick start` says what the parameter is and when it stops
+being `Void`.
+
+**`custom-properties` was reachable only from the schema table**, at old line 343 of 766, and
+the `LlmBundle` table listed five components without `customProperties()`. It is now the fourth
+point of `Why`, a clause in the opening pitch, and a sixth row in that table.
+
+**One thing not raised, found while fixing the others:** `Quick start` step 2 opened on a
+three-block file carrying descriptions, memory, streaming and moderation. The three required
+keys now come first, as the smallest file that works, with that file kept as *"a fuller one"*.
+
+**What was checked, rather than read.** The six Java snippets this touched were compiled against
+`target/classes` and the resolved LangChain4j classpath. Both new HOCON blocks were loaded through a real `LlmRegistry`
+with a dummy key: the `Why` block gives `temperature=Optional[0.2]` and `timeout=PT1M`, which
+is what makes the unquoted `60s` in it more than a guess, and the minimal block gives
+`Optional.empty` and the same `PT1M` default. `build/check-docs.py` is clean.
+
+**The register question this raises and does not settle.** `docs/manual/part-1-tutorial.md`
+still uses `var` throughout and has the same gap the README had. It was left alone because the
+owner asked about the README; if the answer is that the type belongs in both, the tutorial is a
+separate pass.
