@@ -23,9 +23,9 @@ LlmRegistry<Void> registry =
 String answer = registry.get("SL").chatModel().chat("Why is the sky blue?");
 ```
 
-That is the whole idea. The `<Void>` is there because these blocks carry no
-[values of your own](#values-of-your-own) yet. [Quick start](#quick-start) has the
-dependencies and the full schema.
+That is the whole idea. The type parameter is `Void` only because these two blocks carry no
+[values of your own](#values-of-your-own); register a handler and it is your own class.
+[Quick start](#quick-start) has the dependencies and the full schema.
 
 > **Unofficial and independent.** modelrack4j is not affiliated with, endorsed by, or part
 > of the LangChain4j project. It depends on LangChain4j; it does not speak for it. That is
@@ -294,13 +294,36 @@ try (LlmRegistry<Void> registry = LlmRegistry.builder()
 | `chatMemoryProvider()` | `Optional<ChatMemoryProvider>` | a `memory` block is configured |
 | `customProperties()` | `T` | a handler is registered; `null` otherwise |
 
-**What the `<Void>` means.** `LlmRegistry`, `LlmBundle` and `LlmSnapshot` all carry one type
-parameter, and it is whatever your own [`custom-properties`](#values-of-your-own) handler
-produces. With no handler there is nothing to hand back, so the type is `Void` and
-`LlmRegistry.builder()` starts there. Register a handler and the same chain gives you
-`LlmRegistry<SupportProps>` instead. `var` would hide this, so every example here that
-assigns a registry writes the type out; in your own code `var` is fine once you know what it
-stands for.
+**The type parameter, and why it is `Void` here.** `LlmRegistry`, `LlmBundle` and
+`LlmSnapshot` all carry one, and it holds whatever your handler makes of a block's
+[`custom-properties`](#values-of-your-own). The registry above has no handler, so there is
+nothing of yours to hand back and the parameter is `Void` — the empty case, and where
+`LlmRegistry.builder()` starts. Register one and the same chain is typed to your own class:
+
+```java
+record SupportProps(@JsonProperty("prompt-id") String promptId,
+                    @JsonProperty("max-retries") int maxRetries) { }
+
+LlmRegistry<SupportProps> registry = LlmRegistry.builder()
+        .configFiles(files)
+        .customPropertiesHandler(config -> mapper.readValue(
+                config.customPropertiesText(), SupportProps.class))
+        .build();
+
+SupportProps props = registry.get("SUPPORT").customProperties();
+```
+
+One call retypes the whole chain — the builder, the registry, its bundles
+(`LlmBundle<SupportProps>`) and its snapshots (`LlmSnapshot<SupportProps>`). The
+`@JsonProperty` names are needed because a configuration key is `prompt-id` while a record
+component is `promptId`; without them Jackson refuses the block, and the library reports
+*"llm.SUPPORT: the custom-properties handler rejected this configuration"* with Jackson's own
+message as the cause. A mapper set to `PropertyNamingStrategies.KEBAB_CASE` does the same job
+for a whole class. [Values of your own](#values-of-your-own) has the configuration block this
+reads, and what a refusal does to a reload.
+
+`var` would hide all of this, which is why every example here that assigns a registry writes
+the type out; in your own code `var` is fine once you know what it stands for.
 
 ### Runnable examples
 
@@ -458,6 +481,9 @@ LlmRegistry<SupportProps> registry = LlmRegistry.builder()
 
 SupportProps props = registry.get("SUPPORT").customProperties();
 ```
+
+`SupportProps` is the record from [step 3](#3-use-it), where the `@JsonProperty` names that
+map `prompt-id` onto `promptId` are also explained.
 
 That is the reason to put them here rather than in a file of your own: **parsing is
 validation**. A reload carrying a property your application cannot use is rejected whole, so it

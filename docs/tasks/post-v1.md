@@ -5536,8 +5536,28 @@ mistake, and never as the result of `builder()` — for the source break of `0.2
 that is the wrong order. The five sites that assign a `Void` registry now write the type out,
 beside the one that always assigned a `<SupportProps>` one; the seventh `builder()` call, in
 `Layering`, assigns nothing and was left alone, which is why the sentence saying so is scoped
-to assignment. One paragraph in `Quick start` says what the parameter is and when it stops
-being `Void`.
+to assignment.
+
+**The owner's second reading turned that into a different requirement: not `Void`.** Writing
+the type out had made every example say `LlmRegistry<Void>`, which shows the syntax and hides
+the reason — a reader learns that the class takes a parameter and that its value is the empty
+one. `Quick start` step 3 now carries a worked example with a real type beside the `Void` one;
+before this branch the only one was at old line 393, in `Values of your own`. The header and
+`Why` both say that `Void` is the case with no handler rather than the shape of the API. Five sites still assign a `Void` registry, because
+in those snippets no handler is registered and any other type would be a lie; two assign a
+`SupportProps` one.
+
+**Writing that example found a defect in the obvious version of it.** The first draft declared
+`record SupportProps(String promptId, int maxRetries)`, which is what a reader would write, and
+it does not work: the configuration key is `prompt-id` and Jackson refuses the block —
+*"Unrecognized field \"max-retries\" … (2 known properties: \"maxRetries\", \"promptId\")"*,
+surfacing as `ConfigValidationException`, *"llm.SUPPORT: the custom-properties handler rejected
+this configuration"*. The README's own `custom-properties` example has used kebab-case keys
+since P40 and never showed the class on the other side, so the gap was invisible until the two
+were written together. The snippet now carries `@JsonProperty` on both components and says why,
+and names `PropertyNamingStrategies.KEBAB_CASE` as the whole-class alternative. Both were run:
+the annotated record and the kebab-case mapper each yield
+`promptId=support-v3, maxRetries=3`.
 
 **`custom-properties` was reachable only from the schema table**, at old line 343 of 766, and
 the `LlmBundle` table listed five components without `customProperties()`. It is now the fourth
