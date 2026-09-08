@@ -5485,6 +5485,25 @@ property that P45 had to restore by hand is what made an accidental overwrite ha
 to `2026-09-07T00:00:00Z`: a snapshot bump is not a release, so the value stays at the last
 release's date.
 
+**Which number goes on the snapshot is the weakest part of this, and it is worth saying so
+rather than dressing it up.** What the version on `dev` has to be is *not a published one* —
+that is the whole defect, and the `-SNAPSHOT` suffix is what fixes it. The number in front of
+it is a placeholder for a release that does not exist yet: at this moment `git diff v0.2.0 dev`
+touches no `.java` file at all, so nothing has happened that could tell a patch from a minor.
+
+`0.3.0` is a default, not a deduction. P36 chose `0.2.0-SNAPSHOT` on an actual argument —
+`[Unreleased]` already carried an entry marked *Breaking*, so the CHANGELOG's own policy made a
+minor mandatory. Today `[Unreleased]` says *Nothing yet*, so that argument is unavailable and
+reusing its conclusion would be borrowing a reason. The default is a minor because this project
+is `0.x` and its CHANGELOG reserves the right to break in one, so a minor is the case that
+needs no permission; the one release transition there has been, `0.1.0` to `0.2.0`, was
+breaking, which is one data point and not a pattern.
+
+**Nothing rests on the guess.** Step 1 of the release checklist runs `versions:set` with the
+real number, decided from what `[Unreleased]` says on the day. If the next release turns out to
+be a patch, the release commit writes `0.2.1` and the snapshot's number was never anything a
+reader saw.
+
 **The other missing step was the GitHub release itself.** The tag existed and the Releases page
 still showed `0.1.0` as the latest, because a tag is not a release. Both are now steps 6 and 7
 of P36's list.
