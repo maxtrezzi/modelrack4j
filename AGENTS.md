@@ -92,6 +92,23 @@ a release the two hold the same tree and unrelated histories, because the merge 
 `dev` simply carries on. Nothing enforces that — the protection rules cannot express it — so
 it is a rule kept because it is right, the same trade ADR-0040 already takes.
 
+**No `Claude-Session:` trailer in a commit message.** The owner asked for this on 2026-09-09,
+after three commits on one branch carried one. The link opens for nobody reading the
+repository, and this repository is public, so it is noise in a history that outlives the
+session it points at.
+`Co-Authored-By:` stays. The environment supplies the trailer as a default, so it is a rule
+that has to be applied rather than inherited: strip it before committing. If it is already in a
+pushed commit on a branch of your own, this rewrites the messages and nothing else — check with
+`git diff <old-head> HEAD --stat`, which must come back empty — then force-push with
+`--force-with-lease`:
+
+```bash
+git filter-branch -f --msg-filter 'grep -v "^Claude-Session:"' origin/dev..HEAD
+```
+
+Never on a branch somebody else may have checked out, and never on `dev` or `main`, where
+force-pushing is blocked anyway.
+
 **`main`'s documentation is frozen at release time, and that is the design rather than drift.**
 `main` holds what Maven Central holds, so everything on it — `CONTRIBUTING.md`, this file, the
 ADR index — describes the project as it was on the day of that release. Right now `main`'s
