@@ -21,7 +21,9 @@ var registry = LlmRegistry.builder().configFiles(List.of(Path.of("llm.conf"))).b
 String answer = registry.get("SL").chatModel().chat("Why is the sky blue?");
 ```
 
-That is the whole idea. [Quick start](#quick-start) has the dependencies and the full schema.
+That is the whole idea. A block can also carry [values of your own](#values-of-your-own), and
+then the registry hands them back as a type you define. [Quick start](#quick-start) has the
+dependencies and the full schema.
 
 > **Unofficial and independent.** modelrack4j is not affiliated with, endorsed by, or part
 > of the LangChain4j project. It depends on LangChain4j; it does not speak for it. That is
@@ -44,6 +46,7 @@ What is *not* agnostic is the act of **choosing**. Picking a provider, naming a 
 setting a temperature and a timeout is a constructor call — which means it is code:
 
 ```java
+// plain LangChain4j — this is the code modelrack4j replaces, not code you write with it
 ChatModel model = AnthropicChatModel.builder()
         .apiKey(System.getenv("ANTHROPIC_API_KEY"))
         .modelName("claude-sonnet-4-6")
@@ -56,8 +59,33 @@ Changing the provider means editing that, recompiling and redeploying. So does r
 temperature by 0.1. The abstraction is real, but the decision it was supposed to free you
 from is tied to the build.
 
-**modelrack4j moves that decision into a file.** Three things follow, and they are the whole
-library:
+**modelrack4j moves that decision into a file.** The same five values, given a name:
+
+```hocon
+# llm.conf
+llm.SL {
+  provider    = anthropic
+  api-key     = ${ANTHROPIC_API_KEY}
+  model-name  = "claude-sonnet-4-6"
+  temperature = 0.2
+  timeout     = 60s
+}
+```
+
+```java
+// modelrack4j — the code asks for the name, and the file decides everything else
+var registry = LlmRegistry.builder()
+        .configFiles(List.of(Path.of("llm.conf")))
+        .build();
+
+ChatModel model = registry.get("SL").chatModel();
+```
+
+Both Java blocks end on the same `ChatModel`, and whatever your application does with it
+afterwards is unchanged. What moved is the choosing: those five values now live in the file,
+and the code names only `SL`.
+
+Four things follow, and they are the whole library:
 
 1. **The provider becomes configuration.** `provider = anthropic` → `provider = openai` is an
    edit, not a release. Nothing in your code selects a provider, and nothing needs to know
@@ -74,12 +102,20 @@ library:
    from the same version of the file by asking for a [snapshot](#hot-reload). If the new file
    is broken, nothing swaps and the previous configuration keeps serving.
 
-The fourth thing is what makes the first three safe to rely on: **mistakes fail when the file
-loads, not at the first request.** Providers differ in what they can actually do — moderation
+4. **A block can carry values of your own.** A prompt identifier, a retry count, a routing
+   rule — settings the library has no business understanding — go in a `custom-properties`
+   block and come back as text, or as an object of yours once you register a handler. The
+   registry is then typed to what that handler produces — `LlmRegistry<SupportProps>` — which
+   is why the examples above, registering none, are plain `var`. See
+   [Values of your own](#values-of-your-own).
+
+One more thing makes all four safe to rely on: **mistakes fail when the file loads, not at
+the first request.** Providers differ in what they can actually do — moderation
 is OpenAI-only among the four here, and token counting is local, remote or absent depending
 on the provider — so the configuration is validated against the provider's real capabilities.
 Enabling moderation on Anthropic is a startup error naming the block, not an empty `Optional`
-you discover in production.
+you discover in production. A handler of your own runs in the same step, so a block your
+application cannot use is rejected there too.
 
 It configures models, and nothing else. Prompt templating, `AiServices`, `@Tool` methods and
 RAG stay in your code, where they keep working on the models it hands you —
@@ -173,6 +209,20 @@ Requires **Java 17+**. Built against **LangChain4j 1.20.0**.
 
 ### 2. Write the configuration
 
+Three keys are required and everything else is optional, so the smallest file that works is
+this:
+
+```hocon
+# llm.conf
+llm.SL {
+  provider   = anthropic
+  api-key    = ${ANTHROPIC_API_KEY}
+  model-name = "claude-sonnet-5"
+}
+```
+
+A fuller one, with three names on two providers:
+
 ```hocon
 # llm.conf
 llm {
@@ -207,9 +257,8 @@ Note `SL` and `SH`: **two names, one provider, one model, different parameters.*
 keys are configuration names, never provider names, which is what makes that work. Neither
 sets `temperature`: `claude-sonnet-5`'s adaptive thinking controls its own sampling, and the
 API rejects a non-default value with a 400. The `gpt-5.1` block above still accepts one, and
-so does
-`claude-sonnet-4-6` — which is why the Java example in [Why](#why) uses that model to show a
-temperature fixed in a builder call.
+so does `claude-sonnet-4-6` — which is why the pair of examples in [Why](#why) uses that
+model to show one temperature moving out of a builder call and into a file.
 
 > **Use `${VAR}`, not `${?VAR}`, for secrets.** The mandatory form fails loudly at load time
 > when the variable is unset. The optional form silently yields no value, and the failure
@@ -241,6 +290,41 @@ try (var registry = LlmRegistry.builder()
 | `streamingChatModel()` | `Optional<StreamingChatModel>` | `streaming = true` |
 | `moderationModel()` | `Optional<ModerationModel>` | `moderation.enabled = true` |
 | `chatMemoryProvider()` | `Optional<ChatMemoryProvider>` | a `memory` block is configured |
+| `customProperties()` | `T` | a handler is registered; `null` otherwise |
+
+**The type parameter.** `LlmRegistry`, `LlmBundle` and `LlmSnapshot` all carry one, and it
+holds whatever your handler makes of a block's [`custom-properties`](#values-of-your-own).
+The examples so far register no handler, so there is nothing of yours to hand back: the `var`
+above is an `LlmRegistry<Void>`, which is where `LlmRegistry.builder()` starts. Register one
+and the same chain is typed to your own class:
+
+```java
+record SupportProps(@JsonProperty("prompt-id") String promptId,
+                    @JsonProperty("max-retries") int maxRetries) { }
+
+LlmRegistry<SupportProps> registry = LlmRegistry.builder()
+        .configFiles(files)
+        .customPropertiesHandler(config -> mapper.readValue(
+                config.customPropertiesText(), SupportProps.class))
+        .build();
+
+SupportProps props = registry.get("SUPPORT").customProperties();
+```
+
+One call retypes the whole chain — the builder, the registry, its bundles
+(`LlmBundle<SupportProps>`) and its snapshots (`LlmSnapshot<SupportProps>`). The
+`@JsonProperty` names are needed because a configuration key is `prompt-id` while a record
+component is `promptId`; without them Jackson refuses the block, and the library reports
+*"llm.SUPPORT: the custom-properties handler rejected this configuration"* with Jackson's own
+message as the cause. A mapper set to `PropertyNamingStrategies.KEBAB_CASE` does the same job
+for a whole class. [Values of your own](#values-of-your-own) has the configuration block this
+reads, and what a refusal does to a reload.
+
+`var` carries the type without showing it, which is what the examples here use wherever no
+handler is registered — the alternative reads `LlmRegistry<Void>`, which is more to type and
+says less. A field or a method parameter has no `var`, so those write the name out: the
+`Council` example below is `LlmRegistry<Void>` for that reason, not because a field is
+special.
 
 ### Runnable examples
 
@@ -398,6 +482,17 @@ LlmRegistry<SupportProps> registry = LlmRegistry.builder()
 
 SupportProps props = registry.get("SUPPORT").customProperties();
 ```
+
+`SupportProps` is the record from [step 3](#3-use-it), where the `@JsonProperty` names that
+map `prompt-id` onto `promptId` are also explained.
+
+**The handler runs for every configuration, not only the ones carrying the section.** A block
+without `custom-properties` reaches it as `"{}"`, so the registry above gives a name like `SL`
+a `SupportProps[promptId=null, maxRetries=0]` instead of skipping it. That is deliberate: a
+rule such as *"an openai block must name a prompt id"* is broken by exactly the block that
+leaves the section out, so skipping those would skip the rule. The handler is given the whole
+`LlmConfig`, so one that should apply to some names only branches on `config.name()` or
+`config.provider()`.
 
 That is the reason to put them here rather than in a file of your own: **parsing is
 validation**. A reload carrying a property your application cannot use is rejected whole, so it
