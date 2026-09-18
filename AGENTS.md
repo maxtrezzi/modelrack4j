@@ -40,9 +40,11 @@ Four documents matter, with different jobs:
   taken. Read the index in `docs/adr/README.md` for what governs what.
 - **`docs/manual/`** — the user-facing account: a tutorial and a reference covering every
   configuration key, every public method, and what a reload guarantees.
-- **`brainstorm/PLAN.md`** — the owner's original specification. Local-only, never
-  committed. The tracked documents have since absorbed nearly all of it, so prefer them;
-  consult the plan for intent the ADRs and the manual do not cover.
+- **The owner's original specification** — not in this repository. It was
+  `brainstorm/PLAN.md`, local-only and never committed; on 2026-09-18 it moved out, with the
+  discussion log, to a private place the owner keeps. The tracked documents have since
+  absorbed nearly all of it, so prefer them; ask the owner for the intent the ADRs and the
+  manual do not cover.
 
 They overlap deliberately. Where they differ: the ADR wins on a *decision*, `docs/tasks/`
 wins on *status*, the manual wins on *how a user drives it*, and the plan is the owner's
@@ -53,14 +55,21 @@ working copy rather than an authority.
 never copy its contents into a tracked file. Anything from the plan that consumers need
 must be rewritten for its destination (README, Javadoc, CHANGELOG), not pasted.
 
+**The directory is empty since 2026-09-18** and the rule above still binds whatever lands
+there next. It stays in `.gitignore` and in the license check's exclusions because it is a
+confidentiality boundary (ADR-0034), not because of what it currently holds.
+
 ## Decision workflow — follow this every session
 
 Three artifacts, different audiences (ADR-0001, ADR-0015):
 
-- **`brainstorm/discussions/YYYY-MM-DD-topic.md`** — local-only, never committed. Log
-  every substantive design discussion here: what was asked, what was weighed, what was
-  rejected and why, what is still open. Write it at the end of the discussion, not from
-  memory three sessions later.
+- **The discussion log** — one dated file per discussion, kept outside this repository
+  since 2026-09-18. Log every substantive design discussion: what was asked, what was
+  weighed, what was rejected and why, what is still open. Write it at the end of the
+  discussion, not from memory three sessions later. It was `brainstorm/discussions/` until
+  that date; **do not recreate that directory** — a log split across two places is worse
+  than either, and the half here would have no history and no backup. Ask the owner where
+  it lives now.
 - **`docs/adr/NNNN-title.md`** — tracked and publishable. Whenever a discussion *settles*
   something that constrains future code — a dependency taken on, an API shape fixed, a
   scope boundary drawn, a mechanism chosen over a real alternative — write an ADR. Copy
@@ -188,10 +197,10 @@ up atomically, validated, without a restart.
 
 It is an **unofficial, independent** library that depends on LangChain4j. Never use the
 `langchain4j-` artifact prefix. Its first consumer is the owner's own application,
-developed in parallel in a separate repository and named in `brainstorm/PLAN.md`.
-Governing rule from the plan: *when library and application disagree, the application wins
-and the library changes* — so a requirement traced to that application outranks a
-preference of the library's own design.
+developed in parallel in a separate repository and named in the owner's original
+specification. Governing rule from the plan: *when library and application disagree, the
+application wins and the library changes* — so a requirement traced to that application
+outranks a preference of the library's own design.
 
 ## Build and test
 
@@ -690,8 +699,8 @@ in-flight requests may still hold them.
   current list rather than trusting this sentence — it said "all settled" for a day after two
   entries had been added (P29). D7 to D10 were each added with this line changed in the same
   commit, which is the only thing that keeps a sentence like this true.
-- The §2 decision table in `brainstorm/PLAN.md` is closed: do not reopen those choices
-  without asking. The ADRs carry the same decisions with their reasoning.
+- The §2 decision table in the owner's original specification is closed: do not reopen
+  those choices without asking. The ADRs carry the same decisions with their reasoning.
 - Milestones run M0 → M6 in `docs/tasks/milestones.md`; v1 was done at M5, and M6 gained its
   own entry on 2026-09-02 when its trigger fired. Post-v1 work is P1… in
   `docs/tasks/post-v1.md`.
