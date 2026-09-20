@@ -52,9 +52,9 @@ on, an API shape fixed, a scope boundary drawn, a mechanism chosen over an alter
 that was genuinely considered. Not for reversible implementation details, and not for
 things the code states plainly on its own.
 
-Discussion transcripts and half-formed thinking do **not** belong here — those go to
-`brainstorm/discussions/`, which is local-only and never committed. An ADR is the
-distilled, rewritten result, safe to publish.
+Discussion transcripts and half-formed thinking do **not** belong here — those go to the
+discussion log, which the owner keeps outside this repository. An ADR is the distilled,
+rewritten result, safe to publish.
 
 Work items do not belong here either. What to do, and whether it is done, lives in
 [`../tasks/`](../tasks/README.md) (ADR-0015); an ADR explains why the work is shaped the
