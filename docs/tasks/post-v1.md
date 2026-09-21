@@ -5592,3 +5592,147 @@ is what makes the unquoted `60s` in it more than a guess, and the minimal block 
 still uses `var` throughout and has the same gap the README had. It was left alone because the
 owner asked about the README; if the answer is that the type belongs in both, the tutorial is a
 separate pass.
+
+### P48 — `api-key` and `base-url`: what a provider permits and requires
+
+**Status:** Not started — target 0.3.0, before [P49](#p49--an-ollama-provider) ·
+**Raised by:** the owner on 2026-09-20, settled by
+[ADR-0062](../adr/0062-a-provider-declares-its-key-requirements.md)
+
+A block gains an optional `base-url`, `api-key` stops being required for every block, and each
+provider declares whether a block may and must set either key. It is the schema half of
+reaching a server that is not the vendor's; [P49](#p49--an-ollama-provider) is the first
+provider that needs it.
+
+#### What to build
+
+- **`KeyRequirement`** in `io.github.maxtrezzi.modelrack4j.spi`: `FORBIDDEN`, `OPTIONAL`,
+  `MANDATORY`, with `permitted()` (not `FORBIDDEN`) and `required()` (only `MANDATORY`).
+- **`ProviderFactory.apiKeyRequirement()` and `baseUrlRequirement()`**, both abstract. Their
+  Javadoc says why there is no default, pointing at ADR-0062.
+- **`LlmConfig`**: `apiKey()` becomes `Optional<String>`, and a new component
+  `Optional<String> baseUrl()` is read from `base-url`. Both are read through `BlockReader`, so
+  ADR-0056 counts them as known keys; `api-key` moves from `requiredString` to an optional
+  read. A present but blank value is refused, as `description` already is.
+- **`LlmConfig.toString()`** keeps `apiKey=***` when a key is present and says it is absent when
+  it is not. It prints `base-url` with any user-info part replaced by `***`: a URL of the form
+  `https://user:secret@host` carries a credential, and ADR-0047's reasoning applies to it.
+  `equals` is untouched, so a changed `base-url` is a configuration change and reloads the
+  bundle.
+- **`SnapshotLoader.validateCapabilities`** applies both requirements before
+  `factory.validate(config)`, with two messages parameterised by the key:
+
+  ```
+  llm.LOCAL sets api-key, but provider 'ollama' does not use one. Remove api-key from this block.
+  llm.LOCAL has no base-url, but provider 'ollama' requires one. Set base-url in this block.
+  ```
+
+  A factory that returns `null` from either method is refused in the words the `null`
+  `tokenEstimation()` case already uses.
+- **The four factories** declare `openai` `OPTIONAL`/`OPTIONAL` and `anthropic`, `gemini`,
+  `glm` `MANDATORY`/`OPTIONAL` (api-key/base-url). Each passes `base-url` to **every** builder
+  it calls for the block — chat, streaming, `OpenAiModerationModel`,
+  `AnthropicTokenCountEstimator`, `GoogleAiGeminiTokenCountEstimator` — and `openai` passes the
+  key only when present. For a `MANDATORY` provider core has already checked the key, so
+  `orElseThrow()` in the factory cannot fire; say so where it is written.
+- **`OpenAiProviderFactory.validate()`** gains the one rule core cannot see:
+
+  ```
+  llm.X has neither api-key nor base-url. Provider 'openai' calls api.openai.com when base-url
+  is absent, and that endpoint requires a key. Set api-key, or set base-url to a server that
+  does not need one.
+  ```
+
+- **`FakeProviderFactory`** in core test scope takes both requirements as parameters, so core
+  tests reach all three values without a real provider.
+
+#### What not to do
+
+- **Do not give either method a default.** ADR-0062 records why: the change breaks every
+  implementer anyway, and a default of `MANDATORY` would refuse every block of a keyless
+  provider that forgot to override it.
+- **Do not check a missing key in a provider's `validate()`.** Core owns the rule and the
+  message (ADR-0048). The `openai` rule is the exception because it depends on `base-url`.
+- **Do not pass `base-url` to the chat model alone.** A block behind a proxy would send its
+  moderation or its remote token count to the vendor's own address.
+- **Do not list the known keys by hand.** They come from what `BlockReader` was asked for.
+
+#### Tests worth naming
+
+For each key and each of the three values, a block with the key and one without: six cases per
+key, twelve in all, with `FakeProviderFactory`, asserting the two messages name the block, the
+provider and the key. A `null` requirement is refused. A blank `base-url` is refused, and
+`base-url` is not reported as unknown. A change to `base-url` alone names that bundle in
+`ReloadChange.updated()`. `toString()` shows neither the key nor a URL's user-info. For
+`openai`: no key and no `base-url` is refused with its own message, and no key with a
+`base-url` builds. For each factory, a `base-url` pointing at a closed local port makes the
+first call fail to connect instead of reaching the vendor — `ZhipuAiKeyHandlingTest` already
+builds a client that way. The 6 direct `new LlmConfig(…)` calls in 5 test files change with
+the record.
+
+#### Documentation and guidance
+
+- **The reference** gains `base-url`, and its `api-key` entry says the requirement now depends
+  on the provider, with a table. A section says how to reach a local server — LocalAI,
+  llama.cpp, vLLM, LM Studio — through `provider = openai`, and that no placeholder key is
+  needed. User-facing prose, under ADR-0039.
+- **The README** and **the tutorial** name `api-key` too: read both for a sentence that says it
+  is always required.
+- **The CHANGELOG**, under *Changed*: the source break with its migration, and the binary break
+  for a factory compiled against `0.2.0` — `AbstractMethodError` or `NoSuchMethodError` at run
+  time — which a reader of a source break does not expect. Under *Added*: `base-url`.
+- **`AGENTS.md`**: the paragraph on capabilities says a factory reports two things and "three of
+  the four are empty and GLM's is not". After this item a factory reports four things and
+  `openai`'s `validate()` is not empty either.
+
+### P49 — An Ollama provider
+
+**Status:** Blocked — on [P48](#p48--api-key-and-base-url-what-a-provider-permits-and-requires),
+target 0.3.0 ·
+**Raised by:** the owner on 2026-09-20, settled by
+[ADR-0062](../adr/0062-a-provider-declares-its-key-requirements.md)
+
+A fifth provider module, and the first whose block takes no credential and needs an address.
+It is also the first that can be tested against a live model at no cost.
+
+#### What to build
+
+- **`modelrack4j-provider-ollama`** on `dev.langchain4j:langchain4j-ollama`, which the main BOM
+  manages at `${langchain4j.stable.version}`: no `<version>` in the module POM (ADR-0018), and no
+  second BOM import.
+- **`OllamaProviderFactory`**, provider id `ollama`: `apiKeyRequirement()` `FORBIDDEN`,
+  `baseUrlRequirement()` `MANDATORY`, `TokenEstimation.ABSENT`, `supportsModeration()`
+  `false`, and an empty `validate()`. Read from `langchain4j-ollama` `1.20.0` on 2026-09-21:
+  no estimator and no moderation model in any class, and `OllamaClient` refuses a blank
+  `baseUrl`, so there is no default address. The chat and streaming builders take `baseUrl`,
+  `modelName`, `temperature`, `logRequests`, `logResponses` and a single `timeout(Duration)`,
+  which the schema's `timeout` maps onto directly (ADR-0030).
+- **Wiring**: the `META-INF/services` entry, the module in the parent POM's `<modules>`, the
+  artifact in `modelrack4j-bom`, and a dependency from `modelrack4j-examples`.
+- **The dependency check M0 and P34 ran.** What does `langchain4j-ollama` bring, and does
+  `DependencyConvergence` stay green? Record the answer here, not only the build result.
+- **`OllamaProviderIT`**, under `-Pintegration`, enabled by `OLLAMA_BASE_URL` the way the others
+  are enabled by their key (`@EnabledIfEnvironmentVariable`). It needs a running server and a
+  pulled model rather than money; its Javadoc names both.
+- **One example** with a development layer on Ollama over a production layer on OpenAI, one
+  file apart. It is what layering is for, and no provider could show it before this one.
+
+#### What not to do
+
+- **Do not make Ollama the default of the examples or the tutorial.** Installing a local
+  inference server is a longer path to a first run than exporting a key, and P18 worked to
+  shorten that path.
+- **Do not add a module for LocalAI**, llama.cpp, vLLM or LM Studio. ADR-0062 records why:
+  `langchain4j-local-ai` wraps the OpenAI client and is on the beta line, so `provider = openai`
+  with a `base-url` is the same thing without the cost.
+- **Do not add the PIT plugin to the new module** (ADR-0041).
+
+#### Documentation and guidance
+
+Every table that names GLM for what it lacks names Ollama too, because the two have the same
+capabilities. Read on 2026-09-21: the capability matrix, in the README and in the reference;
+the token-window table that says *not at all* for GLM, in both; and two rows of the reference's
+troubleshooting table, for `ships no moderation model` ("Anthropic, Gemini or GLM") and for
+`no token count estimator` ("`token-window` on GLM"). The reference's table of provider modules
+gains a row. `AGENTS.md` says "Seven Maven modules, four providers" and lists the provider
+modules by name: after this item it is eight and five.
