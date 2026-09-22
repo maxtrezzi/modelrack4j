@@ -11,7 +11,112 @@ will not be held back for a major bump until the API settles at `1.0.0`.
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **`modelrack4j-provider-ollama`, a fifth provider**, for a model on an Ollama server you run
+  yourself, on the stable `langchain4j-ollama` module. It builds a chat model and a streaming
+  chat model; like GLM, it has no moderation model and no token counter, so `token-window`
+  memory is refused and `message-window` is the way to bound a conversation. It takes no key,
+  so a block that sets `api-key` is refused, and it has no default address, so `base-url` is
+  required:
+
+  ```hocon
+  llm.LOCAL {
+    provider   = ollama
+    base-url   = "http://localhost:11434"
+    model-name = "llama3.2"
+  }
+  ```
+
+  It adds three jars to core's: `langchain4j-ollama` and the two HTTP client jars the OpenAI
+  provider already brings.
+
+- **A seventh example, `LocalDevelopment`** (`./run-local.sh`), free: one production file on
+  OpenAI, unchanged, and a development file above it that moves the same block to Ollama and
+  clears the key with `api-key = null`.
+
+- **`local-models.conf`, for trying the library with no key.** Given to `./run-chat.sh` or
+  `./run-council.sh`, it reaches a local Ollama server twice — through `provider = ollama`, and
+  through `provider = openai` with a `base-url`, which is how any OpenAI-compatible server is
+  reached. The two scripts no longer ask for the Anthropic and OpenAI keys when they are given
+  a configuration file of your own.
+
+- **`base-url`: the server a block calls.** A new optional key. Without it, each provider calls
+  the vendor's own address, as before. With it, every model the block builds calls that
+  address instead — the chat model, the streaming model, the moderation model and a remote
+  token counter — so a block behind a proxy sends nothing to the vendor directly. A change to
+  `base-url` is a configuration change, and a reload rebuilds that bundle. `toString()` prints
+  it with any user-info (`user:secret@`) replaced by `***`.
+
+  With `provider = openai`, this reaches a server of your own that speaks the OpenAI protocol —
+  LocalAI, llama.cpp, vLLM, LM Studio, Ollama — and such a block needs no `api-key` unless the
+  server checks one:
+
+  ```hocon
+  llm.LOCAL {
+    provider   = openai
+    base-url   = "http://localhost:11434/v1"
+    model-name = "llama3.2"
+  }
+  ```
+
+  ([ADR-0062](docs/adr/0062-a-provider-declares-its-key-requirements.md))
+
+- **`KeyRequirement`, and `ProviderFactory.apiKeyRequirement()` and `baseUrlRequirement()`.**
+  A provider declares whether a block may set each key and whether it must: `FORBIDDEN`,
+  `OPTIONAL` or `MANDATORY`. Core checks both when the configuration loads and refuses a block
+  that breaks them, in the same words for every provider:
+
+  ```
+  llm.SL has no api-key, but provider 'anthropic' requires one. Set api-key in this block.
+  ```
+
+### Changed
+
+- **`api-key` is no longer required by every block.** `anthropic`, `gemini` and `glm` still
+  require it. `openai` does not, because a server of your own may not need one; an `openai`
+  block with neither `api-key` nor `base-url` is refused, since it would call `api.openai.com`
+  without a key. **Every configuration that loads under `0.2.0` still loads.**
+
+- **`LlmConfig.apiKey()` returns `Optional<String>`, and `LlmConfig` has a new component,
+  `Optional<String> baseUrl()`, after it.** This breaks code that reads the key as a `String`,
+  and code that calls the record's constructor. To migrate:
+
+  ```java
+  String key = config.apiKey().orElseThrow();   // where your provider requires one
+  config.apiKey().ifPresent(builder::apiKey);   // where the key is optional
+  ```
+
+  A constructor call takes the two values as `Optional`s, in this order:
+  `…, provider, Optional.of(key), Optional.empty(), modelName, …`.
+
+- **A `ProviderFactory` of your own must implement `apiKeyRequirement()` and
+  `baseUrlRequirement()`.** Neither has a default, on purpose: any default would be wrong for
+  some provider, and `MANDATORY` would refuse every block of a provider that takes no key.
+  Return `MANDATORY` and `OPTIONAL` to keep what `0.2.0` did.
+
+  **A factory compiled against `0.2.0` also fails at run time**, not only when you recompile
+  it. As soon as a block names its provider, `build()` or `reload()` refuses the configuration
+  with a `ConfigValidationException`:
+
+  ```
+  llm.SL: provider 'openai' does not implement the api-key requirement, so it was built for
+  an older modelrack4j. Rebuild it against this version.
+  ```
+
+  A reload that fails this way is reported like any other rejected reload, and the previous
+  configuration stays live. Its calls to `config.apiKey()` are broken too, because the return
+  type changed. A provider jar built for `0.2.0` cannot be used with this version: rebuild it.
+
+### Fixed
+
+- **A provider jar that does not match the classes on the classpath no longer stops hot
+  reload.** A jar built against another version of modelrack4j or LangChain4j can throw a
+  `NoSuchMethodError` or a `NoClassDefFoundError` while its models are built. That is an
+  `Error`, not an exception, so it used to escape `reload()`, and on the watcher thread it
+  ended the watching: later edits to the files were no longer applied. It is now a `ConfigValidationException` that names the
+  provider and the error, the reload is rejected like any other, and the previous
+  configuration stays live.
 
 ## [0.2.0] — 2026-09-07
 

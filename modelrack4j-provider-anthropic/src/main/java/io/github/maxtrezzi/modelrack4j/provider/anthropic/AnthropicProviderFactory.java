@@ -23,6 +23,7 @@ import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.chat.StreamingChatModel;
 import dev.langchain4j.model.moderation.ModerationModel;
 import io.github.maxtrezzi.modelrack4j.LlmConfig;
+import io.github.maxtrezzi.modelrack4j.spi.KeyRequirement;
 import io.github.maxtrezzi.modelrack4j.spi.ProviderFactory;
 import io.github.maxtrezzi.modelrack4j.spi.TokenEstimation;
 import java.util.Optional;
@@ -42,6 +43,20 @@ public final class AnthropicProviderFactory implements ProviderFactory {
     @Override
     public String providerId() {
         return PROVIDER_ID;
+    }
+
+    @Override
+    public KeyRequirement apiKeyRequirement() {
+        // The vendor's API refuses a request without one, so a block that forgot its key
+        // should fail when it loads rather than on its first request (ADR-0062).
+        return KeyRequirement.MANDATORY;
+    }
+
+    @Override
+    public KeyRequirement baseUrlRequirement() {
+        // The client calls the vendor's own address when none is given, and every builder
+        // this factory uses accepts another one, for a proxy or a gateway.
+        return KeyRequirement.OPTIONAL;
     }
 
     @Override
@@ -69,12 +84,13 @@ public final class AnthropicProviderFactory implements ProviderFactory {
     @Override
     public ChatModel createChatModel(LlmConfig config) {
         AnthropicChatModel.AnthropicChatModelBuilder builder = AnthropicChatModel.builder()
-                .apiKey(config.apiKey())
+                .apiKey(apiKey(config))
                 .modelName(config.modelName())
                 .timeout(config.timeout())
                 .logRequests(config.logRequests())
                 .logResponses(config.logResponses());
         config.temperature().ifPresent(builder::temperature);
+        config.baseUrl().ifPresent(builder::baseUrl);
         return builder.build();
     }
 
@@ -82,12 +98,13 @@ public final class AnthropicProviderFactory implements ProviderFactory {
     public Optional<StreamingChatModel> createStreamingChatModel(LlmConfig config) {
         AnthropicStreamingChatModel.AnthropicStreamingChatModelBuilder builder =
                 AnthropicStreamingChatModel.builder()
-                        .apiKey(config.apiKey())
+                        .apiKey(apiKey(config))
                         .modelName(config.modelName())
                         .timeout(config.timeout())
                         .logRequests(config.logRequests())
                         .logResponses(config.logResponses());
         config.temperature().ifPresent(builder::temperature);
+        config.baseUrl().ifPresent(builder::baseUrl);
         return Optional.of(builder.build());
     }
 
@@ -100,12 +117,30 @@ public final class AnthropicProviderFactory implements ProviderFactory {
 
     @Override
     public Optional<TokenCountEstimator> createTokenCountEstimator(LlmConfig config) {
-        return Optional.of(AnthropicTokenCountEstimator.builder()
-                .apiKey(config.apiKey())
+        AnthropicTokenCountEstimator.Builder builder = AnthropicTokenCountEstimator.builder()
+                .apiKey(apiKey(config))
                 .modelName(config.modelName())
                 .timeout(config.timeout())
                 .logRequests(config.logRequests())
-                .logResponses(config.logResponses())
-                .build());
+                .logResponses(config.logResponses());
+        // The same address as the chat model: a block behind a proxy must not count its
+        // tokens at the vendor's own address (ADR-0062).
+        config.baseUrl().ifPresent(builder::baseUrl);
+        return Optional.of(builder.build());
+    }
+
+    /**
+     * Returns the block's key.
+     *
+     * @throws IllegalArgumentException if the block has none, which only a caller that
+     *     bypasses the registry can arrange
+     * @implNote Never throws through the registry: {@link #apiKeyRequirement()} is
+     *     {@code MANDATORY}, so core has refused a block without a key before any method here
+     *     is called.
+     */
+    private static String apiKey(LlmConfig config) {
+        return config.apiKey().orElseThrow(() -> new IllegalArgumentException("llm."
+                + config.name() + " has no api-key, and provider '" + PROVIDER_ID
+                + "' requires one"));
     }
 }

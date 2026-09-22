@@ -53,10 +53,41 @@ public interface ProviderFactory {
     TokenEstimation tokenEstimation();
 
     /**
+     * Returns whether a block naming this provider may set {@code api-key}, and whether it
+     * must.
+     *
+     * <p>Core applies the answer before {@link #validate(LlmConfig)} is called, so a factory
+     * that declares {@link KeyRequirement#MANDATORY} can rely on
+     * {@link LlmConfig#apiKey()} being present, and one that declares
+     * {@link KeyRequirement#FORBIDDEN} can rely on it being absent.
+     *
+     * @return the requirement, never null
+     * @implSpec There is no default, on purpose (ADR-0062). Any default would be wrong for
+     *     some provider, and {@code MANDATORY}, the obvious one, would refuse every block of a
+     *     provider that takes no credential and forgot to override this. A compile error is
+     *     cheaper than that.
+     */
+    KeyRequirement apiKeyRequirement();
+
+    /**
+     * Returns whether a block naming this provider may set {@code base-url}, and whether it
+     * must.
+     *
+     * <p>Core applies the answer before {@link #validate(LlmConfig)} is called, as it does for
+     * {@link #apiKeyRequirement()}. A provider whose client has a default address, such as
+     * the vendor's own, returns {@link KeyRequirement#OPTIONAL}; one with no default address,
+     * such as a server the user runs, returns {@link KeyRequirement#MANDATORY}.
+     *
+     * @return the requirement, never null
+     * @implSpec There is no default, for the reason given on {@link #apiKeyRequirement()}.
+     */
+    KeyRequirement baseUrlRequirement();
+
+    /**
      * Returns whether this provider can build a {@code ModerationModel}, which decides
      * whether a block may set {@code moderation.enabled = true}.
      *
-     * <p>Of the four providers in v1, only OpenAI can. Reporting it here rather than
+     * <p>Of the providers in this repository, only OpenAI can. Reporting it here rather than
      * rejecting it in {@link #validate(LlmConfig)} keeps the rule and its message in core,
      * beside the {@link #tokenEstimation()} rules, so every provider refuses the same
      * configuration in the same words.
@@ -77,8 +108,9 @@ public interface ProviderFactory {
      * Checks anything this provider cannot support, beyond what the config record already
      * validates — most often a capability the configuration asks for and the provider lacks.
      *
-     * <p>Capability rules that depend only on {@link #tokenEstimation()} or
-     * {@link #supportsModeration()} are applied by core and must not be restated here.
+     * <p>Rules that depend only on {@link #tokenEstimation()}, {@link #supportsModeration()},
+     * {@link #apiKeyRequirement()} or {@link #baseUrlRequirement()} are applied by core, before
+     * this method runs, and must not be restated here.
      *
      * @param config the validated configuration naming this provider
      * @throws ConfigValidationException if this provider cannot honour the configuration

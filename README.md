@@ -1,9 +1,10 @@
 # modelrack4j
 
 Turn layered HOCON configuration into **named, ready-to-use bundles of LangChain4j
-objects**, with validated hot reload.
+objects** — for OpenAI, Anthropic, GLM, a local Ollama, or any OpenAI-compatible server — with
+validated hot reload.
 
-Declare `SL`, `SH` and `CR` in a config file; ask the registry for each by name and get a
+Declare `SL`, `CR`, `GL` and `LOCAL` in a config file; ask the registry for each by name and get a
 consistent `ChatModel` + `StreamingChatModel` + `ModerationModel` + `ChatMemoryProvider`
 per name. Edit the file and the registry picks the change up atomically, validated, without
 a restart.
@@ -11,8 +12,10 @@ a restart.
 ```hocon
 # llm.conf
 llm {
-  SL { provider = anthropic, api-key = ${ANTHROPIC_API_KEY}, model-name = "claude-sonnet-5" }
-  CR { provider = openai,    api-key = ${OPENAI_API_KEY},    model-name = "gpt-5.1" }
+  SL    { provider = anthropic, api-key = ${ANTHROPIC_API_KEY}, model-name = "claude-sonnet-5" }
+  CR    { provider = openai,    api-key = ${OPENAI_API_KEY},    model-name = "gpt-5.1" }
+  GL    { provider = glm,       api-key = ${ZHIPU_API_KEY},     model-name = "glm-5.3" }
+  LOCAL { provider = ollama, base-url = "http://localhost:11434", model-name = "llama3.2" }
 }
 ```
 
@@ -20,6 +23,12 @@ llm {
 var registry = LlmRegistry.builder().configFiles(List.of(Path.of("llm.conf"))).build();
 String answer = registry.get("SL").chatModel().chat("Why is the sky blue?");
 ```
+
+**Hosted and local models, side by side.** The providers are OpenAI, Anthropic, Gemini, GLM
+and **Ollama**, which runs models on your own machine with no key and no cost. Any other server
+that speaks the **OpenAI protocol** — LocalAI, llama.cpp's server, vLLM, LM Studio — is reached
+through `provider = openai` and a `base-url`, with no key unless the server asks for one. See
+[Providers](#providers).
 
 That is the whole idea. A block can also carry [values of your own](#values-of-your-own), and
 then the registry hands them back as a type you define. [Quick start](#quick-start) has the
@@ -34,6 +43,11 @@ starts from nothing, and a [reference](docs/manual/part-2-reference.md) for ever
 
 **Status: `0.2.0`, on Maven Central.** The API is 0.x and may still
 change in a minor release; see [CHANGELOG.md](CHANGELOG.md).
+
+> **This page is ahead of the release.** It describes the `dev` branch. `base-url`, the
+> Ollama provider, `api-key` being optional on some providers, and `local-models.conf` arrive
+> in `0.3.0` and are not in `0.2.0`. The pages for `0.2.0` are on the
+> [`main` branch](https://github.com/maxtrezzi/modelrack4j/tree/main).
 
 ---
 
@@ -111,7 +125,7 @@ Four things follow, and they are the whole library:
 
 One more thing makes all four safe to rely on: **mistakes fail when the file loads, not at
 the first request.** Providers differ in what they can actually do — moderation
-is OpenAI-only among the four here, and token counting is local, remote or absent depending
+is OpenAI-only among the five here, and token counting is local, remote or absent depending
 on the provider — so the configuration is validated against the provider's real capabilities.
 Enabling moderation on Anthropic is a startup error naming the block, not an empty `Optional`
 you discover in production. A handler of your own runs in the same step, so a block your
@@ -169,7 +183,8 @@ If neither applies, use the starter for your framework. It will be less code tha
 ### 1. Add the dependencies
 
 Core knows no providers. Add core **plus** each provider module you actually configure —
-each one registers itself through `ServiceLoader`.
+each one registers itself through `ServiceLoader`. The module for `provider = x` is
+`modelrack4j-provider-x`: `openai`, `anthropic`, `gemini`, `glm` or `ollama`.
 
 ```xml
 <dependency>
@@ -209,8 +224,10 @@ Requires **Java 17+**. Built against **LangChain4j 1.20.0**.
 
 ### 2. Write the configuration
 
-Three keys are required and everything else is optional, so the smallest file that works is
-this:
+`provider` and `model-name` are always required. `api-key` is required by the Anthropic,
+Gemini and GLM providers, and by OpenAI unless you point it at a server of your own; Ollama
+does not accept one (see [Providers](#providers)). Everything else is optional, so the smallest file
+that works is this:
 
 ```hocon
 # llm.conf
@@ -260,9 +277,10 @@ API rejects a non-default value with a 400. The `gpt-5.1` block above still acce
 so does `claude-sonnet-4-6` — which is why the pair of examples in [Why](#why) uses that
 model to show one temperature moving out of a builder call and into a file.
 
-> **Use `${VAR}`, not `${?VAR}`, for secrets.** The mandatory form fails loudly at load time
-> when the variable is unset. The optional form silently yields no value, and the failure
-> resurfaces much later as an authentication error on the first request.
+> **Use `${VAR}`, not `${?VAR}`, for secrets.** The mandatory form fails at load time when the
+> variable is unset, and the message names the variable. The optional form leaves the key out
+> instead: a provider that needs a key then refuses the block for a missing `api-key`, which
+> does not tell you which variable you forgot.
 
 ### 3. Use it
 
@@ -328,7 +346,7 @@ special.
 
 ### Runnable examples
 
-Six, in [`modelrack4j-examples`](modelrack4j-examples/src/main/java/io/github/maxtrezzi/modelrack4j/examples).
+Seven, in [`modelrack4j-examples`](modelrack4j-examples/src/main/java/io/github/maxtrezzi/modelrack4j/examples).
 Each one demonstrates a single claim from [Why](#why) rather than the library in general:
 
 | Example | Shows | Cost |
@@ -336,9 +354,21 @@ Each one demonstrates a single claim from [Why](#why) rather than the library in
 | [`AtomicSnapshot`](modelrack4j-examples/src/main/java/io/github/maxtrezzi/modelrack4j/examples/AtomicSnapshot.java) | A single save changes two models at once, while four threads keep reading both; reading through `snapshot()` never catches a mix of old and new, reading through two `get()` calls can, though a single run often catches none | **free, no API key** |
 | [`DatabaseSource`](modelrack4j-examples/src/main/java/io/github/maxtrezzi/modelrack4j/examples/DatabaseSource.java) | Configuration held in memory instead of a file, standing in for a database row, driven by the application: all four answers `reload()` can give, then the same rejected change through `store()`, which refuses it before the row is written | **free, no API key** |
 | [`CustomProperties`](modelrack4j-examples/src/main/java/io/github/maxtrezzi/modelrack4j/examples/CustomProperties.java) | Values the application owns, carried inside the block they belong to and checked by the application's own rules **inside** the reload: a good edit applied, one the rules reject leaving the whole previous configuration live, and the same change through `store()` refused before the layer is written | **free, no API key** |
+| [`LocalDevelopment`](modelrack4j-examples/src/main/java/io/github/maxtrezzi/modelrack4j/examples/LocalDevelopment.java) | One production file on OpenAI, unchanged, and a development file above it that moves the same model to a local Ollama server and removes the key; then the production file alone, which on a machine without `OPENAI_API_KEY` is refused and says why | **free, no API key**; one request to your own Ollama server, if one is running |
 | [`ProviderSwap`](modelrack4j-examples/src/main/java/io/github/maxtrezzi/modelrack4j/examples/ProviderSwap.java) | The same call site answered by Anthropic, then by OpenAI, after a file edit | two requests |
-| [`ConsoleChat`](modelrack4j-examples/src/main/java/io/github/maxtrezzi/modelrack4j/examples/ConsoleChat.java) | An interactive menu of every configured model; edit the file while it runs and the menu changes; `/tools` answers through an `AiServices` proxy with a `@Tool` method, rebuilt on the current bundle each turn | a conversation |
-| [`ThreeModelCouncil`](modelrack4j-examples/src/main/java/io/github/maxtrezzi/modelrack4j/examples/ThreeModelCouncil.java) | The scenario above: three models, the questions you type, no provider branch in the code | three requests per question |
+| [`ConsoleChat`](modelrack4j-examples/src/main/java/io/github/maxtrezzi/modelrack4j/examples/ConsoleChat.java) | An interactive menu of every configured model; edit the file while it runs and the menu changes; `/tools` answers through an `AiServices` proxy with a `@Tool` method, rebuilt on the current bundle each turn | a conversation; **free** with [`local-models.conf`](modelrack4j-examples/src/main/resources/local-models.conf) |
+| [`ThreeModelCouncil`](modelrack4j-examples/src/main/java/io/github/maxtrezzi/modelrack4j/examples/ThreeModelCouncil.java) | The scenario above: every configured model answers the questions you type, no provider branch in the code | one request per model per question; **free** with `local-models.conf` |
+
+**No key at all?** Start Ollama, pull a model (`ollama pull llama3.2`), and give ConsoleChat or
+ThreeModelCouncil the file of local models. It has two blocks for the same server: one through
+the Ollama provider, one through the OpenAI protocol, which is how any OpenAI-compatible server
+is reached:
+
+```bash
+./run-chat.sh modelrack4j-examples/src/main/resources/local-models.conf
+```
+
+Set `OLLAMA_MODEL` to use a model you already have instead of `llama3.2`.
 
 Start with `AtomicSnapshot` if you want to see the least obvious guarantee at no cost:
 
@@ -347,9 +377,8 @@ Start with `AtomicSnapshot` if you want to see the least obvious guarantee at no
 ```
 
 One script per example — `run-atomic.sh`, `run-database.sh`, `run-properties.sh`,
-`run-swap.sh`, `run-chat.sh`, `run-council.sh` — each with a `--help` that says what it shows
-and what it costs. They
-install the project first if they have to, because `exec:java` resolves `modelrack4j-core`
+`run-local.sh`, `run-swap.sh`, `run-chat.sh`, `run-council.sh` — each with a `--help` that says
+what it shows and what it costs. They install the project first if they have to, because `exec:java` resolves `modelrack4j-core`
 from `~/.m2` rather than from the reactor. There are no `.bat` counterparts: on Windows,
 run the command `--help` prints.
 
@@ -412,7 +441,8 @@ Every named block lives under the `llm` root. Names are yours: `SL`, `CR`,
 |---|---|---|---|
 | `description` | string | *none* | a short human-readable note; see below |
 | `provider` | string | *required* | must match a `ProviderFactory` on the classpath |
-| `api-key` | string | *required* | use `${VAR}` |
+| `api-key` | string | *depends on the provider* | use `${VAR}`; see [Providers](#providers) |
+| `base-url` | string | *the provider's own address* | the server to call; see [Providers](#providers) |
 | `model-name` | string | *required* | the provider's own model identifier |
 | `temperature` | number | *provider's own* | 0.0–2.0; omitted means "don't set it" |
 | `timeout` | duration | `60s` | HOCON durations: `30s`, `2m` |
@@ -521,15 +551,20 @@ llm {
   SL { provider = anthropic, model-name = "claude-sonnet-5", api-key = ${ANTHROPIC_API_KEY} }
 }
 
-# local.conf — a developer with no key, pointing at a local gateway
+# local.conf — a developer with no key, using a model on their own machine
 llm {
-  SL { api-key = "not-a-secret", model-name = "local-model" }
+  SL {
+    provider   = ollama
+    api-key    = null                       # Ollama takes no key; null removes it
+    base-url   = "http://localhost:11434"
+    model-name = "llama3.2"
+  }
 }
 ```
 
 That works, and the detail is load-bearing: all layers are **merged first and resolved
 exactly once**. `${ANTHROPIC_API_KEY}` in the lower layer is never resolved, because the
-higher layer replaced that key before resolution ran. If instead you resolve each file as
+higher layer cleared that key with `null` before resolution ran. If instead you resolve each file as
 you parse it — the obvious implementation — this fails, because the substitution is
 evaluated while the overriding layer is still invisible. It has its own regression suite.
 
@@ -704,22 +739,61 @@ applied.
 Each provider is its own module. Core takes **no** provider artifact, ever, so an
 application configuring only Anthropic never has OpenAI's dependencies on its classpath.
 
-| Module | `provider =` | Chat | Streaming | Moderation | Token estimation |
-|---|---|---|---|---|---|
-| `modelrack4j-provider-openai` | `openai` | ✅ | ✅ | ✅ | **local** |
-| `modelrack4j-provider-anthropic` | `anthropic` | ✅ | ✅ | ❌ | remote |
-| `modelrack4j-provider-gemini` | `gemini` | ✅ | ✅ | ❌ | remote |
-| `modelrack4j-provider-glm` | `glm` | ✅ | ✅ | ❌ | none |
+| Module | `provider =` | Chat | Streaming | Moderation | Token estimation | `api-key` | `base-url` |
+|---|---|---|---|---|---|---|---|
+| `modelrack4j-provider-openai` | `openai` | ✅ | ✅ | ✅ | **local** | optional | optional |
+| `modelrack4j-provider-anthropic` | `anthropic` | ✅ | ✅ | ❌ | remote | required | optional |
+| `modelrack4j-provider-gemini` | `gemini` | ✅ | ✅ | ❌ | remote | required | optional |
+| `modelrack4j-provider-glm` | `glm` | ✅ | ✅ | ❌ | none | required | optional |
+| `modelrack4j-provider-ollama` | `ollama` | ✅ | ✅ | ❌ | none | **not allowed** | required |
 
 Read out of the LangChain4j 1.20.0 artifacts, not from documentation. Gemini is the stable
 `langchain4j-google-ai-gemini` module; GLM comes from `langchain4j-community-zhipu-ai`,
-which is released on the community cycle, separately from the stable modules.
+which is released on the community cycle, separately from the stable modules. Ollama is the
+stable `langchain4j-ollama` module.
 
 Capabilities are enforced at load time. `moderation { enabled = true }` on Anthropic,
-Gemini or GLM is a configuration error naming the block, not an empty `Optional` you
-discover at runtime.
+Gemini, GLM or Ollama is a configuration error naming the block, not an empty `Optional` you
+discover at runtime. The same is true of the last two columns: a block that leaves out a
+required `api-key` is refused when it loads.
 
-**Three provider notes worth knowing before you hit them:**
+**`base-url` changes which server a block calls.** Without it, each provider calls the
+vendor's own address. With it, every model the block builds calls that address instead —
+the chat model, the streaming model, and also the moderation model and a remote token
+counter, so a block behind a proxy sends nothing to the vendor directly.
+
+### Local models and OpenAI-compatible servers
+
+There are two ways to reach a model on your own machine or network, and neither needs a key:
+
+| Your server | `provider` | `base-url` | `api-key` |
+|---|---|---|---|
+| Ollama | `ollama` | `http://localhost:11434` | not allowed |
+| Anything that speaks the OpenAI protocol — LocalAI, llama.cpp's server, vLLM, LM Studio, and Ollama too | `openai` | its OpenAI-compatible address, for Ollama `http://localhost:11434/v1` | leave it out, unless the server checks one |
+
+```hocon
+llm {
+  LOCAL      { provider = ollama, base-url = "http://localhost:11434",    model-name = "llama3.2" }
+  OPENAI-API { provider = openai, base-url = "http://localhost:11434/v1", model-name = "llama3.2" }
+}
+```
+
+**For Ollama, prefer `provider = ollama`.** Both work, but the Ollama provider knows what Ollama
+cannot do: moderation and `token-window` memory are refused when the file loads, and the
+message says why. Through `provider = openai` the block keeps OpenAI's options. Moderation is
+then built, and fails on the first request if the server has no moderation endpoint;
+`token-window` is refused too, but by a message about OpenAI's tokenizers, which do not know a
+model called `llama3.2`. For every other server, `provider = openai` is the way, because the
+OpenAI client sends a key only when it has one.
+
+An `openai` block with neither `api-key` nor `base-url` is refused, because without an address
+it calls `api.openai.com`, which needs a key. The shipped
+[`local-models.conf`](modelrack4j-examples/src/main/resources/local-models.conf) has both
+blocks above, ready for `./run-chat.sh`.
+
+### Notes
+
+Three provider notes worth knowing before you hit them:
 
 - **Moderation is ignored on the `AiServices` streaming path.** That is upstream LangChain4j
   behaviour ([#2779](https://github.com/langchain4j/langchain4j/issues/2779)), not something
@@ -732,17 +806,23 @@ discover at runtime.
 - **Swapping a provider in config does not swap your error handling.** What a *failing* call
   throws is the provider's, not this library's, and the types differ: an out-of-credit account
   is `RateLimitException` on OpenAI and `ZhipuAiException` on GLM — the same condition, two
-  types. Catch `dev.langchain4j.exception.LangChain4jException` for handling that survives a
-  swap; anything finer is provider-specific. The guarantee covers construction, not invocation
+  types. Catch `dev.langchain4j.exception.LangChain4jException` for an error the server
+  answers with, which survives a swap; anything finer is provider-specific. A server that
+  cannot be reached is different: OpenAI and Ollama then throw a plain `RuntimeException`
+  caused by `java.net.ConnectException`, so catch that too — with a local server that is not
+  running, it is the first error you meet. The guarantee covers construction, not invocation
   ([ADR-0033](docs/adr/0033-provider-exceptions-pass-through-untranslated.md)).
 
 ### Adding a provider
 
 Implement `io.github.maxtrezzi.modelrack4j.spi.ProviderFactory` and register it in
 `META-INF/services/io.github.maxtrezzi.modelrack4j.spi.ProviderFactory`. The interface is
-eight methods, three of which return `Optional.empty()` when the capability does not exist.
+ten methods, three of which return `Optional.empty()` when the capability does not exist.
 The one that is not obvious is `tokenEstimation()`: it reports `ABSENT`, `LOCAL` or
 `REMOTE`, not a boolean, because availability is not what varies — cost is.
+`apiKeyRequirement()` and `baseUrlRequirement()` say whether a block may set each key and
+whether it must: `FORBIDDEN`, `OPTIONAL` or `MANDATORY`. Neither has a default, so you
+decide both.
 
 ---
 
@@ -757,7 +837,7 @@ depends entirely on the provider:
 |---|---|
 | **locally** (OpenAI) | built, with no extra configuration |
 | **remotely** (Anthropic, Gemini) | **rejected unless you opt in** with `allow-remote-token-counting = true` |
-| **not at all** (GLM) | rejected outright; the opt-in flag does not apply |
+| **not at all** (GLM, Ollama) | rejected outright; the opt-in flag does not apply |
 
 The middle row is the point. On a remote counter, ordinary conversation turns make a billed,
 rate-limited, network-dependent HTTP call inside what the application reasonably assumes is

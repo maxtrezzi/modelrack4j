@@ -25,6 +25,7 @@ import dev.langchain4j.model.openai.OpenAiStreamingChatModel;
 import dev.langchain4j.model.openai.OpenAiTokenCountEstimator;
 import io.github.maxtrezzi.modelrack4j.ConfigValidationException;
 import io.github.maxtrezzi.modelrack4j.LlmConfig;
+import io.github.maxtrezzi.modelrack4j.spi.KeyRequirement;
 import io.github.maxtrezzi.modelrack4j.spi.ProviderFactory;
 import io.github.maxtrezzi.modelrack4j.spi.TokenEstimation;
 import java.util.Optional;
@@ -34,6 +35,11 @@ import java.util.Optional;
  *
  * <p>OpenAI is the only provider in v1 that supplies every capability the configuration can
  * ask for: it moderates, and it counts tokens in-process rather than over the network.
+ *
+ * <p>It is also the provider that reaches servers other than the vendor's. With a
+ * {@code base-url}, its client talks to any server that speaks the OpenAI protocol — LocalAI,
+ * llama.cpp, vLLM, LM Studio, or Ollama's compatible endpoint — and such a server often needs
+ * no key, so {@code api-key} is optional here (ADR-0062).
  */
 public final class OpenAiProviderFactory implements ProviderFactory {
 
@@ -43,6 +49,20 @@ public final class OpenAiProviderFactory implements ProviderFactory {
     @Override
     public String providerId() {
         return PROVIDER_ID;
+    }
+
+    @Override
+    public KeyRequirement apiKeyRequirement() {
+        // Not MANDATORY: the client sends an Authorization header only when it has a key, and
+        // a local server behind base-url often takes none. The one case that does need a key
+        // is refused in validate(), because it depends on base-url.
+        return KeyRequirement.OPTIONAL;
+    }
+
+    @Override
+    public KeyRequirement baseUrlRequirement() {
+        // Absent means api.openai.com, the client's own default.
+        return KeyRequirement.OPTIONAL;
     }
 
     @Override
@@ -62,20 +82,27 @@ public final class OpenAiProviderFactory implements ProviderFactory {
 
     @Override
     public void validate(LlmConfig config) {
-        // Nothing to reject: OpenAI supplies every capability the schema can request. The
-        // method is deliberately empty rather than absent, so a future capability gap has an
-        // obvious home.
+        // The rule core cannot see (ADR-0062): whether a key is needed depends on where the
+        // block points, and only this factory knows that no base-url means api.openai.com.
+        if (config.apiKey().isEmpty() && config.baseUrl().isEmpty()) {
+            throw new ConfigValidationException("llm." + config.name()
+                    + " has neither api-key nor base-url. Provider '" + PROVIDER_ID
+                    + "' calls api.openai.com when base-url is absent, and that endpoint"
+                    + " requires a key. Set api-key, or set base-url to a server that does not"
+                    + " need one.");
+        }
     }
 
     @Override
     public ChatModel createChatModel(LlmConfig config) {
         OpenAiChatModel.OpenAiChatModelBuilder builder = OpenAiChatModel.builder()
-                .apiKey(config.apiKey())
                 .modelName(config.modelName())
                 .timeout(config.timeout())
                 .logRequests(config.logRequests())
                 .logResponses(config.logResponses());
         config.temperature().ifPresent(builder::temperature);
+        config.apiKey().ifPresent(builder::apiKey);
+        config.baseUrl().ifPresent(builder::baseUrl);
         return builder.build();
     }
 
@@ -83,12 +110,13 @@ public final class OpenAiProviderFactory implements ProviderFactory {
     public Optional<StreamingChatModel> createStreamingChatModel(LlmConfig config) {
         OpenAiStreamingChatModel.OpenAiStreamingChatModelBuilder builder =
                 OpenAiStreamingChatModel.builder()
-                        .apiKey(config.apiKey())
                         .modelName(config.modelName())
                         .timeout(config.timeout())
                         .logRequests(config.logRequests())
                         .logResponses(config.logResponses());
         config.temperature().ifPresent(builder::temperature);
+        config.apiKey().ifPresent(builder::apiKey);
+        config.baseUrl().ifPresent(builder::baseUrl);
         return Optional.of(builder.build());
     }
 
@@ -97,12 +125,16 @@ public final class OpenAiProviderFactory implements ProviderFactory {
         // modelName is deliberately NOT passed through: it names a chat model, and OpenAI's
         // moderation endpoint takes its own separate model. Forwarding the chat model name
         // here would send a request the API rejects.
-        return Optional.of(OpenAiModerationModel.builder()
-                .apiKey(config.apiKey())
-                .timeout(config.timeout())
-                .logRequests(config.logRequests())
-                .logResponses(config.logResponses())
-                .build());
+        OpenAiModerationModel.OpenAiModerationModelBuilder builder =
+                OpenAiModerationModel.builder()
+                        .timeout(config.timeout())
+                        .logRequests(config.logRequests())
+                        .logResponses(config.logResponses());
+        config.apiKey().ifPresent(builder::apiKey);
+        // The same address as the chat model: a block behind a proxy must not send its
+        // moderation to the vendor's own address (ADR-0062).
+        config.baseUrl().ifPresent(builder::baseUrl);
+        return Optional.of(builder.build());
     }
 
     @Override

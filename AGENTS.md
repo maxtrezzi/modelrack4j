@@ -7,8 +7,8 @@ and points here; every ADR that cites the old name still resolves.
 
 ## Project state
 
-**v1 is complete, the repository is public, and `0.2.0` is the current release.** Seven Maven
-modules, four providers, hot reload, a two-part manual and six runnable examples. M0–M6 are
+**v1 is complete, the repository is public, and `0.2.0` is the current release.** Nine Maven
+modules, five providers, hot reload, a two-part manual and seven runnable examples. M0–M6 are
 done: M6's trigger fired on 2026-09-02, when the owner tested the library and judged it
 publishable, and `io.github.maxtrezzi:modelrack4j-*:0.1.0` was signed and published to Maven
 Central the same evening. `0.2.0` followed on 2026-09-07 — custom properties, a closed schema,
@@ -94,7 +94,7 @@ carries the work, its status update in `docs/tasks/`, and any ADR it produces.
 request targets `dev`. `main` holds one commit per released version, each with its tag, so its
 tree is always what Maven Central has — which is what makes `git log main..dev` the list of
 what an unreleased version would contain. A release is a pull request from `dev` to `main`,
-squashed, whose subject is the version; the version commit itself — the eight POMs, the
+squashed, whose subject is the version; the version commit itself — every POM, the
 CHANGELOG heading, `project.build.outputTimestamp` — lands on `dev` first like any other work.
 **Never merge `main` into `dev`, never branch from `main`, never rebase `dev` onto it.** After
 a release the two hold the same tree and unrelated histories, because the merge was a squash;
@@ -222,7 +222,7 @@ mvn -pl modelrack4j-core test -Dtest=LlmRegistryTest                        # si
 mvn -pl modelrack4j-core test -Dtest='LlmRegistryTest#unknownNameThrows'    # single method
 mvn -Pintegration verify                 # provider tests against real APIs (keys from env)
 mvn -pl modelrack4j-core org.pitest:pitest-maven:mutationCoverage   # mutation testing, core only
-./run-atomic.sh                          # an example (also swap, chat, council, database; --help each)
+./run-atomic.sh                          # an example (also database, properties, local, swap, chat, council; --help each)
 ```
 
 Scope `-Dtest=` to a module with `-pl`. Running it from the root across all modules fails
@@ -238,7 +238,13 @@ expected, and prefer copying a method name out of the file to typing one from me
 
 Integration tests are skipped by default and require real API keys from the environment;
 everything else must pass offline with no keys (that is what `FakeProviderFactory` in core
-test scope is for).
+test scope is for). `OllamaProviderIT` is the exception in both directions: it costs nothing,
+and it needs a running server rather than a key — it is enabled by `OLLAMA_BASE_URL`, and the
+model (`llama3.2`, or `OLLAMA_MODEL`) must already be pulled on that server. Without
+`OLLAMA_BASE_URL` a `-Pintegration` run skips it; with the variable set and no server
+listening, it fails to connect. Where the owner's server runs and which models it holds is
+machine configuration, not guidance, and the owner ruled on 2026-09-22 that it does not belong
+in this file. Ask the owner.
 
 Toolchain on this machine: JDK 25.0.3 (Temurin), Maven 3.8.7. The language floor is Java 17
 and `maven.compiler.release` is set to it (ADR-0019); CI runs the floor, the development JDK
@@ -437,18 +443,36 @@ yourself on every bump**, because an upstream dependency lands there silently �
 place: neither BOM manages `jspecify`, guava brings an older one through the GLM module, and
 the parent POM pins it to keep `DependencyConvergence` green. **No provider artifact, ever.**
 Each provider lives in its own module
-(`modelrack4j-provider-openai|anthropic|gemini|glm`) implementing the `ProviderFactory`
+(`modelrack4j-provider-openai|anthropic|gemini|glm|ollama`) implementing the `ProviderFactory`
 SPI, discovered via `java.util.ServiceLoader` (`META-INF/services/...spi.ProviderFactory`).
 Providers differ in *capabilities* — moderation is OpenAI-only, and token estimation is
 three-valued rather than a boolean: `ABSENT` (GLM), `LOCAL` (OpenAI), `REMOTE` (Anthropic,
 Gemini), because a remote estimator puts a billed network call inside memory eviction
 (ADR-0021, opt-in per ADR-0027). **A factory *reports* a capability; core enforces it
-(ADR-0048).** `tokenEstimation()` and `supportsModeration()` say what the provider can do,
-and `SnapshotLoader.validateCapabilities` owns both the rule and the message, so every
-provider refuses the same configuration in the same words. Do not restate either check in a
-provider's `validate()` — that is now only for a rule core cannot see. P27 emptied the three
-bodies that had been doing it; P25 then gave one of them real work, so **three of the four are
-empty and GLM's is not** (ADR-0049). Its rule is the boundary to copy from rather than the
+(ADR-0048).** A factory reports four things: `tokenEstimation()` and `supportsModeration()`
+say what the provider can do, and `apiKeyRequirement()` and `baseUrlRequirement()` say whether
+a block may and must set each key (`KeyRequirement`: `FORBIDDEN`, `OPTIONAL`, `MANDATORY`,
+ADR-0062). `SnapshotLoader.validateCapabilities` owns every rule and every message, so every
+provider refuses the same configuration in the same words. Do not restate any of these checks
+in a provider's `validate()` — that is only for a rule core cannot see. **The two requirement
+methods have no default, and must not get one**: a default of `MANDATORY` would refuse every
+block of a keyless provider that forgot to override it, which trades a compile error for a
+wrong answer. The price of no default is that a factory compiled against `0.2.0` throws
+`AbstractMethodError`, an `Error` that `reload()` and the watcher loop do not catch — it once
+ended the watcher thread in silence. **`SnapshotLoader.requirementOf` translates it into a
+`ConfigValidationException`, and `buildBundleReportingLinkage` does the same for any
+`LinkageError` a factory raises while its bundle is built; do not remove either, and do not
+widen the catch to `Error`** — a linkage error belongs to one provider's classes, an
+`OutOfMemoryError` does not. It is a `ConfigValidationException` rather than a new type
+because that is what a rejected reload is reported as; it stretches ADR-0053's "read something
+and objected" a little, since the objection is to the provider rather than to the text. P27 emptied the three `validate()` bodies that had been restating a capability;
+P25 then gave GLM's real work, and P48 gave OpenAI's one rule, so **two of the four are empty
+and GLM's and OpenAI's are not**. OpenAI's refuses a block with neither `api-key` nor
+`base-url`, because only that factory knows no address means `api.openai.com`; it is the one
+key rule that stays in a provider. **`base-url` goes to every builder a factory calls for the
+block** — chat, streaming, moderation, remote estimator — and each provider's test proves it
+with a local port that counts connections, because a closed port shows that a call failed and
+not where it went. GLM's rule (ADR-0049) is the boundary to copy from rather than the
 code: a provider may check the *shape* of a credential when its own code requires that shape
 before it makes any call — GLM parses the key and signs a token with it, so `id.secret` with a
 secret of at least 16 bytes is a property of code on the classpath. It may never check a
