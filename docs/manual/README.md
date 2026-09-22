@@ -5,7 +5,7 @@ when you need an answer.
 
 | | For | Read it |
 |---|---|---|
-| **[Part 1 — Tutorial](part-1-tutorial.md)** | Someone who has not used the library | Start to finish, running the commands. About forty minutes. Six of its ten steps run offline; four send real requests — a dozen short prompts in total. |
+| **[Part 1 — Tutorial](part-1-tutorial.md)** | Someone who has not used the library | Start to finish, running the commands. About forty minutes. Six of its ten steps run offline; four send real requests — a dozen short prompts in total, or none at all with a model on your own machine. |
 | **[Part 2 — Reference](part-2-reference.md)** | Someone using it | By section. Every configuration key, every method, exactly what a reload guarantees, and a troubleshooting table. |
 
 The tutorial builds on the runnable examples in
@@ -18,9 +18,12 @@ costs to run, and links to each source file. [Part 2's
 Examples](part-2-reference.md#examples) says what claim each one pins down and which
 credentials it needs.
 
-The one worth knowing here: **two of the five are free.** `AtomicSnapshot` and
-`DatabaseSource` send no request at all, so they need no credential and cost nothing — start
-with either if you only want to see something work.
+The one worth knowing here: **four of the seven are free.** `AtomicSnapshot`, `DatabaseSource`
+and `CustomProperties` send no request at all, and `LocalDevelopment` sends one only to an
+Ollama server of your own, so none of them needs a credential or costs anything — start with
+any of them if you only want to see something work. `ConsoleChat` and `ThreeModelCouncil` are
+free too when you give them `local-models.conf`, which reaches a local Ollama server both
+through its own provider and through the OpenAI protocol.
 
 ## What lives where
 

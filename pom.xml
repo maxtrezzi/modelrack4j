@@ -60,6 +60,7 @@
     <module>modelrack4j-provider-anthropic</module>
     <module>modelrack4j-provider-gemini</module>
     <module>modelrack4j-provider-glm</module>
+    <module>modelrack4j-provider-ollama</module>
     <module>modelrack4j-bom</module>
     <module>modelrack4j-examples</module>
   </modules>

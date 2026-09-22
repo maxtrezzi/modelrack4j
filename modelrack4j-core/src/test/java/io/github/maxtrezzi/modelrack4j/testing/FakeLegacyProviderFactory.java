@@ -20,6 +20,7 @@ import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.chat.StreamingChatModel;
 import dev.langchain4j.model.moderation.ModerationModel;
 import io.github.maxtrezzi.modelrack4j.LlmConfig;
+import io.github.maxtrezzi.modelrack4j.spi.KeyRequirement;
 import io.github.maxtrezzi.modelrack4j.spi.ProviderFactory;
 import io.github.maxtrezzi.modelrack4j.spi.TokenEstimation;
 import java.util.Optional;
@@ -36,6 +37,10 @@ import java.util.Optional;
  * <p>What it pins: such a factory still builds, a configuration enabling moderation is still
  * refused, and the refusal comes from the build step rather than from the capability check —
  * which is exactly how it behaved before the method was added.
+ *
+ * <p>It does implement {@link #apiKeyRequirement()} and {@link #baseUrlRequirement()}: those
+ * two have no default (ADR-0062), so a factory without them no longer compiles, and a legacy
+ * factory of that kind cannot be written in this suite at all.
  */
 public final class FakeLegacyProviderFactory implements ProviderFactory {
 
@@ -47,6 +52,16 @@ public final class FakeLegacyProviderFactory implements ProviderFactory {
     @Override
     public TokenEstimation tokenEstimation() {
         return TokenEstimation.ABSENT;
+    }
+
+    @Override
+    public KeyRequirement apiKeyRequirement() {
+        return KeyRequirement.OPTIONAL;
+    }
+
+    @Override
+    public KeyRequirement baseUrlRequirement() {
+        return KeyRequirement.OPTIONAL;
     }
 
     // No supportsModeration(). That absence is the point of this class: removing it would

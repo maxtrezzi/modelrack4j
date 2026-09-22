@@ -55,6 +55,11 @@
       <artifactId>modelrack4j-provider-anthropic</artifactId>
       <version>${project.version}</version>
     </dependency>
+    <dependency>
+      <groupId>io.github.maxtrezzi</groupId>
+      <artifactId>modelrack4j-provider-ollama</artifactId>
+      <version>${project.version}</version>
+    </dependency>
     <!-- Demos print through SLF4J's simple binding; the library itself binds nothing. -->
     <dependency>
       <groupId>org.slf4j</groupId>

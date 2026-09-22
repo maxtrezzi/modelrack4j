@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
-# Shared implementation behind the six run-*.sh scripts in the repository root. Not meant to
+# Shared implementation behind the seven run-*.sh scripts in the repository root. Not meant to
 # be called directly: run ./run-atomic.sh, ./run-database.sh, ./run-properties.sh,
-# ./run-swap.sh, ./run-chat.sh or ./run-council.sh.
+# ./run-local.sh, ./run-swap.sh, ./run-chat.sh or ./run-council.sh.
 #
 # The exec:java command these examples need is long, and three parts of it are easy to get
 # wrong: the fully qualified main class, the path to the configuration file, and the fact
@@ -43,6 +43,15 @@ by the application's own rules inside the reload. A good edit is applied; one th
 leaves the whole previous configuration live, and the same change through store() is refused
 before the layer is written at all."
         ;;
+    local)
+        script="run-local.sh";   main="LocalDevelopment";  needs_keys=false; takes_config=false
+        layered=false
+        cost="free; one request to your own Ollama server, if one is running"
+        shows="One production file on OpenAI, unchanged, and a development file above it that
+moves the same model to a local Ollama server and removes the key. Then the production file
+alone, which on a machine without OPENAI_API_KEY is refused and says why. Set OLLAMA_BASE_URL
+and OLLAMA_MODEL to use another server or model than http://localhost:11434 and llama3.2."
+        ;;
     swap)
         script="run-swap.sh";    main="ProviderSwap";      needs_keys=true;  takes_config=false
         layered=false
@@ -66,8 +75,8 @@ It asks you for a question, all three answer it, and it asks again until you typ
         ;;
     *)
         echo "run-example.sh is the shared implementation behind ./run-atomic.sh," >&2
-        echo "./run-database.sh, ./run-properties.sh, ./run-swap.sh, ./run-chat.sh and" >&2
-        echo "./run-council.sh. Run one of those." >&2
+        echo "./run-database.sh, ./run-properties.sh, ./run-local.sh, ./run-swap.sh," >&2
+        echo "./run-chat.sh and ./run-council.sh. Run one of those." >&2
         exit 2
         ;;
 esac
@@ -96,10 +105,17 @@ usage() {
     fi
     echo
     if [ "$needs_keys" = true ]; then
-        echo "Needs ANTHROPIC_API_KEY and OPENAI_API_KEY. A .env file in the repository root is"
-        echo "loaded if present, so a key you left there is used without being asked for."
-        echo "./run-atomic.sh, ./run-database.sh and ./run-properties.sh need no key and"
-        echo "cost nothing."
+        echo "Needs ANTHROPIC_API_KEY and OPENAI_API_KEY with the default configuration. A .env"
+        echo "file in the repository root is loaded if present, so a key you left there is used"
+        echo "without being asked for."
+        if [ "$takes_config" = true ]; then
+            echo
+            echo "For models on your own machine, with no key and no cost, start Ollama and pass"
+            echo "modelrack4j-examples/src/main/resources/local-models.conf instead."
+        fi
+        echo
+        echo "./run-atomic.sh, ./run-database.sh, ./run-properties.sh and ./run-local.sh need"
+        echo "no key and cost nothing."
         echo
     fi
     echo "  --build   run \`mvn install\` first even if the project is already installed. Do this"
@@ -177,6 +193,15 @@ if [ -f "$root/.env" ]; then
     set +a
 fi
 
+# The keys belong to the default configuration, which names Anthropic and OpenAI. A file of
+# the caller's own may need other keys or none at all — local-models.conf reaches a server on
+# this machine — so requiring these two for it would refuse a run that costs nothing.
+if [ "$needs_keys" = true ] && [ "$takes_config" = true ] \
+        && [ "$args" != "$root/$default_config" ]; then
+    needs_keys=false
+    echo "Using your own configuration: the keys it needs are the ones it names."
+fi
+
 if [ "$needs_keys" = true ]; then
     missing=""
     for key in ANTHROPIC_API_KEY OPENAI_API_KEY; do
@@ -187,8 +212,8 @@ if [ "$needs_keys" = true ]; then
     if [ -n "$missing" ]; then
         echo "$main sends real requests and needs:$missing" >&2
         echo "Set them in the environment or in a .env file, or run './run-atomic.sh'," >&2
-        echo "'./run-database.sh' or './run-properties.sh', which cost nothing and" >&2
-        echo "need no key." >&2
+        echo "'./run-database.sh', './run-properties.sh' or './run-local.sh', which cost" >&2
+        echo "nothing and need no key." >&2
         exit 1
     fi
     echo "$main sends real requests to a paid API ($cost)."

@@ -37,14 +37,18 @@ import java.util.function.Supplier;
  *
  * <p>Validation happens in the compact constructor, so an instance that exists is valid.
  * Capability checks that depend on the provider — whether it can moderate, how it counts
- * tokens — are not here, because this type does not know which provider it names; those run
- * during registry build against the provider's own factory.
+ * tokens, whether it takes a key or needs an address — are not here, because this type does
+ * not know which provider it names; those run during registry build against the provider's
+ * own factory.
  *
  * @param name the configuration name, as written in the config file, e.g. {@code SL}
  * @param description a short human-readable note on what this configuration is for, or
  *     empty when the file does not say
  * @param provider the provider id, matched against the factories on the classpath
- * @param apiKey the credential, never blank
+ * @param apiKey the credential, or empty when the block sets none. Whether a block may or
+ *     must set one depends on the provider (ADR-0062)
+ * @param baseUrl the address of the server to call, or empty to use the provider's own
+ *     default. Whether a block may or must set one depends on the provider (ADR-0062)
  * @param modelName the provider's model identifier
  * @param temperature sampling temperature, or empty to accept the provider's default
  * @param timeout request timeout, always positive
@@ -60,7 +64,8 @@ public record LlmConfig(
         String name,
         Optional<String> description,
         String provider,
-        String apiKey,
+        Optional<String> apiKey,
+        Optional<String> baseUrl,
         String modelName,
         Optional<Double> temperature,
         Duration timeout,
@@ -85,22 +90,19 @@ public record LlmConfig(
     public LlmConfig {
         Objects.requireNonNull(name, "name");
         Objects.requireNonNull(description, "description");
+        Objects.requireNonNull(apiKey, "apiKey");
+        Objects.requireNonNull(baseUrl, "baseUrl");
         Objects.requireNonNull(temperature, "temperature");
         Objects.requireNonNull(memory, "memory");
         Objects.requireNonNull(customPropertiesText, "customPropertiesText");
         requireText(name, name, "name");
         requireText(name, provider, "provider");
-        requireText(name, apiKey, "api-key");
         requireText(name, modelName, "model-name");
         Objects.requireNonNull(timeout, "timeout");
 
-        // Present-but-blank is a mistake rather than a way to say "no description": HOCON
-        // already has one, and `description = null` removes the key outright.
-        if (description.isPresent() && description.get().isBlank()) {
-            throw new ConfigValidationException("llm." + name
-                    + ".description is present but blank. Remove the key, or set it to null"
-                    + " to clear one set by a lower layer");
-        }
+        requireNotBlankIfPresent(name, description, "description");
+        requireNotBlankIfPresent(name, apiKey, "api-key");
+        requireNotBlankIfPresent(name, baseUrl, "base-url");
         if (timeout.isZero() || timeout.isNegative()) {
             throw new ConfigValidationException(
                     "llm." + name + ".timeout must be positive, was " + timeout);
@@ -113,6 +115,23 @@ public record LlmConfig(
         }
     }
 
+    /**
+     * Refuses an optional value that is present but blank.
+     *
+     * @implNote Present-but-blank is a mistake rather than a way to say "none": HOCON
+     *     already has one, and {@code key = null} removes the key outright. For
+     *     {@code api-key} a blank value would otherwise reach the provider as an empty
+     *     credential, and for {@code base-url} as an address with no host.
+     */
+    private static void requireNotBlankIfPresent(
+            String name, Optional<String> value, String key) {
+        if (value.isPresent() && value.get().isBlank()) {
+            throw new ConfigValidationException("llm." + name + "." + key
+                    + " is present but blank. Remove the key, or set it to null"
+                    + " to clear one set by a lower layer");
+        }
+    }
+
     private static void requireText(String name, String value, String key) {
         if (value == null || value.isBlank()) {
             throw new ConfigValidationException(
@@ -121,9 +140,9 @@ public record LlmConfig(
     }
 
     /**
-     * Returns every component, with the two that may hold a credential replaced by
-     * {@code ***}: {@link #apiKey()} always, and {@link #customPropertiesText()} whenever it
-     * is not empty.
+     * Returns every component, with the three that may hold a credential redacted:
+     * {@link #apiKey()} whenever it is present, the user-info part of {@link #baseUrl()}
+     * whenever it has one, and {@link #customPropertiesText()} whenever it is not empty.
      *
      * @return a description safe to log
      * @implNote The generated {@code toString()} of a record prints every component, and
@@ -132,6 +151,9 @@ public record LlmConfig(
      *     {@code registry.get(name).config()}, so one {@code log.info("{}", config)} in an
      *     application would put the key in a log file. The same reasoning already applies to
      *     {@link ConfigSource#id()}, which the library itself prints.
+     *     <p>A {@code base-url} is printed, because which server a block calls is what a
+     *     reader of a log line needs to know. Only its user-info is replaced: a URL of the form
+     *     {@code https://user:secret@host} carries a credential in the address itself.
      *     <p>A custom property is redacted for the same reason and one step further: a
      *     substitution resolves inside that block too, so the library has to assume a property
      *     may be a credential. Not even the key names are printed, because a block with one
@@ -146,7 +168,8 @@ public record LlmConfig(
         return "LlmConfig[name=" + name
                 + ", description=" + description
                 + ", provider=" + provider
-                + ", apiKey=***"
+                + ", apiKey=" + (apiKey.isPresent() ? "***" : apiKey)
+                + ", baseUrl=" + baseUrl.map(LlmConfig::withoutUserInfo)
                 + ", modelName=" + modelName
                 + ", temperature=" + temperature
                 + ", timeout=" + timeout
@@ -159,6 +182,29 @@ public record LlmConfig(
                         ? EMPTY_CUSTOM_PROPERTIES
                         : "***")
                 + ']';
+    }
+
+    /**
+     * Replaces the user-info part of a URL with {@code ***}.
+     *
+     * @param url the configured address, which may not be a valid URL
+     * @return the same text with everything between the scheme and the last {@code @}
+     *     replaced, or unchanged when there is no {@code @}
+     * @implNote Done on the text rather than through {@link java.net.URI}, because the value
+     *     has not been checked to be a URL and a parse failure here would make a
+     *     configuration's {@code toString()} throw. The last {@code @} of the whole text is
+     *     used rather than the last one inside the authority: a password written with an
+     *     unencoded {@code /}, {@code ?} or {@code #} ends the authority early by the rules,
+     *     and a parse by the rules then printed the rest of the password. The cost is that an
+     *     {@code @} in a path or a query hides the host as well, which only makes a log line
+     *     less informative. Hiding too much is the side this record already errs on — it hides
+     *     the whole custom-properties block for the same reason (ADR-0047).
+     */
+    static String withoutUserInfo(String url) {
+        int scheme = url.indexOf("://");
+        int start = scheme < 0 ? 0 : scheme + 3;
+        int at = url.lastIndexOf('@');
+        return at < start ? url : url.substring(0, start) + "***" + url.substring(at);
     }
 
     /**
@@ -175,11 +221,10 @@ public record LlmConfig(
         Objects.requireNonNull(block, "block");
         BlockReader reader = new BlockReader(block);
         try {
-            Optional<String> description = reader.has("description")
-                    ? Optional.of(reader.string("description"))
-                    : Optional.<String>empty();
+            Optional<String> description = optionalString(reader, "description");
             String provider = reader.requiredString("provider");
-            String apiKey = reader.requiredString("api-key");
+            Optional<String> apiKey = optionalString(reader, "api-key");
+            Optional<String> baseUrl = optionalString(reader, "base-url");
             String modelName = reader.requiredString("model-name");
             Optional<Double> temperature = reader.has("temperature")
                     ? Optional.of(reader.dbl("temperature"))
@@ -200,13 +245,17 @@ public record LlmConfig(
             reader.requireNoUnknownKeys(name);
             reader.rethrowFirstMissing();
 
-            return new LlmConfig(name, description, provider, apiKey, modelName, temperature,
-                    timeout, logRequests, logResponses, streaming, memory, moderation,
-                    customProperties);
+            return new LlmConfig(name, description, provider, apiKey, baseUrl, modelName,
+                    temperature, timeout, logRequests, logResponses, streaming, memory,
+                    moderation, customProperties);
         } catch (ConfigException e) {
             throw new ConfigValidationException(
                     "llm." + name + " is not a valid configuration block: " + e.getMessage(), e);
         }
+    }
+
+    private static Optional<String> optionalString(BlockReader reader, String key) {
+        return reader.has(key) ? Optional.of(reader.string(key)) : Optional.empty();
     }
 
     /**

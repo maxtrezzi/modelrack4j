@@ -38,7 +38,7 @@ absent. A CI job runs the build with the credential environment scrubbed specifi
 a test that quietly grew a dependency on a key.
 
 **Do not add the mutation testing plugin to another module, and do not move it to the parent
-`pom.xml`.** The parent passes its plugins to every module, including the four provider
+`pom.xml`.** The parent passes its plugins to every module, including the five provider
 modules, whose `*IT` tests call paid APIs. Mutation testing runs the tests once for every
 change it makes, so one run in the wrong module can cost real money
 ([ADR-0041](docs/adr/0041-mutation-testing-on-core-only.md)).

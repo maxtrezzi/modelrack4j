@@ -23,6 +23,7 @@ import dev.langchain4j.model.ModelProvider;
 import io.github.maxtrezzi.modelrack4j.ConfigValidationException;
 import io.github.maxtrezzi.modelrack4j.LlmConfig;
 import io.github.maxtrezzi.modelrack4j.LlmRegistry;
+import io.github.maxtrezzi.modelrack4j.spi.KeyRequirement;
 import io.github.maxtrezzi.modelrack4j.spi.ProviderFactory;
 import io.github.maxtrezzi.modelrack4j.spi.TokenEstimation;
 import java.io.IOException;
@@ -38,8 +39,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * Build-only tests. GLM is the narrowest provider in v1, and the two capabilities it does
- * <em>not</em> have are asserted here, because both change what configuration is legal.
+ * Offline tests. GLM is the narrowest provider in v1, and the two capabilities it does
+ * <em>not</em> have are asserted here, because both change what configuration is legal. Most
+ * tests only build; the one that checks {@code base-url} makes calls, all to a port on this
+ * machine.
  */
 class GlmProviderFactoryTest {
 
@@ -48,7 +51,8 @@ class GlmProviderFactoryTest {
 
     /**
      * A key of the shape the provider requires: an id, a dot, and a secret of at least 16
-     * bytes. Not a credential — it never leaves the process, because no test here calls out.
+     * bytes. Not a credential — it never leaves the machine: the one test that makes a call
+     * sends it to a local port.
      */
     private static final String KEY = "e7c1a2b3.0123456789abcdef0123456789abcdef";
 
@@ -69,6 +73,38 @@ class GlmProviderFactoryTest {
     @DisplayName("reports no token estimation at all, which is stricter than remote counting")
     void reportsNoTokenEstimation() {
         assertThat(factory.tokenEstimation()).isEqualTo(TokenEstimation.ABSENT);
+    }
+
+    @Test
+    @DisplayName("requires api-key and permits base-url")
+    void declaresItsKeyRequirements() {
+        assertThat(factory.apiKeyRequirement()).isEqualTo(KeyRequirement.MANDATORY);
+        assertThat(factory.baseUrlRequirement()).isEqualTo(KeyRequirement.OPTIONAL);
+    }
+
+    @Test
+    @DisplayName("base-url reaches both models this factory builds, so neither calls the vendor")
+    void baseUrlReachesEveryModel() throws Exception {
+        try (CountingPort port = new CountingPort()) {
+            LlmConfig config = config(Optional.empty(), false, Optional.of(port.url()));
+
+            port.assertReachedBy("the chat model",
+                    () -> factory.createChatModel(config).chat("hi"));
+            port.assertReachedBy("the streaming chat model", () -> CountingPort.streamOnce(
+                    factory.createStreamingChatModel(config).orElseThrow()));
+        }
+    }
+
+    @Test
+    @DisplayName("a block with no api-key is refused by core, before the shape check runs")
+    void aMissingKeyIsRefused() {
+        // Core's message rather than this factory's: validate() would otherwise split a key
+        // that is not there. That ordering is what lets it call orElseThrow().
+        assertThatThrownBy(() -> registryFrom("""
+                llm { SL { provider = glm, model-name = "m" } }
+                """))
+                .isInstanceOf(ConfigValidationException.class)
+                .hasMessageContaining("has no api-key, but provider 'glm' requires one");
     }
 
     @Test
@@ -279,12 +315,18 @@ class GlmProviderFactoryTest {
     }
 
     private static LlmConfig withKey(String apiKey) {
-        return new LlmConfig("SL", Optional.empty(), "glm", apiKey, MODEL, Optional.empty(),
-                Duration.ofSeconds(60), false, false, false, Optional.empty(), false, "{}");
+        return new LlmConfig("SL", Optional.empty(), "glm", Optional.of(apiKey), Optional.empty(),
+                MODEL, Optional.empty(), Duration.ofSeconds(60), false, false, false,
+                Optional.empty(), false, "{}");
     }
 
     private static LlmConfig config(Optional<Double> temperature, boolean moderation) {
-        return new LlmConfig("SL", Optional.empty(), "glm", KEY, MODEL,
+        return config(temperature, moderation, Optional.empty());
+    }
+
+    private static LlmConfig config(
+            Optional<Double> temperature, boolean moderation, Optional<String> baseUrl) {
+        return new LlmConfig("SL", Optional.empty(), "glm", Optional.of(KEY), baseUrl, MODEL,
                 temperature, Duration.ofSeconds(60), false, false, false, Optional.empty(),
                 moderation, "{}");
     }

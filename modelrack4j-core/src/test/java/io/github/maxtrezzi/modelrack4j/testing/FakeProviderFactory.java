@@ -22,6 +22,7 @@ import dev.langchain4j.model.chat.StreamingChatModel;
 import dev.langchain4j.model.moderation.ModerationModel;
 import io.github.maxtrezzi.modelrack4j.ConfigValidationException;
 import io.github.maxtrezzi.modelrack4j.LlmConfig;
+import io.github.maxtrezzi.modelrack4j.spi.KeyRequirement;
 import io.github.maxtrezzi.modelrack4j.spi.ProviderFactory;
 import io.github.maxtrezzi.modelrack4j.spi.TokenEstimation;
 import java.util.Optional;
@@ -30,8 +31,34 @@ import java.util.Optional;
  * A provider factory that builds inert objects, so the core suite runs with no network and no
  * API keys. The concrete subclasses differ only in the capabilities they report, which is
  * what the capability rules are validated against.
+ *
+ * <p>Both key requirements are constructor parameters rather than overridden methods, so a
+ * fake for any of the three values of either key is one line, and core's rules can be tested
+ * without a real provider (ADR-0062). The no-argument constructor makes both
+ * {@link KeyRequirement#OPTIONAL}, which accepts every block the suite already writes.
  */
 public abstract class FakeProviderFactory implements ProviderFactory {
+
+    private final KeyRequirement apiKeyRequirement;
+    private final KeyRequirement baseUrlRequirement;
+
+    /** A fake that permits both keys and requires neither. */
+    protected FakeProviderFactory() {
+        this(KeyRequirement.OPTIONAL, KeyRequirement.OPTIONAL);
+    }
+
+    /**
+     * A fake that reports the given requirements.
+     *
+     * @param apiKeyRequirement what {@link #apiKeyRequirement()} returns; null is allowed, to
+     *     test that core refuses it
+     * @param baseUrlRequirement what {@link #baseUrlRequirement()} returns; null is allowed
+     */
+    protected FakeProviderFactory(
+            KeyRequirement apiKeyRequirement, KeyRequirement baseUrlRequirement) {
+        this.apiKeyRequirement = apiKeyRequirement;
+        this.baseUrlRequirement = baseUrlRequirement;
+    }
 
     /** An inert chat model. Every method on the interface has a default, so this is empty. */
     public static final class FakeChatModel implements ChatModel {
@@ -77,6 +104,16 @@ public abstract class FakeProviderFactory implements ProviderFactory {
      */
     @Override
     public abstract boolean supportsModeration();
+
+    @Override
+    public final KeyRequirement apiKeyRequirement() {
+        return apiKeyRequirement;
+    }
+
+    @Override
+    public final KeyRequirement baseUrlRequirement() {
+        return baseUrlRequirement;
+    }
 
     @Override
     public void validate(LlmConfig config) {

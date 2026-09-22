@@ -292,12 +292,12 @@ class ConfigStoreTest {
 
             try (LlmRegistry<Void> registry = registryOver(target)) {
                 // What the application holds is resolved: this is the value that must not leak.
-                assertThat(registry.get("SL").config().apiKey()).isEqualTo(SECRET_VALUE);
+                assertThat(registry.get("SL").config().apiKey()).contains(SECRET_VALUE);
 
                 registry.store(target, LAYER_WITH_SECOND_MODEL);
 
                 assertThat(read(file)).contains("${secret}").doesNotContain(SECRET_VALUE);
-                assertThat(registry.get("SL").config().apiKey()).isEqualTo(SECRET_VALUE);
+                assertThat(registry.get("SL").config().apiKey()).contains(SECRET_VALUE);
             }
         }
 

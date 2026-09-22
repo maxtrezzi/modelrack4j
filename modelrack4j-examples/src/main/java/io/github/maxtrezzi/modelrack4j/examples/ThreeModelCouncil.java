@@ -29,8 +29,11 @@ import java.util.List;
  * Runs the three-model scenario — {@code SL}, {@code SH}, {@code CR} — against the real
  * provider APIs.
  *
- * <p>Needs {@code ANTHROPIC_API_KEY} and {@code OPENAI_API_KEY} in the environment, and it
- * spends money. Run it with the bundled configuration:
+ * <p>With the bundled {@code examples.conf} it needs {@code ANTHROPIC_API_KEY} and
+ * {@code OPENAI_API_KEY} in the environment, and it spends money. With the bundled
+ * {@code local-models.conf} it needs no key and costs nothing: the council is then two views of
+ * one local Ollama server, one through {@code provider = ollama} and one through the OpenAI
+ * protocol. Run it with the paid configuration like this:
  *
  * <pre>{@code
  * mvn install                                     # exec:java reads ~/.m2, not the reactor

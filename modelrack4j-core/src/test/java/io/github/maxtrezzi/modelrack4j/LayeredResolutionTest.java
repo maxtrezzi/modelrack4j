@@ -71,8 +71,39 @@ class LayeredResolutionTest {
 
         var registry = registryOver(defaults, customer);
 
-        assertThat(registry.get("SL").config().apiKey()).isEqualTo("supplied-by-customer");
+        assertThat(registry.get("SL").config().apiKey()).contains("supplied-by-customer");
         assertThat(registry.get("SL").config().modelName()).isEqualTo("customer-model");
+    }
+
+    @Test
+    @DisplayName("a higher layer can clear an unresolvable key with null, and the key is absent")
+    void higherLayerClearsUnresolvableLowerLayerValue() throws IOException {
+        // What lets a development layer switch a production block to a provider that takes no
+        // key (ADR-0062) without editing the production file: `api-key = null` replaces the
+        // substitution before resolution runs, so the unset variable is never read, and the
+        // key is then absent rather than null.
+        Path production = write("production.conf", """
+                llm {
+                  SL {
+                    provider = fake-local
+                    api-key = ${MODELRACK4J_ABSENT_VAR}
+                    model-name = "production-model"
+                  }
+                }
+                """);
+        Path development = write("development.conf", """
+                llm {
+                  SL {
+                    api-key = null
+                    base-url = "http://127.0.0.1:1"
+                  }
+                }
+                """);
+
+        var registry = registryOver(production, development);
+
+        assertThat(registry.get("SL").config().apiKey()).isEmpty();
+        assertThat(registry.get("SL").config().baseUrl()).contains("http://127.0.0.1:1");
     }
 
     @Test
