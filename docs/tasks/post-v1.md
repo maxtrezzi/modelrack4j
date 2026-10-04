@@ -6047,3 +6047,45 @@ with `[Unreleased]` reopened, on `release/dev-to-0.4.0-snapshot`: `versions:set`
 `2026-10-04T20:52:54Z` into `project.build.outputTimestamp` once more, and it is back at
 `2026-10-04T00:00:00Z`. `0.4.0` is a placeholder, as P46 said of `0.3.0`; the release commit
 sets the real number.
+
+### P52 — `rapidWritesCollapseIntoOneReload` fails on CI about one run in fourteen
+
+**Status:** Open — the cause is found; the fix waits on the owner ·
+**Branch:** `task/p52-rapid-writes-test-flakes` ·
+**Raised by:** the owner on 2026-10-04, after the test failed on #75, the snapshot bump that
+followed 0.3.0, and a re-run of the job passed
+
+**Every failed CI run in the repository's history is this one test.** 136 runs of `build`
+between 2026-08-20 and 2026-10-04; ten had a failed first attempt, and in all ten the failure is
+`ReloadTest.rapidWritesCollapseIntoOneReload`, counting 2 reloads (seven times) or 3 (three
+times) where it expects 1. It fails on JDK 17, 21 and 25 and in the offline job alike. Six of
+the ten were re-run to green and now show as successes; none was recorded anywhere until now.
+Read from the GitHub API's per-attempt job logs, since `gh run view --log-failed` shows only the
+latest attempt.
+
+**The library does what it promises; the test asserts more than that.** `ConfigWatcher`'s
+debounce is trailing-edge, and `markPending()` stamps the moment the watcher *consumes* an event,
+not the moment of the write. A pause of more than the debounce anywhere between two of the five
+writes — the test thread descheduled, the JDK's inotify reader thread late — is a real quiet
+period, and the reload that follows it is correct behaviour. `ReloadTest` uses a 60 ms debounce,
+so a 60 ms stall on a shared runner is enough.
+
+**P9 saw this once and the fix did not hold.** `b60fdaf` (2026-08-26) cut the iteration count of
+`snapshotIsInternallyConsistent`, whose comment says its CPU load "made a neighbouring
+debounce-timing test flaky". Eight of the ten failures came after it.
+
+**Not reproduced on this machine.** Ten runs of the single test idle, and fifteen pinned to two
+cores shared with six busy loops (AMD Ryzen 7 7840HS, Temurin 25, Pop!_OS 24.04): all passed.
+CPU load alone does not make the stall; on the runner it may come from the VM or from GC.
+
+**Ways to fix it, for the owner to choose:**
+
+1. **Give this test its own, much longer debounce** — 1 s instead of 60 ms. The assertion stays
+   exact; a failure then needs a stall of a second, which none of the ten failures measured
+   came close to (the slowest failing run took 0.894 s *in total*). Costs about a second of
+   suite time. Recommended.
+2. **Assert what scheduling cannot break**: at least one reload, at most five, and the last
+   model is `v5`. It never flakes, but it no longer tests the debounce at all — a debounce
+   that did nothing would pass it.
+3. **Keep the assertion and re-run on failure** (Surefire's `rerunFailingTestsCount`). Hides the
+   next real regression in the same place.
