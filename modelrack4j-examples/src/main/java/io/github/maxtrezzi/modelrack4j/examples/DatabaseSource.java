@@ -27,7 +27,7 @@ import java.util.concurrent.atomic.AtomicReference;
 /**
  * Shows configuration that is not a file, and the reload an application asks for.
  *
- * <p>The four other examples keep their configuration on disk, where the library can watch it
+ * <p>The other examples keep their configuration on disk, where the library can watch it
  * and reload by itself. An application that lets its <em>users</em> add a model usually keeps
  * that model in a database instead, and a database row has no directory to watch. Three
  * things follow, and this example is all three.

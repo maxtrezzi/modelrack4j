@@ -7,8 +7,8 @@ and points here; every ADR that cites the old name still resolves.
 
 ## Project state
 
-**v1 is complete, the repository is public, and `0.2.0` is the current release.** Seven Maven
-modules, four providers, hot reload, a two-part manual and six runnable examples. M0–M6 are
+**v1 is complete, the repository is public, and `0.2.0` is the current release.** Nine Maven
+modules, five providers, hot reload, a two-part manual and seven runnable examples. M0–M6 are
 done: M6's trigger fired on 2026-09-02, when the owner tested the library and judged it
 publishable, and `io.github.maxtrezzi:modelrack4j-*:0.1.0` was signed and published to Maven
 Central the same evening. `0.2.0` followed on 2026-09-07 — custom properties, a closed schema,
@@ -40,9 +40,11 @@ Four documents matter, with different jobs:
   taken. Read the index in `docs/adr/README.md` for what governs what.
 - **`docs/manual/`** — the user-facing account: a tutorial and a reference covering every
   configuration key, every public method, and what a reload guarantees.
-- **`brainstorm/PLAN.md`** — the owner's original specification. Local-only, never
-  committed. The tracked documents have since absorbed nearly all of it, so prefer them;
-  consult the plan for intent the ADRs and the manual do not cover.
+- **The owner's original specification** — not in this repository. It was
+  `brainstorm/PLAN.md`, local-only and never committed; on 2026-09-18 it moved out, with the
+  discussion log, to a private place the owner keeps. The tracked documents have since
+  absorbed nearly all of it, so prefer them; ask the owner for the intent the ADRs and the
+  manual do not cover.
 
 They overlap deliberately. Where they differ: the ADR wins on a *decision*, `docs/tasks/`
 wins on *status*, the manual wins on *how a user drives it*, and the plan is the owner's
@@ -53,14 +55,21 @@ working copy rather than an authority.
 never copy its contents into a tracked file. Anything from the plan that consumers need
 must be rewritten for its destination (README, Javadoc, CHANGELOG), not pasted.
 
+**The directory is empty since 2026-09-18** and the rule above still binds whatever lands
+there next. It stays in `.gitignore` and in the license check's exclusions because it is a
+confidentiality boundary (ADR-0034), not because of what it currently holds.
+
 ## Decision workflow — follow this every session
 
 Three artifacts, different audiences (ADR-0001, ADR-0015):
 
-- **`brainstorm/discussions/YYYY-MM-DD-topic.md`** — local-only, never committed. Log
-  every substantive design discussion here: what was asked, what was weighed, what was
-  rejected and why, what is still open. Write it at the end of the discussion, not from
-  memory three sessions later.
+- **The discussion log** — one dated file per discussion, kept outside this repository
+  since 2026-09-18. Log every substantive design discussion: what was asked, what was
+  weighed, what was rejected and why, what is still open. Write it at the end of the
+  discussion, not from memory three sessions later. It was `brainstorm/discussions/` until
+  that date; **do not recreate that directory** — a log split across two places is worse
+  than either, and the half here would have no history and no backup. Ask the owner where
+  it lives now.
 - **`docs/adr/NNNN-title.md`** — tracked and publishable. Whenever a discussion *settles*
   something that constrains future code — a dependency taken on, an API shape fixed, a
   scope boundary drawn, a mechanism chosen over a real alternative — write an ADR. Copy
@@ -75,13 +84,55 @@ Three artifacts, different audiences (ADR-0001, ADR-0015):
 Seed the session task list from `docs/tasks/` when starting work, and treat the files as
 the durable record — the session list is a working copy, not a second source of truth.
 
-**Branch before starting.** Every task gets its own branch and nothing is committed
-directly to `main` (ADR-0016). Name it after the work item — `task/0.1-pin-langchain4j-version`,
-`milestone/m0-skeleton`, `decision/d2-repository-visibility`, or `docs/<slug>` for work with
-no task ID. One branch carries the work, its status update in `docs/tasks/`, and any ADR it
-produces.
+**Branch before starting, and branch from `dev`.** Every task gets its own branch and
+nothing is committed directly to either protected branch (ADR-0016). Name it after the work
+item — `task/0.1-pin-langchain4j-version`, `milestone/m0-skeleton`,
+`decision/d2-repository-visibility`, or `docs/<slug>` for work with no task ID. One branch
+carries the work, its status update in `docs/tasks/`, and any ADR it produces.
 
-**`main` is protected on the remote (ADR-0040), but not against you.** A pull request is
+**`dev` is the default branch and `main` carries releases only (ADR-0061).** Every pull
+request targets `dev`. `main` holds one commit per released version, each with its tag, so its
+tree is always what Maven Central has — which is what makes `git log main..dev` the list of
+what an unreleased version would contain. A release is a pull request from `dev` to `main`,
+squashed, whose subject is the version; the version commit itself — every POM, the
+CHANGELOG heading, `project.build.outputTimestamp` — lands on `dev` first like any other work.
+**Never merge `main` into `dev`, never branch from `main`, never rebase `dev` onto it.** After
+a release the two hold the same tree and unrelated histories, because the merge was a squash;
+`dev` simply carries on. Nothing enforces that — the protection rules cannot express it — so
+it is a rule kept because it is right, the same trade ADR-0040 already takes.
+
+**No `Claude-Session:` trailer in a commit message.** The owner asked for this on 2026-09-09,
+after three commits on one branch carried one. The link opens for nobody reading the
+repository, and this repository is public, so it is noise in a history that outlives the
+session it points at.
+`Co-Authored-By:` stays. The environment supplies the trailer as a default, so it is a rule
+that has to be applied rather than inherited: strip it before committing. If it is already in a
+pushed commit on a branch of your own, this rewrites the messages and nothing else — check with
+`git diff <old-head> HEAD --stat`, which must come back empty — then force-push with
+`--force-with-lease`:
+
+```bash
+git filter-branch -f --msg-filter 'grep -v "^Claude-Session:"' origin/dev..HEAD
+```
+
+Never on a branch somebody else may have checked out, and never on `dev` or `main`, where
+force-pushing is blocked anyway.
+
+**`main`'s documentation is frozen at release time, and that is the design rather than drift.**
+`main` holds what Maven Central holds, so everything on it — `CONTRIBUTING.md`, this file, the
+ADR index — describes the project as it was on the day of that release. Right now `main`'s
+`CONTRIBUTING.md` still says to branch from `main` and its `build.yml` still triggers on `main`
+alone, because both were true when `0.2.0` shipped. **Do not "fix" them there**: a commit on
+`main` that is not a release is what ADR-0061 point 2 forbids, and the next release carries the
+correction across with everything else. The exposure is small because GitHub reads the
+community files, the repository home and a new pull request's base from the *default* branch,
+which is `dev` — checked on 2026-09-08, `CONTRIBUTING.md` served by the API matched `dev`'s
+blob and not `main`'s. The one thing to confirm rather than assume at each release is that the
+release pull request still runs the five checks: it does, because a `pull_request` event uses
+the workflow from the merge result, and `dev`'s lists both branches.
+
+**Both `dev` and `main` are protected on the remote (ADR-0040, widened by ADR-0061), but
+not against you.** A pull request is
 required, force-pushing and deleting are blocked, and the five checks in
 `.github/workflows/build.yml` must pass and be current with the branch before a merge, with
 no approving review needed — so for an outside contributor a green build is the whole gate.
@@ -96,7 +147,7 @@ One branch may carry several `docs/tasks/` entries when they are genuinely one p
 work — see the convention note in `docs/tasks/README.md`, and say so in the entries, so a
 branch matching no identifier reads as a decision rather than as drift.
 
-**ADR numbers are only safe once they are on `main`.** Two branches that each take "the next
+**ADR numbers are only safe once they are on `dev`.** Two branches that each take "the next
 free number" are both correct and still collide, and `build/check-docs.py` cannot warn about
 it because from inside either branch nothing is wrong. Renumbering is cheap while nothing is
 pushed and the ADR is referenced from nowhere outside the repository, and stops being cheap
@@ -146,10 +197,10 @@ up atomically, validated, without a restart.
 
 It is an **unofficial, independent** library that depends on LangChain4j. Never use the
 `langchain4j-` artifact prefix. Its first consumer is the owner's own application,
-developed in parallel in a separate repository and named in `brainstorm/PLAN.md`.
-Governing rule from the plan: *when library and application disagree, the application wins
-and the library changes* — so a requirement traced to that application outranks a
-preference of the library's own design.
+developed in parallel in a separate repository and named in the owner's original
+specification. Governing rule from the plan: *when library and application disagree, the
+application wins and the library changes* — so a requirement traced to that application
+outranks a preference of the library's own design.
 
 ## Build and test
 
@@ -171,7 +222,7 @@ mvn -pl modelrack4j-core test -Dtest=LlmRegistryTest                        # si
 mvn -pl modelrack4j-core test -Dtest='LlmRegistryTest#unknownNameThrows'    # single method
 mvn -Pintegration verify                 # provider tests against real APIs (keys from env)
 mvn -pl modelrack4j-core org.pitest:pitest-maven:mutationCoverage   # mutation testing, core only
-./run-atomic.sh                          # an example (also swap, chat, council, database; --help each)
+./run-atomic.sh                          # an example (also database, properties, local, swap, chat, council; --help each)
 ```
 
 Scope `-Dtest=` to a module with `-pl`. Running it from the root across all modules fails
@@ -187,7 +238,13 @@ expected, and prefer copying a method name out of the file to typing one from me
 
 Integration tests are skipped by default and require real API keys from the environment;
 everything else must pass offline with no keys (that is what `FakeProviderFactory` in core
-test scope is for).
+test scope is for). `OllamaProviderIT` is the exception in both directions: it costs nothing,
+and it needs a running server rather than a key — it is enabled by `OLLAMA_BASE_URL`, and the
+model (`llama3.2`, or `OLLAMA_MODEL`) must already be pulled on that server. Without
+`OLLAMA_BASE_URL` a `-Pintegration` run skips it; with the variable set and no server
+listening, it fails to connect. Where the owner's server runs and which models it holds is
+machine configuration, not guidance, and the owner ruled on 2026-09-22 that it does not belong
+in this file. Ask the owner.
 
 Toolchain on this machine: JDK 25.0.3 (Temurin), Maven 3.8.7. The language floor is Java 17
 and `maven.compiler.release` is set to it (ADR-0019); CI runs the floor, the development JDK
@@ -386,18 +443,36 @@ yourself on every bump**, because an upstream dependency lands there silently �
 place: neither BOM manages `jspecify`, guava brings an older one through the GLM module, and
 the parent POM pins it to keep `DependencyConvergence` green. **No provider artifact, ever.**
 Each provider lives in its own module
-(`modelrack4j-provider-openai|anthropic|gemini|glm`) implementing the `ProviderFactory`
+(`modelrack4j-provider-openai|anthropic|gemini|glm|ollama`) implementing the `ProviderFactory`
 SPI, discovered via `java.util.ServiceLoader` (`META-INF/services/...spi.ProviderFactory`).
 Providers differ in *capabilities* — moderation is OpenAI-only, and token estimation is
 three-valued rather than a boolean: `ABSENT` (GLM), `LOCAL` (OpenAI), `REMOTE` (Anthropic,
 Gemini), because a remote estimator puts a billed network call inside memory eviction
 (ADR-0021, opt-in per ADR-0027). **A factory *reports* a capability; core enforces it
-(ADR-0048).** `tokenEstimation()` and `supportsModeration()` say what the provider can do,
-and `SnapshotLoader.validateCapabilities` owns both the rule and the message, so every
-provider refuses the same configuration in the same words. Do not restate either check in a
-provider's `validate()` — that is now only for a rule core cannot see. P27 emptied the three
-bodies that had been doing it; P25 then gave one of them real work, so **three of the four are
-empty and GLM's is not** (ADR-0049). Its rule is the boundary to copy from rather than the
+(ADR-0048).** A factory reports four things: `tokenEstimation()` and `supportsModeration()`
+say what the provider can do, and `apiKeyRequirement()` and `baseUrlRequirement()` say whether
+a block may and must set each key (`KeyRequirement`: `FORBIDDEN`, `OPTIONAL`, `MANDATORY`,
+ADR-0062). `SnapshotLoader.validateCapabilities` owns every rule and every message, so every
+provider refuses the same configuration in the same words. Do not restate any of these checks
+in a provider's `validate()` — that is only for a rule core cannot see. **The two requirement
+methods have no default, and must not get one**: a default of `MANDATORY` would refuse every
+block of a keyless provider that forgot to override it, which trades a compile error for a
+wrong answer. The price of no default is that a factory compiled against `0.2.0` throws
+`AbstractMethodError`, an `Error` that `reload()` and the watcher loop do not catch — it once
+ended the watcher thread in silence. **`SnapshotLoader.requirementOf` translates it into a
+`ConfigValidationException`, and `buildBundleReportingLinkage` does the same for any
+`LinkageError` a factory raises while its bundle is built; do not remove either, and do not
+widen the catch to `Error`** — a linkage error belongs to one provider's classes, an
+`OutOfMemoryError` does not. It is a `ConfigValidationException` rather than a new type
+because that is what a rejected reload is reported as; it stretches ADR-0053's "read something
+and objected" a little, since the objection is to the provider rather than to the text. P27 emptied the three `validate()` bodies that had been restating a capability;
+P25 then gave GLM's real work, and P48 gave OpenAI's one rule, so **two of the four are empty
+and GLM's and OpenAI's are not**. OpenAI's refuses a block with neither `api-key` nor
+`base-url`, because only that factory knows no address means `api.openai.com`; it is the one
+key rule that stays in a provider. **`base-url` goes to every builder a factory calls for the
+block** — chat, streaming, moderation, remote estimator — and each provider's test proves it
+with a local port that counts connections, because a closed port shows that a call failed and
+not where it went. GLM's rule (ADR-0049) is the boundary to copy from rather than the
 code: a provider may check the *shape* of a credential when its own code requires that shape
 before it makes any call — GLM parses the key and signs a token with it, so `id.secret` with a
 secret of at least 16 bytes is a property of code on the classpath. It may never check a
@@ -562,7 +637,7 @@ in-flight requests may still hold them.
   against one commit and the work spanned several. One of them was not a miscount at all: the
   entry listed a metaphor it had *written* among the metaphors it had *removed*, and no count
   of anything would have caught it. Before you describe a change, run
-  `git diff main..HEAD` over it and read the output to the end — including when it is long,
+  `git diff dev..HEAD` over it and read the output to the end — including when it is long,
   which is exactly when the previous session stopped. **P15 shows the rule reaches a write-up's
   account of its own fix.** P14 wrote that it had put a dated marker on all three of its
   miscounts and had put one on two of them, and named a missing date as the fix for a stale
@@ -643,13 +718,13 @@ in-flight requests may still hold them.
   `if (!awaitTermination(...)) shutdownNow();`, and the check belongs after the `try`.
 - **`docs/tasks/open-decisions.md` needs the owner.** Ask; do not decide unilaterally. A new
   entry there is a question for the owner, not work to pick up, and an entry marked
-  `Needs decision` blocks the code that depends on it rather than inviting a guess. **D1–D9
+  `Needs decision` blocks the code that depends on it rather than inviting a guess. **D1–D10
   are all settled**, so that file is a record rather than a queue right now. Read it for the
   current list rather than trusting this sentence — it said "all settled" for a day after two
-  entries had been added (P29). D7, D8 and D9 were each added with this line changed in the same
+  entries had been added (P29). D7 to D10 were each added with this line changed in the same
   commit, which is the only thing that keeps a sentence like this true.
-- The §2 decision table in `brainstorm/PLAN.md` is closed: do not reopen those choices
-  without asking. The ADRs carry the same decisions with their reasoning.
+- The §2 decision table in the owner's original specification is closed: do not reopen
+  those choices without asking. The ADRs carry the same decisions with their reasoning.
 - Milestones run M0 → M6 in `docs/tasks/milestones.md`; v1 was done at M5, and M6 gained its
   own entry on 2026-09-02 when its trigger fired. Post-v1 work is P1… in
   `docs/tasks/post-v1.md`.

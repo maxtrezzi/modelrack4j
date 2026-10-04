@@ -23,6 +23,7 @@ import dev.langchain4j.model.chat.StreamingChatModel;
 import dev.langchain4j.model.moderation.ModerationModel;
 import io.github.maxtrezzi.modelrack4j.ConfigValidationException;
 import io.github.maxtrezzi.modelrack4j.LlmConfig;
+import io.github.maxtrezzi.modelrack4j.spi.KeyRequirement;
 import io.github.maxtrezzi.modelrack4j.spi.ProviderFactory;
 import io.github.maxtrezzi.modelrack4j.spi.TokenEstimation;
 import java.nio.charset.StandardCharsets;
@@ -63,6 +64,20 @@ public final class GlmProviderFactory implements ProviderFactory {
     }
 
     @Override
+    public KeyRequirement apiKeyRequirement() {
+        // The vendor's API refuses a request without one, so a block that forgot its key
+        // should fail when it loads rather than on its first request (ADR-0062).
+        return KeyRequirement.MANDATORY;
+    }
+
+    @Override
+    public KeyRequirement baseUrlRequirement() {
+        // The client calls the vendor's own address when none is given, and every builder
+        // this factory uses accepts another one, for a proxy or a gateway.
+        return KeyRequirement.OPTIONAL;
+    }
+
+    @Override
     public TokenEstimation tokenEstimation() {
         // Read from the artifact, not assumed: the module contains no TokenCountEstimator
         // implementation at all. Core turns ABSENT into a rejection that points at
@@ -86,7 +101,7 @@ public final class GlmProviderFactory implements ProviderFactory {
         // exceptions, outside the LangChain4jException family applications are told to
         // catch, and none of them names a key. Rejecting the shape here turns all three
         // into one ConfigValidationException at load time.
-        String[] parts = config.apiKey().split("\\.");
+        String[] parts = apiKey(config).split("\\.");
         if (parts.length < 2) {
             // Not "it has no '.'": split() drops trailing empty parts, so a key of nothing
             // but dots also lands here and does have them. What is true of every key in
@@ -107,13 +122,14 @@ public final class GlmProviderFactory implements ProviderFactory {
     @Override
     public ChatModel createChatModel(LlmConfig config) {
         ZhipuAiChatModel.ZhipuAiChatModelBuilder builder = ZhipuAiChatModel.builder()
-                .apiKey(config.apiKey())
+                .apiKey(apiKey(config))
                 .model(config.modelName())
                 .connectTimeout(config.timeout())
                 .readTimeout(config.timeout())
                 .logRequests(config.logRequests())
                 .logResponses(config.logResponses());
         config.temperature().ifPresent(builder::temperature);
+        config.baseUrl().ifPresent(builder::baseUrl);
         return builder.build();
     }
 
@@ -121,13 +137,14 @@ public final class GlmProviderFactory implements ProviderFactory {
     public Optional<StreamingChatModel> createStreamingChatModel(LlmConfig config) {
         ZhipuAiStreamingChatModel.ZhipuAiStreamingChatModelBuilder builder =
                 ZhipuAiStreamingChatModel.builder()
-                        .apiKey(config.apiKey())
+                        .apiKey(apiKey(config))
                         .model(config.modelName())
                         .connectTimeout(config.timeout())
                         .readTimeout(config.timeout())
                         .logRequests(config.logRequests())
                         .logResponses(config.logResponses());
         config.temperature().ifPresent(builder::temperature);
+        config.baseUrl().ifPresent(builder::baseUrl);
         return Optional.of(builder.build());
     }
 
@@ -155,5 +172,20 @@ public final class GlmProviderFactory implements ProviderFactory {
                 + " form id.secret, and provider 'glm' builds its authorisation token from"
                 + " both parts, so a key of another shape fails while a request is"
                 + " assembled, before any call is made.");
+    }
+
+    /**
+     * Returns the block's key.
+     *
+     * @throws IllegalArgumentException if the block has none, which only a caller that
+     *     bypasses the registry can arrange
+     * @implNote Never throws through the registry: {@link #apiKeyRequirement()} is
+     *     {@code MANDATORY}, so core has refused a block without a key before any method here
+     *     is called.
+     */
+    private static String apiKey(LlmConfig config) {
+        return config.apiKey().orElseThrow(() -> new IllegalArgumentException("llm."
+                + config.name() + " has no api-key, and provider '" + PROVIDER_ID
+                + "' requires one"));
     }
 }

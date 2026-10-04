@@ -1,6 +1,6 @@
 # ADR-0040: Protect `main` with required checks, not required review
 
-- **Status:** Accepted
+- **Status:** Accepted — the branch it protects widened by [ADR-0061](0061-work-lands-on-dev-and-main-carries-releases.md)
 - **Date:** 2026-08-27
 - **Supersedes:** —
 - **Amends:** —

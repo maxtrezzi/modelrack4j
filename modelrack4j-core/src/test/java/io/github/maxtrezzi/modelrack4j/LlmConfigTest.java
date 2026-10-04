@@ -19,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertAll;
 
+import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 import java.lang.reflect.RecordComponent;
 import java.time.Duration;
@@ -26,6 +27,7 @@ import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 /**
@@ -38,14 +40,13 @@ class LlmConfigTest {
     @ValueSource(strings = {"", "   "})
     @DisplayName("a blank required value is rejected, naming the key")
     void blankRequiredValuesAreRejected(String blank) {
-        // All four keys, and assertAll so one broken key does not hide the other three.
+        // Every required key, and assertAll so one broken key does not hide the others.
         // Checking a single key left `name` and `provider` unverified: dropping either check
         // still built a configuration, and a blank provider then failed much later with an
         // unrelated message about no provider module being on the classpath.
         assertAll(
                 () -> assertRejectsBlank(config().withName(blank), ".name is required"),
                 () -> assertRejectsBlank(config().withProvider(blank), "provider is required"),
-                () -> assertRejectsBlank(config().withApiKey(blank), "api-key is required"),
                 () -> assertRejectsBlank(config().withModelName(blank), "model-name is required"));
     }
 
@@ -97,6 +98,50 @@ class LlmConfigTest {
                 () -> assertThatThrownBy(() -> new MemoryConfig.TokenWindow(bound, false))
                         .isInstanceOf(ConfigValidationException.class)
                         .hasMessageContaining("max-tokens"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"", "   "})
+    @DisplayName("a present but blank api-key or base-url is rejected, naming the key")
+    void blankOptionalConnectionValuesAreRejected(String blank) {
+        // Optional since ADR-0062, and still not blank: a blank key would reach the provider
+        // as an empty credential, and a blank address as one with no host.
+        assertAll(
+                () -> assertRejectsBlank(config().withApiKey(blank),
+                        "api-key is present but blank"),
+                () -> assertRejectsBlank(config().withBaseUrl(blank),
+                        "base-url is present but blank"));
+    }
+
+    @Test
+    @DisplayName("a block may leave out api-key; whether it must set one is the provider's rule")
+    void apiKeyIsOptionalInTheRecord() {
+        LlmConfig config = LlmConfig.fromBlock("SL", block(""));
+
+        assertThat(config.apiKey()).isEmpty();
+        assertThat(config.baseUrl()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("base-url is read from the block and is not reported as an unknown key")
+    void baseUrlIsAKnownKey() {
+        // Known because the parse asks for it (ADR-0056): if the read went away, this block
+        // would be refused as carrying a key this library does not know.
+        LlmConfig config = LlmConfig.fromBlock("SL",
+                block("base-url = \"http://localhost:11434\"\n"));
+
+        assertThat(config.baseUrl()).contains("http://localhost:11434");
+    }
+
+    @Test
+    @DisplayName("changing only base-url makes it a different configuration")
+    void baseUrlParticipatesInEquality() {
+        // A different address is a different server, so the reload diff has to rebuild the
+        // bundle (ADR-0006). equals is the record's own, as for the key.
+        assertThat(config().withBaseUrl("http://a:1").build())
+                .isNotEqualTo(config().withBaseUrl("http://b:1").build());
+        assertThat(config().withBaseUrl("http://a:1").build())
+                .isEqualTo(config().withBaseUrl("http://a:1").build());
     }
 
     @ParameterizedTest
@@ -197,6 +242,56 @@ class LlmConfigTest {
     }
 
     @Test
+    @DisplayName("toString says a key is absent, rather than printing a mask over nothing")
+    void toStringShowsAnAbsentKey() {
+        assertThat(config().withApiKey(null).build().toString())
+                .contains("apiKey=Optional.empty")
+                .doesNotContain("apiKey=***");
+    }
+
+    @Test
+    @DisplayName("toString prints base-url with its user-info hidden")
+    void toStringRedactsTheUserInfoOfABaseUrl() {
+        String described = config()
+                .withBaseUrl("https://proxy-user:s3cret@gateway.example:8443/v1")
+                .build()
+                .toString();
+
+        assertThat(described).doesNotContain("proxy-user", "s3cret");
+        // The address itself survives: which server a block calls is what a log reader needs.
+        assertThat(described).contains("baseUrl=Optional[https://***@gateway.example:8443/v1]");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"http://localhost:11434", "localhost:11434/v1", ""})
+    @DisplayName("a base-url with no @ is printed unchanged")
+    void anAddressWithoutUserInfoIsUnchanged(String url) {
+        assertThat(LlmConfig.withoutUserInfo(url)).isEqualTo(url);
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+        "user:pw@host:1/path, ***@host:1/path",
+        "https://user:pw@host/v1, https://***@host/v1",
+        // A password written with an unencoded /, ? or # ends the authority early by the
+        // rules. Stopping the search there printed the rest of the password.
+        "https://user:pa/ss@host, https://***@host",
+        "https://user:pa?ss@host, https://***@host",
+        "https://user:pa#ss@host, https://***@host",
+        "https://user:p@ss@host, https://***@host",
+        // An @ in a path or a query hides the host too: hiding too much is the safe side.
+        "http://host/api?user=a@b, http://***@b",
+        // Empty user-info is still replaced, so nothing depends on what it held.
+        "http://@host, http://***@host",
+        // A scheme separator at the very start still ends the scheme.
+        "://user:pw@host, ://***@host",
+    })
+    @DisplayName("everything between the scheme and the last @ is replaced")
+    void userInfoIsReplaced(String url, String printed) {
+        assertThat(LlmConfig.withoutUserInfo(url)).isEqualTo(printed);
+    }
+
+    @Test
     @DisplayName("redacting toString leaves the reload diff able to see a changed key")
     void redactionDoesNotWeakenEquality() {
         // ADR-0006 diffs configurations by record equality, so two blocks differing only in
@@ -232,6 +327,17 @@ class LlmConfigTest {
         return new Fixture();
     }
 
+    /** A block with every key but {@code api-key}, followed by {@code extra}. */
+    private static Config block(String extra) {
+        return ConfigFactory.parseString("provider = fake-local\n"
+                + "model-name = \"m\"\n"
+                + "timeout = 60s\n"
+                + "log-requests = false\n"
+                + "log-responses = false\n"
+                + "streaming = false\n"
+                + extra);
+    }
+
     private static void assertRejectsBlank(Fixture fixture, String expectedFragment) {
         assertThatThrownBy(fixture::build)
                 .isInstanceOf(ConfigValidationException.class)
@@ -243,7 +349,8 @@ class LlmConfigTest {
         private String name = "SL";
         private Optional<String> description = Optional.empty();
         private String provider = "fake-local";
-        private String apiKey = "key";
+        private Optional<String> apiKey = Optional.of("key");
+        private Optional<String> baseUrl = Optional.empty();
         private String modelName = "model";
         private Optional<Double> temperature = Optional.empty();
         private Duration timeout = Duration.ofSeconds(60);
@@ -264,7 +371,12 @@ class LlmConfigTest {
         }
 
         Fixture withApiKey(String value) {
-            this.apiKey = value;
+            this.apiKey = Optional.ofNullable(value);
+            return this;
+        }
+
+        Fixture withBaseUrl(String value) {
+            this.baseUrl = Optional.ofNullable(value);
             return this;
         }
 
@@ -284,8 +396,8 @@ class LlmConfigTest {
         }
 
         LlmConfig build() {
-            return new LlmConfig(name, description, provider, apiKey, modelName, temperature,
-                    timeout, false, false, false, Optional.empty(), false, "{}");
+            return new LlmConfig(name, description, provider, apiKey, baseUrl, modelName,
+                    temperature, timeout, false, false, false, Optional.empty(), false, "{}");
         }
     }
 }

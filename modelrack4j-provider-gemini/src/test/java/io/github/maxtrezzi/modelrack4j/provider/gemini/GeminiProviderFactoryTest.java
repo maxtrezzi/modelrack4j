@@ -22,6 +22,7 @@ import dev.langchain4j.model.ModelProvider;
 import io.github.maxtrezzi.modelrack4j.ConfigValidationException;
 import io.github.maxtrezzi.modelrack4j.LlmConfig;
 import io.github.maxtrezzi.modelrack4j.LlmRegistry;
+import io.github.maxtrezzi.modelrack4j.spi.KeyRequirement;
 import io.github.maxtrezzi.modelrack4j.spi.ProviderFactory;
 import io.github.maxtrezzi.modelrack4j.spi.TokenEstimation;
 import java.io.IOException;
@@ -37,8 +38,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * Build-only tests. Gemini's capabilities match Anthropic's rather than OpenAI's — no
- * moderation, remote token counting — and both are asserted here rather than trusted.
+ * Offline tests. Gemini's capabilities match Anthropic's rather than OpenAI's — no
+ * moderation, remote token counting — and both are asserted here rather than trusted. Most
+ * tests only build; the one that checks {@code base-url} makes calls, all to a port on this
+ * machine.
  */
 class GeminiProviderFactoryTest {
 
@@ -61,6 +64,41 @@ class GeminiProviderFactoryTest {
     @DisplayName("counts tokens over the network, which is what makes the opt-in rule apply")
     void countsTokensRemotely() {
         assertThat(factory.tokenEstimation()).isEqualTo(TokenEstimation.REMOTE);
+    }
+
+    @Test
+    @DisplayName("requires api-key and permits base-url")
+    void declaresItsKeyRequirements() {
+        assertThat(factory.apiKeyRequirement()).isEqualTo(KeyRequirement.MANDATORY);
+        assertThat(factory.baseUrlRequirement()).isEqualTo(KeyRequirement.OPTIONAL);
+    }
+
+    @Test
+    @DisplayName("base-url reaches every model this factory builds, so none calls the vendor")
+    void baseUrlReachesEveryModel() throws Exception {
+        // All three, not the chat model alone: a block behind a proxy that counted its tokens
+        // at the vendor's own address would reach two servers from one configuration.
+        try (CountingPort port = new CountingPort()) {
+            LlmConfig config = config(Optional.empty(), false, Optional.of(port.url()));
+
+            port.assertReachedBy("the chat model",
+                    () -> factory.createChatModel(config).chat("hi"));
+            port.assertReachedBy("the streaming chat model", () -> CountingPort.streamOnce(
+                    factory.createStreamingChatModel(config).orElseThrow()));
+            port.assertReachedBy("the token count estimator", () -> factory
+                    .createTokenCountEstimator(config).orElseThrow()
+                    .estimateTokenCountInText("hi"));
+        }
+    }
+
+    @Test
+    @DisplayName("a block with no api-key is refused through the registry, naming the key")
+    void aMissingKeyIsRefused() {
+        assertThatThrownBy(() -> registryFrom("""
+                llm { SL { provider = gemini, model-name = "m" } }
+                """))
+                .isInstanceOf(ConfigValidationException.class)
+                .hasMessageContaining("has no api-key, but provider 'gemini' requires one");
     }
 
     @Test
@@ -160,8 +198,13 @@ class GeminiProviderFactoryTest {
     }
 
     private static LlmConfig config(Optional<Double> temperature, boolean moderation) {
-        return new LlmConfig("SL", Optional.empty(), "gemini", "test-key-not-used", MODEL,
-                temperature, Duration.ofSeconds(60), false, false, false, Optional.empty(),
-                moderation, "{}");
+        return config(temperature, moderation, Optional.empty());
+    }
+
+    private static LlmConfig config(
+            Optional<Double> temperature, boolean moderation, Optional<String> baseUrl) {
+        return new LlmConfig("SL", Optional.empty(), "gemini", Optional.of("test-key-not-used"),
+                baseUrl, MODEL, temperature, Duration.ofSeconds(60), false, false, false,
+                Optional.empty(), moderation, "{}");
     }
 }

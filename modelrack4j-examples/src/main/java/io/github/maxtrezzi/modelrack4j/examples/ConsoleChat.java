@@ -45,7 +45,10 @@ import java.util.concurrent.TimeUnit;
  * to come back and pick another.
  *
  * <p>Run it with any configuration file — the bundled {@code examples.conf} needs
- * {@code ANTHROPIC_API_KEY} and {@code OPENAI_API_KEY}, and it spends money:
+ * {@code ANTHROPIC_API_KEY} and {@code OPENAI_API_KEY}, and it spends money. The bundled
+ * {@code local-models.conf} needs no key and costs nothing: it reaches a local Ollama server,
+ * once through {@code provider = ollama} and once through {@code provider = openai} with a
+ * {@code base-url}, which is how any server speaking the OpenAI protocol is reached:
  *
  * <pre>{@code
  * mvn install                                     # exec:java reads ~/.m2, not the reactor

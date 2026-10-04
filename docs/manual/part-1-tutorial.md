@@ -25,6 +25,10 @@ the output depends on a model's answer, it says so instead of inventing one.
 > **Every step needs one API key to be *set*, because substitution is mandatory** — an unset
 > variable fails at load, by design. Only those four steps need it to be valid and funded.
 > Steps 1 to 8 take one key from any supported provider; step 9 needs two.
+>
+> **No key? Use a model on your own machine.** With Ollama, or any server that speaks the
+> OpenAI protocol, every step works with no key and no cost — see
+> [Before you start](#a-model-on-your-own-machine-instead).
 
 **Contents**
 
@@ -61,9 +65,42 @@ export ANTHROPIC_API_KEY=sk-ant-...
 export OPENAI_API_KEY=sk-...
 ```
 
-Gemini uses `GEMINI_API_KEY` and GLM uses `ZHIPU_API_KEY`. Any one of the four is enough for
-steps 1 to 8 — swap the `provider` and `model-name` in the configuration for the ones from
-[Part 2](part-2-reference.md#providers).
+Gemini uses `GEMINI_API_KEY` and GLM uses `ZHIPU_API_KEY`. Any one of these four keys is
+enough for steps 1 to 8 — swap the `provider` and `model-name` in the configuration for the
+ones from [Part 2](part-2-reference.md#providers).
+
+### A model on your own machine instead
+
+You can follow the whole tutorial with no key and no cost, using a model that runs on your
+machine. Install [Ollama](https://ollama.com), start it, and pull a model:
+
+```bash
+ollama pull llama3.2
+```
+
+Then, wherever a block on this page sets `provider`, `api-key` and `model-name`, write one of
+these instead:
+
+```hocon
+    # Ollama's own provider: no key is allowed, and the address is required
+    provider    = ollama
+    base-url    = "http://localhost:11434"
+    model-name  = "llama3.2"
+```
+
+```hocon
+    # any server that speaks the OpenAI protocol: Ollama, LocalAI, llama.cpp, vLLM, LM Studio
+    provider    = openai
+    base-url    = "http://localhost:11434/v1"
+    model-name  = "llama3.2"
+```
+
+The second form is the one to use for a server that is not Ollama: change `base-url` to its
+address. No key is needed for either. Three differences from the page as written: the answers
+come from a smaller model and take longer, so add `timeout = 120s`; step 5's `message-window`
+memory works, but `token-window` does not, because Ollama has no token counter; and step 6
+refuses moderation on Ollama, as it does on Anthropic. The outputs printed on this page came
+from Anthropic and OpenAI.
 
 ---
 
@@ -113,9 +150,9 @@ Four things to notice, because they are the whole schema in four points:
 - **`SL` is a name you invented.** It is how your code will ask for this model. Short names
   are normal — they get typed on every lookup.
 - **`${ANTHROPIC_API_KEY}` is mandatory substitution.** If the variable is unset, loading
-  fails immediately and says so. Do not use `${?ANTHROPIC_API_KEY}`: the optional form
-  silently yields nothing, and you find out at the first request instead, as an
-  authentication error.
+  fails immediately and names the variable. Do not use `${?ANTHROPIC_API_KEY}`: the optional
+  form leaves the key out when the variable is unset, and the block is then refused for a
+  missing `api-key`, which does not say which variable you forgot.
 - **`description` is for humans.** Nothing in the library reads it. It shows up in the menu
   you are about to see.
 
@@ -287,7 +324,7 @@ ships no moderation model. Remove the moderation block, or route moderation thro
 OpenAI-family configuration.
 ```
 
-Of the four providers, only OpenAI ships a `ModerationModel`. That is a fact about the
+Of the five providers, only OpenAI ships a `ModerationModel`. That is a fact about the
 LangChain4j artifacts, checked by reading them.
 
 **Token-window memory on a provider that counts remotely:**
@@ -306,8 +343,8 @@ network request. Set memory.allow-remote-token-counting = true to accept that co
 
 This one is not a refusal, it is a question. Anthropic *can* count tokens — by making an HTTP
 call, inside what your code assumes is in-memory bookkeeping. Add the flag if that is what
-you want. On OpenAI, which counts locally, no flag is needed. On GLM, which cannot count at
-all, the flag makes no difference and the answer stays no.
+you want. On OpenAI, which counts locally, no flag is needed. On GLM or Ollama, which cannot
+count at all, the flag makes no difference and the answer stays no.
 
 **A misspelled key** — the one you are most likely to meet first:
 
@@ -440,6 +477,25 @@ To *remove* something a lower layer set rather than replace it, use `null`:
 llm.SL { description = null }
 ```
 
+The same two tools move a model to your own machine for development, without touching the
+baseline. This `local.conf` switches `SL` to a local Ollama server, and removes the key,
+because Ollama takes none:
+
+```hocon
+# local.conf — develop against a local model, pay for nothing
+llm.SL {
+  provider   = ollama
+  api-key    = null
+  base-url   = "http://localhost:11434"
+  model-name = "llama3.2"
+  timeout    = 120s
+}
+```
+
+`${ANTHROPIC_API_KEY}` in `defaults.conf` is never read, for the reason above, so this works on a
+machine where the variable is not set. `./run-local.sh` runs the same idea as a complete
+program.
+
 ---
 
 ## 9. Three models at once
@@ -458,6 +514,12 @@ Needs both `ANTHROPIC_API_KEY` and `OPENAI_API_KEY`. It asks you for a question 
 input, puts that same question to each model, prints what each one has, and then asks for the
 next question. Type `/exit` to leave. There is no default question: every one of them costs
 three requests.
+
+**With a local model instead**, pass `modelrack4j-examples/src/main/resources/local-models.conf`
+in place of `examples.conf`. It has two blocks for the same Ollama server — `OLLAMA`, through
+the Ollama provider, and `OPENAI-API`, through the OpenAI protocol — so the council has two
+members instead of three, costs nothing, and needs no key. Set `OLLAMA_MODEL` if you pulled a
+model other than `llama3.2`.
 
 Look at what the code does *not* do:
 

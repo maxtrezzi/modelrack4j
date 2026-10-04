@@ -52,9 +52,9 @@ on, an API shape fixed, a scope boundary drawn, a mechanism chosen over an alter
 that was genuinely considered. Not for reversible implementation details, and not for
 things the code states plainly on its own.
 
-Discussion transcripts and half-formed thinking do **not** belong here — those go to
-`brainstorm/discussions/`, which is local-only and never committed. An ADR is the
-distilled, rewritten result, safe to publish.
+Discussion transcripts and half-formed thinking do **not** belong here — those go to the
+discussion log, which the owner keeps outside this repository. An ADR is the distilled,
+rewritten result, safe to publish.
 
 Work items do not belong here either. What to do, and whether it is done, lives in
 [`../tasks/`](../tasks/README.md) (ADR-0015); an ADR explains why the work is shaped the
@@ -113,6 +113,7 @@ by number, since the numbering only reflects the order of the original appendix.
 | [0058](0058-null-does-not-remove-a-configuration.md) | Null does not remove a configuration | Accepted |
 | [0059](0059-the-generic-registry-is-a-source-break.md) | Accept that a generic registry breaks source compatibility | Accepted |
 | [0060](0060-the-registry-hands-over-its-writable-layers.md) | The registry hands over its writable layers | Accepted |
+| [0062](0062-a-provider-declares-its-key-requirements.md) | A provider declares whether a block may or must set `api-key` and `base-url` | Accepted |
 | [0030](0030-one-timeout-in-the-schema.md) | One `timeout` in the schema; providers map it onto their own client | Accepted |
 | [0018](0018-manage-langchain4j-versions-via-bom.md) | Manage LangChain4j versions by importing its BOM | Accepted — the BOM import set amended by ADR-0022 |
 | [0022](0022-glm-via-the-community-module-and-its-bom.md) | Take GLM from the community module, and import its BOM alongside the main one | Accepted |
@@ -140,9 +141,10 @@ by number, since the numbering only reflects the order of the original appendix.
 |---|---|---|
 | [0001](0001-record-decisions-as-adrs.md) | Record decisions as ADRs; keep discussion logs out of the repo | Accepted |
 | [0015](0015-track-work-items-in-docs-tasks.md) | Track work items in `docs/tasks/`, alongside the ADRs | Accepted |
-| [0016](0016-one-feature-branch-per-task.md) | One feature branch per task | Accepted |
+| [0016](0016-one-feature-branch-per-task.md) | One feature branch per task | Accepted — the branch a task targets amended by ADR-0061 |
 | [0039](0039-user-facing-prose-is-written-for-a-non-native-reader.md) | Write user-facing prose for a non-native reader, terse but self-explaining | Accepted |
-| [0040](0040-protect-main-with-required-checks-not-required-review.md) | Protect `main` with required checks, not required review | Accepted |
+| [0040](0040-protect-main-with-required-checks-not-required-review.md) | Protect `main` with required checks, not required review | Accepted — the branch it protects widened by ADR-0061 |
 | [0041](0041-mutation-testing-on-core-only.md) | Run mutation testing on core only, never on a provider module | Accepted — the deferred CI question amended by ADR-0043 |
 | [0043](0043-keep-mutation-testing-out-of-ci.md) | Keep mutation testing out of CI, in every form | Accepted |
 | [0045](0045-publish-through-the-central-portal-from-a-release-profile.md) | Publish through the Central Portal, from a `release` profile, with the last step manual | Accepted |
+| [0061](0061-work-lands-on-dev-and-main-carries-releases.md) | Work lands on `dev`; `main` carries releases only | Accepted |

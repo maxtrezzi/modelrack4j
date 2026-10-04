@@ -6,3 +6,8 @@ io.github.maxtrezzi.modelrack4j.testing.FakeNullProviderFactory
 io.github.maxtrezzi.modelrack4j.testing.FakeStrictProviderFactory
 io.github.maxtrezzi.modelrack4j.testing.FakeLegacyProviderFactory
 io.github.maxtrezzi.modelrack4j.testing.FakeNullOptionalProviderFactory
+io.github.maxtrezzi.modelrack4j.testing.FakeKeylessProviderFactory
+io.github.maxtrezzi.modelrack4j.testing.FakeFixedAddressProviderFactory
+io.github.maxtrezzi.modelrack4j.testing.FakeNullRequirementProviderFactory
+io.github.maxtrezzi.modelrack4j.testing.FakeOutdatedProviderFactory
+io.github.maxtrezzi.modelrack4j.testing.FakeMismatchedProviderFactory

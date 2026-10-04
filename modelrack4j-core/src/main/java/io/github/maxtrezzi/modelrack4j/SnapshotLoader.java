@@ -24,6 +24,7 @@ import dev.langchain4j.memory.chat.MessageWindowChatMemory;
 import dev.langchain4j.memory.chat.TokenWindowChatMemory;
 import dev.langchain4j.model.TokenCountEstimator;
 import dev.langchain4j.model.chat.ChatModel;
+import io.github.maxtrezzi.modelrack4j.spi.KeyRequirement;
 import io.github.maxtrezzi.modelrack4j.spi.ProviderFactory;
 import io.github.maxtrezzi.modelrack4j.spi.TokenEstimation;
 import java.util.ArrayList;
@@ -36,6 +37,7 @@ import java.util.Optional;
 import java.util.ServiceLoader;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.function.Supplier;
 
 /**
  * Turns the configured layers into one complete snapshot of bundles.
@@ -143,7 +145,7 @@ final class SnapshotLoader<T> {
             LlmBundle<T> carried = previous.get(name);
             built.put(name, carried != null && carried.config().equals(config)
                     ? carried
-                    : buildBundle(config));
+                    : buildBundleReportingLinkage(config));
         }
 
         return Collections.unmodifiableMap(built);
@@ -167,6 +169,38 @@ final class SnapshotLoader<T> {
                 + value.origin().description() + "). A configuration cannot be removed from a"
                 + " higher layer: null clears a value inside a block, not the block itself."
                 + " Remove it from the layer that defines it instead.");
+    }
+
+    /**
+     * Builds one bundle, and turns a provider that cannot run against the classes on the
+     * classpath into a configuration error.
+     *
+     * @param config the configuration to build
+     * @return the bundle
+     * @throws ConfigValidationException if the configuration is refused, or if the provider's
+     *     jar does not match the classes it runs against
+     * @implNote A {@code LinkageError} — a {@code NoSuchMethodError} or
+     *     {@code NoClassDefFoundError} from a provider jar built against another version of
+     *     this library or of LangChain4j — is an {@code Error}, and {@code LlmRegistry.reload()}
+     *     and the watcher loop catch only {@code RuntimeException}. Left alone it escapes a
+     *     reload with no log line and no failure listener, and on the watcher thread it ends
+     *     the thread, so every later edit is ignored. That was measured for one subclass,
+     *     {@code AbstractMethodError}, with the released {@code 0.2.0} OpenAI provider; the
+     *     path is the same for all of them. Translating is safe here: a linkage error is fixed
+     *     by the classes that were loaded, it does not signal a broken VM, and it concerns this
+     *     one provider. {@link #requirementOf} catches the most likely case first, with a
+     *     message that names the method.
+     */
+    private LlmBundle<T> buildBundleReportingLinkage(LlmConfig config) {
+        try {
+            return buildBundle(config);
+        } catch (LinkageError mismatched) {
+            throw new ConfigValidationException(path(config) + ": provider '"
+                    + config.provider() + "' cannot run against the classes on the classpath ("
+                    + mismatched + "). Its jar was probably built for another version of"
+                    + " modelrack4j or LangChain4j: use the versions the modelrack4j BOM"
+                    + " manages.", mismatched);
+        }
     }
 
     private LlmBundle<T> buildBundle(LlmConfig config) {
@@ -284,8 +318,18 @@ final class SnapshotLoader<T> {
     /**
      * Applies the capability rules that depend only on what the factory reports, so no
      * provider module has to restate them.
+     *
+     * @implNote The two key requirements come first and apply to every block, because a block
+     *     that sets a key its provider does not use, or omits one it needs, is wrong whatever
+     *     else it asks for (ADR-0062). They run before the factory's own {@code validate()},
+     *     which may therefore rely on them.
      */
     private static void validateCapabilities(LlmConfig config, ProviderFactory factory) {
+        requireKey(config, "api-key", config.apiKey(),
+                requirementOf(config, "api-key", factory::apiKeyRequirement));
+        requireKey(config, "base-url", config.baseUrl(),
+                requirementOf(config, "base-url", factory::baseUrlRequirement));
+
         if (config.moderationEnabled() && !factory.supportsModeration()) {
             throw new ConfigValidationException(path(config)
                     + " sets moderation.enabled = true, but provider '" + config.provider()
@@ -320,6 +364,65 @@ final class SnapshotLoader<T> {
                     + "' counts tokens by calling its API, so every memory eviction makes a"
                     + " billed, rate-limited network request. Set"
                     + " memory.allow-remote-token-counting = true to accept that cost.");
+        }
+    }
+
+    /**
+     * Asks the factory for one key requirement, and turns a factory built for an older SPI
+     * into a configuration error.
+     *
+     * @param config the configuration being built, for the message
+     * @param key the key as the file spells it, for the message
+     * @param reported the factory method that reports the requirement
+     * @return what the factory reported, which may be null from a faulty factory
+     * @throws ConfigValidationException if the factory does not implement the method
+     * @implNote The two methods have no default (ADR-0062), so a factory compiled against
+     *     {@code 0.2.0} throws {@code AbstractMethodError} here. That is an {@code Error}, and
+     *     both {@code LlmRegistry.reload()} and the watcher loop catch only
+     *     {@code RuntimeException}: left alone, it escaped a reload with no log line and no
+     *     failure listener, and on the watcher thread it ended the thread, so every later
+     *     edit was ignored in silence. Measured with the released {@code 0.2.0} OpenAI
+     *     provider, added by a reload to a registry that had started without it. Translating
+     *     it is safe: a linkage error is fixed by the class that was loaded, not a sign of a
+     *     broken VM, and it can only mean this one factory is out of date.
+     */
+    private static KeyRequirement requirementOf(
+            LlmConfig config, String key, Supplier<KeyRequirement> reported) {
+        try {
+            return reported.get();
+        } catch (AbstractMethodError builtForAnOlderVersion) {
+            throw new ConfigValidationException(path(config) + ": provider '"
+                    + config.provider() + "' does not implement the " + key + " requirement,"
+                    + " so it was built for an older modelrack4j. Rebuild it against this"
+                    + " version.", builtForAnOlderVersion);
+        }
+    }
+
+    /**
+     * Refuses a key the provider does not permit, or a missing key it requires.
+     *
+     * @param config the configuration being built
+     * @param key the key as the file spells it, for the message
+     * @param value what the block set for it
+     * @param requirement what the factory reported, which may be null from a faulty factory
+     * @throws ConfigValidationException if the block breaks the requirement
+     */
+    private static void requireKey(LlmConfig config, String key, Optional<String> value,
+            KeyRequirement requirement) {
+        if (requirement == null) {
+            throw new ConfigValidationException(path(config) + ": provider '"
+                    + config.provider() + "' reported no " + key + " requirement, so whether"
+                    + " this block may set " + key + " cannot be decided.");
+        }
+        if (value.isPresent() && !requirement.permitted()) {
+            throw new ConfigValidationException(path(config) + " sets " + key
+                    + ", but provider '" + config.provider() + "' does not use one. Remove "
+                    + key + " from this block.");
+        }
+        if (value.isEmpty() && requirement.required()) {
+            throw new ConfigValidationException(path(config) + " has no " + key
+                    + ", but provider '" + config.provider() + "' requires one. Set " + key
+                    + " in this block.");
         }
     }
 

@@ -712,3 +712,50 @@ everything, with its javadoc pointing at the new method instead of carrying the 
 What tipped it was not the convenience. `sources()`'s javadoc had told applications to look the
 layer up **and shipped the five-line filter as its example**, so the friction was one this
 library's own documentation created.
+
+---
+
+### D10 — Where work lands
+
+**Status:** Settled 2026-09-07 — **`dev` is the default; `main` carries releases only** ·
+**Settled by:** [ADR-0061](../adr/0061-work-lands-on-dev-and-main-carries-releases.md) ·
+**Raised by:** the owner on 2026-09-07, immediately after `0.2.0` was published
+
+Until `0.2.0` every task merged into `main`, so `main` was the last release plus whatever had
+landed since. The owner named three costs, and each is visible in the `0.2.0` sequence:
+
+- **What a reader sees is not what they can depend on.** The README's dependency snippets said
+  `0.1.0` while the code beside them was ahead of it — correct at every moment, and still a
+  page describing two different things.
+- **Items that belong to one version could not be tried together.** P40 through P45 merged one
+  at a time, each green alone. Whether they were right together was answered by the release.
+- **`main`'s history is one commit per task**, so "what changed between two releases" means
+  reading a dozen commits and deciding which of them a user would notice.
+
+Settled as full git-flow rather than as a long-lived integration branch beside an unchanged
+`main`: the deciding point is that the default branch is where a reader lands and where a
+contributor branches from, so making `dev` the default is what makes the rule true without
+being read.
+
+**The gate had to move with it.** `.github/workflows/build.yml` triggered on `main` alone and
+the five required contexts were configured on `main`'s protection, so a pull request against
+`dev` would have run no job and reported no status — the branch rule kept and the checks
+silently gone. Both branches now trigger the workflow and both carry the same five required
+checks.
+
+**`main`'s own documentation stays at the last release, on purpose.** The owner asked the day
+after the switch whether `CONTRIBUTING.md` and the branch rules needed revising on `main` too:
+they are stale there, and leaving them stale is the decision. `main` holds what Central holds,
+so its files describe the project as it was on the day of that release — `CONTRIBUTING.md`
+saying to branch from `main` was true when `0.2.0` shipped. Correcting it there would put a
+non-release commit on `main`, which is the one thing the decision above forbids, and the next
+release carries the correction with everything else. What made this safe to leave was measured
+rather than assumed: GitHub serves the community files, the repository home and a pull
+request's default base from the *default* branch, and the `CONTRIBUTING.md` its API returns
+matches `dev`'s blob, not `main`'s.
+
+**What is not enforceable, and is written down instead:** `main` is never merged back into
+`dev`. The merge that makes a release is a squash, so afterwards the two hold the same tree and
+unrelated histories; branching from `main` or rebasing `dev` onto it brings every conflict back
+a second time. No protection rule can express that, which is the same trade ADR-0040 already
+takes with `enforce_admins`.

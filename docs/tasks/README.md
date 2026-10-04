@@ -41,8 +41,11 @@ than renumbered, and new work takes the next free number.
 verification task whose answer is lost has to be redone. Findings that contradict a current
 ADR trigger an amendment to that ADR (see the folder README there for the mechanism).
 
-**Every task gets its own branch** ([ADR-0016](../adr/0016-one-feature-branch-per-task.md)).
-Branch before starting, never commit to `main`, and name the branch after the item:
+**Every task gets its own branch** ([ADR-0016](../adr/0016-one-feature-branch-per-task.md)),
+cut from `dev` and merged back into it
+([ADR-0061](../adr/0061-work-lands-on-dev-and-main-carries-releases.md); `main` carries
+released versions only). Branch before starting, never commit to either protected branch, and
+name the branch after the item:
 `task/0.1-pin-langchain4j-version`, `milestone/m0-skeleton`,
 `decision/d2-repository-visibility`. The branch carries the work, the status update here,
 and any ADR the task produces.
@@ -122,6 +125,11 @@ Phase 0 gates everything else; nothing below M0 should start before its blockers
 | [P43](post-v1.md#p43--what-the-consuming-application-found-in-020) | What the consuming application found in 0.2.0 | **Done** — the manual never said what to do with `ReloadChange.removed()`, and a store fires no listener, so clean-up written only in `onReload` left state behind when the application deleted a connection through its own editor; plus a stale `Records` block and a missing troubleshooting row for the generic break |
 | [P44](post-v1.md#p44--the-pre-release-check-of-020) | The pre-release check of 0.2.0 | **Done** — review, mutation testing, live integration tests, the examples and the documentation before the release. One defect in the code: a misspelled key inside `memory` reported the key it hid, because `readMemory` is the one place that builds a validating record during the parse. 43 raw-type warnings the build was printing and nobody was reading, 8 of them in `LlmRegistry` itself — the class ADR-0059 is about; `writableSources()` had no CHANGELOG entry; the tutorial printed output its own command does not produce; and three error conditions had no test at all, each of them a mistake only an application writing its own `ConfigSource` can make |
 | [P45](post-v1.md#p45--020-published) | 0.2.0 published | **Done** — on Maven Central 2026-09-07. Seven artifacts with their signatures, `modelrack4j-examples` absent as intended, resolved from an empty local repository, and the reproducible-build timestamp verified inside a jar downloaded from Central — `versions:set` had overwritten it with the instant the command ran |
+| [P46](post-v1.md#p46--dev-returns-to-a-snapshot-and-the-checklist-gains-its-last-two-steps) | `dev` returns to a snapshot | **Done** — `dev` was cut from `main` after the release commit, so its POMs said `0.2.0` and every `mvn install` overwrote a released artifact in `~/.m2`. Now `0.3.0-SNAPSHOT`. It is P36's finding returning after the next release, because that checklist ended at the tag: it now ends at the GitHub release and the snapshot bump |
+| [P47](post-v1.md#p47--the-readme-shows-the-library-beside-what-it-replaces) | The README shows the library beside what it replaces | **Done** — the only Java block in `Why` was the LangChain4j constructor call the library replaces, 174 lines from the nearest modelrack4j example, so the section arguing for the library showed nobody using it; `LlmRegistry<Void>` appeared at no site that builds a registry, only as a field type in the section about caching; and `custom-properties` was reachable only from the schema table. Writing the type out then made every example `<Void>`, so `Quick start` gained a worked example with a real one — whose obvious form, a record with camelCase components, Jackson refuses against kebab-case configuration keys — and the rule settled at `var` wherever no handler is registered. Also: the handler runs for every configuration, including blocks with no `custom-properties`, which the README had never said |
+| [P48](post-v1.md#p48--api-key-and-base-url-what-a-provider-permits-and-requires) | `api-key` and `base-url`: what a provider permits and requires | Done — target 0.3.0; ADR-0062 |
+| [P49](post-v1.md#p49--an-ollama-provider) | An Ollama provider | Done — target 0.3.0 |
+| [P50](post-v1.md#p50--the-pre-release-check-of-030) | The pre-release check of 0.3.0 | **Done** — `dev` at `8fd4089` builds green and all five live ITs pass, Ollama included; no code changed. LangChain4j `1.21.0` is out but its community train is not, so 0.3.0 stays on `1.20.0` |
 | [D1](open-decisions.md#d1--glm-route-if-no-maintained-module-exists) | GLM route if no maintained module | **Closed** — never became live |
 | [D2](open-decisions.md#d2--repository-visibility) | Repository visibility | **Settled** — public, not released; ADR-0034 |
 | [D3](open-decisions.md#d3--token-window-memory-on-a-remote-estimator) | Token-window memory on a remote estimator | **Settled** — opt-in flag |

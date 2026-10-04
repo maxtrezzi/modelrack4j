@@ -36,6 +36,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 /** Building the registry: defaults, lookup, provider discovery and the capability rules. */
 class LlmRegistryTest {
@@ -590,13 +592,165 @@ class LlmRegistryTest {
         }
     }
 
+    /**
+     * What a provider permits and requires of {@code api-key} and {@code base-url} (ADR-0062).
+     *
+     * <p>Three fakes cover every value for both keys: {@code fake-local} is {@code OPTIONAL}
+     * for both, {@code fake-keyless} forbids a key and requires an address, and
+     * {@code fake-fixed-address} the reverse. So the other key of each row is set, or left
+     * out, to satisfy that fake, and only the key the row is about can be what fails.
+     */
+    @Nested
+    @DisplayName("key requirements")
+    class KeyRequirements {
+
+        @ParameterizedTest(name = "{0}: {1} set = {2} -> {3}")
+        @CsvSource({
+            // provider          key       set    outcome
+            "fake-keyless,       api-key,  true,  forbidden",
+            "fake-keyless,       api-key,  false, builds",
+            "fake-local,         api-key,  true,  builds",
+            "fake-local,         api-key,  false, builds",
+            "fake-fixed-address, api-key,  true,  builds",
+            "fake-fixed-address, api-key,  false, missing",
+            "fake-fixed-address, base-url, true,  forbidden",
+            "fake-fixed-address, base-url, false, builds",
+            "fake-local,         base-url, true,  builds",
+            "fake-local,         base-url, false, builds",
+            "fake-keyless,       base-url, true,  builds",
+            "fake-keyless,       base-url, false, missing",
+        })
+        @DisplayName("each value of each key permits and refuses what it says")
+        void eachRequirementIsApplied(String provider, String key, boolean set, String outcome)
+                throws IOException {
+            String hocon = "llm { LOCAL { provider = " + provider + ", model-name = \"m\"\n"
+                    + keys(provider, key, set) + " } }";
+
+            if (outcome.equals("builds")) {
+                assertThat(registryOf(hocon).get("LOCAL").chatModel()).isNotNull();
+                return;
+            }
+            // The whole message: it has to name the block, the provider and the key, and a
+            // fragment would not show that all three are there.
+            String expected = outcome.equals("forbidden")
+                    ? "llm.LOCAL sets " + key + ", but provider '" + provider
+                            + "' does not use one. Remove " + key + " from this block."
+                    : "llm.LOCAL has no " + key + ", but provider '" + provider
+                            + "' requires one. Set " + key + " in this block.";
+            assertThatThrownBy(() -> registryOf(hocon))
+                    .isInstanceOf(ConfigValidationException.class)
+                    .hasMessage(expected);
+        }
+
+        /**
+         * The block's keys: the one under test set or not, the other one as the fake needs.
+         */
+        private String keys(String provider, String key, boolean set) {
+            boolean keylessProvider = provider.equals("fake-keyless");
+            boolean fixedAddress = provider.equals("fake-fixed-address");
+            boolean apiKey = key.equals("api-key") ? set : !keylessProvider;
+            boolean baseUrl = key.equals("base-url") ? set : !fixedAddress;
+            return (apiKey ? "api-key = \"k\"\n" : "")
+                    + (baseUrl ? "base-url = \"http://127.0.0.1:1\"\n" : "");
+        }
+
+        @Test
+        @DisplayName("a factory that reports no requirement is refused, naming the provider")
+        void aNullRequirementIsRefused() {
+            assertThatThrownBy(() -> registryOf("""
+                    llm { SL { provider = fake-null-requirement, api-key = "k", model-name = "m" } }
+                    """))
+                    .isInstanceOf(ConfigValidationException.class)
+                    .hasMessageContaining("fake-null-requirement")
+                    .hasMessageContaining("reported no api-key requirement");
+        }
+
+        @Test
+        @DisplayName("a factory built for 0.2.0 is a rejected reload, not a dead watcher")
+        void anOutdatedFactoryIsARejectedReload() throws IOException {
+            // The factory is added by a reload, after a build it had no part in: that is the
+            // case where an AbstractMethodError used to escape reload() with no log and no
+            // listener, and on the watcher thread ended the thread. It now takes the path of
+            // any other invalid configuration, and the previous one stays live.
+            LlmRegistry<Void> registry = registryOf("llm { }");
+            List<ReloadFailure> failures = new ArrayList<>();
+            registry.onReloadFailure(failures::add);
+            Files.writeString(lastFile, """
+                    llm { SL { provider = fake-outdated, api-key = "k", model-name = "m" } }
+                    """, StandardCharsets.UTF_8);
+
+            assertThatThrownBy(registry::reload)
+                    .isInstanceOf(ConfigValidationException.class)
+                    .hasMessage("llm.SL: provider 'fake-outdated' does not implement the"
+                            + " api-key requirement, so it was built for an older"
+                            + " modelrack4j. Rebuild it against this version.")
+                    .hasCauseInstanceOf(AbstractMethodError.class);
+            assertThat(failures).hasSize(1);
+            assertThat(registry.names()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("a provider jar that does not match the classpath is a rejected reload")
+        void aMismatchedProviderIsARejectedReload() throws IOException {
+            // The general case of the one above: any LinkageError from a factory, here a
+            // NoSuchMethodError while building the chat model, rather than a missing SPI
+            // method. It used to take the same path out of reload() and the watcher.
+            LlmRegistry<Void> registry = registryOf("llm { }");
+            List<ReloadFailure> failures = new ArrayList<>();
+            registry.onReloadFailure(failures::add);
+            Files.writeString(lastFile, """
+                    llm { SL { provider = fake-mismatched, api-key = "k", model-name = "m" } }
+                    """, StandardCharsets.UTF_8);
+
+            assertThatThrownBy(registry::reload)
+                    .isInstanceOf(ConfigValidationException.class)
+                    .hasMessageStartingWith("llm.SL: provider 'fake-mismatched' cannot run"
+                            + " against the classes on the classpath")
+                    .hasMessageContaining("NoSuchMethodError")
+                    .hasCauseInstanceOf(NoSuchMethodError.class);
+            assertThat(failures).hasSize(1);
+            assertThat(registry.names()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("a change to base-url alone rebuilds that bundle and reports it as updated")
+        void changingOnlyTheBaseUrlReloads() throws IOException {
+            LlmRegistry<Void> registry = registryOf("""
+                    llm {
+                      SL { provider = fake-local, api-key = "k", model-name = "m",
+                           base-url = "http://127.0.0.1:1" }
+                      SH { provider = fake-local, api-key = "k", model-name = "m" }
+                    }
+                    """);
+            LlmBundle<Void> before = registry.get("SL");
+            Files.writeString(lastFile, """
+                    llm {
+                      SL { provider = fake-local, api-key = "k", model-name = "m",
+                           base-url = "http://127.0.0.1:2" }
+                      SH { provider = fake-local, api-key = "k", model-name = "m" }
+                    }
+                    """, StandardCharsets.UTF_8);
+
+            Optional<ReloadChange> change = registry.reload();
+
+            assertThat(change).isPresent();
+            assertThat(change.get().updated()).containsExactly("SL");
+            assertThat(registry.get("SL")).isNotSameAs(before);
+            assertThat(registry.get("SL").config().baseUrl()).contains("http://127.0.0.1:2");
+        }
+    }
+
     private int fileCounter;
+
+    /** The file {@link #registryOf} wrote last, for a test that edits it and reloads. */
+    private Path lastFile;
 
     private LlmRegistry<Void> registryOf(String hocon) throws IOException {
         // A counter, not a hash: Math.abs(Integer.MIN_VALUE) is still negative, and a hash
         // collision between two cases in one test would silently reuse a file.
         Path file = dir.resolve("test-" + (++fileCounter) + ".conf");
         Files.writeString(file, hocon, StandardCharsets.UTF_8);
+        lastFile = file;
         LlmRegistry<Void> registry = LlmRegistry.builder().configFiles(List.of(file)).build();
         built.add(registry);
         return registry;

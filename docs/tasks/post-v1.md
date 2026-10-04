@@ -4329,6 +4329,11 @@ One README line did change: the build comment said `mvn clean install` "installs
 5. Then ADR-0045's own steps: `mvn -Prelease clean deploy`, `autoPublish=false` stops at
    `VALIDATED`, a human presses Publish, verify from an empty local repository, and only then
    tag `v0.2.0` on `main` after the merge.
+6. **Create the GitHub release from the tag.** A tag is not a release: the Releases page stays
+   on the previous version until one is made, and `--latest` is what moves the badge.
+7. **Put `dev` back on the next `-SNAPSHOT`, and reopen `[Unreleased]`.** This list ended at
+   the tag until P46, and that omission is why the defect this entry describes came back after
+   `0.2.0`: the checklist was followed to the end, and the end was in the wrong place.
 
 **`versions:set` has a side effect worth knowing about.** It rewrote
 `project.build.outputTimestamp` from `2026-09-02T00:00:00Z` to the second the command ran.
@@ -5448,3 +5453,537 @@ The dependency snippets moved to `0.2.0` only here, after the artifacts existed 
 counted: four in the README including the BOM block, one in the tutorial, one in the
 reference. The README's status line and the reference's *On Maven Central* sentence changed
 with them, and `AGENTS.md`'s Project state names `0.2.0` as the current release.
+
+---
+
+### P46 — `dev` returns to a snapshot, and the checklist gains its last two steps
+
+**Status:** Done ·
+**Branch:** `task/p46-dev-returns-to-a-snapshot` ·
+**Raised by:** the owner on 2026-09-07, asking whether `dev` still carried the released version
+
+`dev` was cut from `main` after the release commit, so its eight POMs said `0.2.0` — a
+published version. Every `mvn install` from `dev` therefore wrote an unpublished build over the
+cached copy of a released artifact, and anything else on the machine depending on
+`io.github.maxtrezzi:modelrack4j-core:0.2.0` would have silently received `dev` instead of what
+Central serves. Now `0.3.0-SNAPSHOT`, with `[Unreleased]` reopened.
+
+**This is P36's finding, returning after the next release.** P36 caught it after `0.1.0`, wrote
+it up, and left a checklist — which ended at the tag. Nothing in it said to put the version
+back afterwards, so the list was followed to the end and the defect came back anyway. The fix
+that matters is step 7, not the bump: a checklist that stops one step early produces this
+exactly once per release.
+
+**The damage this time was nothing, and the reason is worth keeping.** The cached
+`modelrack4j-core-0.2.0.jar` was compared with the one downloaded from Central and they are
+identical byte for byte, `sha256` `6f2ce0b9…`. `D10` had changed only YAML and Markdown, so the
+rebuild produced the same bytes — which it could only do because
+`project.build.outputTimestamp` holds the release date rather than a build instant. The
+property that P45 had to restore by hand is what made an accidental overwrite harmless here.
+
+`versions:set` rewrote that timestamp for the third time today, to the second it ran. Put back
+to `2026-09-07T00:00:00Z`: a snapshot bump is not a release, so the value stays at the last
+release's date.
+
+**Which number goes on the snapshot is the weakest part of this, and it is worth saying so
+rather than dressing it up.** What the version on `dev` has to be is *not a published one* —
+that is the whole defect, and the `-SNAPSHOT` suffix is what fixes it. The number in front of
+it is a placeholder for a release that does not exist yet: at this moment `git diff v0.2.0 dev`
+touches no `.java` file at all, so nothing has happened that could tell a patch from a minor.
+
+`0.3.0` is a default, not a deduction. P36 chose `0.2.0-SNAPSHOT` on an actual argument —
+`[Unreleased]` already carried an entry marked *Breaking*, so the CHANGELOG's own policy made a
+minor mandatory. Today `[Unreleased]` says *Nothing yet*, so that argument is unavailable and
+reusing its conclusion would be borrowing a reason. The default is a minor because this project
+is `0.x` and its CHANGELOG reserves the right to break in one, so a minor is the case that
+needs no permission; the one release transition there has been, `0.1.0` to `0.2.0`, was
+breaking, which is one data point and not a pattern.
+
+**Nothing rests on the guess.** Step 1 of the release checklist runs `versions:set` with the
+real number, decided from what `[Unreleased]` says on the day. If the next release turns out to
+be a patch, the release commit writes `0.2.1` and the snapshot's number was never anything a
+reader saw.
+
+**The other missing step was the GitHub release itself.** The tag existed and the Releases page
+still showed `0.1.0` as the latest, because a tag is not a release. Both are now steps 6 and 7
+of P36's list.
+
+---
+
+### P47 — The README shows the library beside what it replaces
+
+**Status:** Done ·
+**Branch:** `task/p47-the-readme-shows-what-it-replaces` ·
+**Raised by:** the owner on 2026-09-08, reading the README
+
+Three findings, all in the first 350 lines, and all of them the same failure: the page argued
+for the library without showing it.
+
+**The `Why` section's only Java block was the code the library replaces.** `AnthropicChatModel
+.builder()` sat at line 47 under the words *"which means it is code"*, and the nearest
+modelrack4j registry example was line 221 — 174 lines later, in `Quick start`. So the one code
+block in the section that makes the case read, to anyone skimming, as this library's own API.
+The owner said exactly that: *the LangChain4j example seems to be modelrack's*. The section now
+carries a labelled pair — the same five values as a builder call, then as a HOCON block with
+three lines of Java under it — and both end on the same `ChatModel`, which is the point the
+prose was making without a picture.
+
+**The type parameter was invisible where a reader meets the API.** Four examples built a
+registry with `var registry = LlmRegistry.builder()`, so `LlmRegistry<Void>` appeared only at
+old lines 287 and 298, as a field and a constructor parameter inside `Do not cache the bundle`,
+and at 393 as `<SupportProps>`. A reader therefore met the generic first in a section about a
+mistake, and never as the result of `builder()` — for the source break of `0.2.0` (ADR-0059)
+that is the wrong order. The first fix wrote the type out at all five sites that assign a
+registry. It did not survive the owner's next two readings, for the reasons below, and this
+paragraph is kept because the finding was right even though its fix was not.
+
+**The owner's second reading turned that into a different requirement: not `Void`.** Writing
+the type out had made every example say `LlmRegistry<Void>`, which shows the syntax and hides
+the reason — a reader learns that the class takes a parameter and that its value is the empty
+one. `Quick start` step 3 now carries a worked example with a real type beside the `Void` one;
+before this branch the only one was at old line 393, in `Values of your own`. The header and
+`Why` both say that `Void` is the case with no handler rather than the shape of the API.
+
+**Writing that example found a defect in the obvious version of it.** The first draft declared
+`record SupportProps(String promptId, int maxRetries)`, which is what a reader would write, and
+it does not work: the configuration key is `prompt-id` and Jackson refuses the block —
+*"Unrecognized field \"max-retries\" … (2 known properties: \"maxRetries\", \"promptId\")"*,
+surfacing as `ConfigValidationException`, *"llm.SUPPORT: the custom-properties handler rejected
+this configuration"*. The README's own `custom-properties` example has used kebab-case keys
+since P40 and never showed the class on the other side, so the gap was invisible until the two
+were written together. The snippet now carries `@JsonProperty` on both components and says why,
+and names `PropertyNamingStrategies.KEBAB_CASE` as the whole-class alternative. Both were run:
+the annotated record and the kebab-case mapper each yield
+`promptId=support-v3, maxRetries=3`.
+
+**The third reading settled the rule: `var` wherever no handler is registered.** Spelling
+`LlmRegistry<Void>` out at five sites had taught the syntax while hiding the reason, and `Void`
+is the one value of that parameter a reader never needs to name. A snippet now writes the type
+only where a handler makes it mean something: the two `SupportProps` registries say theirs, the
+five that register none are `var`. `LlmRegistry<Void>` survives in five places and each earns
+it — three sentences that explain what the `var` resolves to, and the `Council` example's field
+and constructor parameter, where there is no `var` to use. That last pair is worth its own
+clause in the README, because a reader who has just been told to use `var` needs to know why
+the next example does not.
+
+**The handler runs for every configuration, and the README never said so.** A block with no
+`custom-properties` reaches it as `"{}"`, so a `SupportProps` handler gives such a name a
+`SupportProps[promptId=null, maxRetries=0]` rather than skipping it — measured on a file
+holding one block with the section and one without. It is in `CustomPropertiesHandler`'s
+javadoc, with the reason: a rule like *"an openai block must name a prompt id"* is broken by
+exactly the block that omits the section. `Values of your own` now carries it, and points at
+`config.name()` and `config.provider()` for a handler that should apply to some names only.
+
+**`custom-properties` was reachable only from the schema table**, at old line 343 of 766, and
+the `LlmBundle` table listed five components without `customProperties()`. It is now the fourth
+point of `Why`, a clause in the opening pitch, and a sixth row in that table.
+
+**One thing not raised, found while fixing the others:** `Quick start` step 2 opened on a
+three-block file carrying descriptions, memory, streaming and moderation. The three required
+keys now come first, as the smallest file that works, with that file kept as *"a fuller one"*.
+
+**What was checked, rather than read.** The six Java snippets this touched were compiled against
+`target/classes` and the resolved LangChain4j classpath. Both new HOCON blocks were loaded through a real `LlmRegistry`
+with a dummy key: the `Why` block gives `temperature=Optional[0.2]` and `timeout=PT1M`, which
+is what makes the unquoted `60s` in it more than a guess, and the minimal block gives
+`Optional.empty` and the same `PT1M` default. `build/check-docs.py` is clean.
+
+**The register question this raises and does not settle.** `docs/manual/part-1-tutorial.md`
+still uses `var` throughout and has the same gap the README had. It was left alone because the
+owner asked about the README; if the answer is that the type belongs in both, the tutorial is a
+separate pass.
+
+### P48 — `api-key` and `base-url`: what a provider permits and requires
+
+**Status:** Done — target 0.3.0, before [P49](#p49--an-ollama-provider) ·
+**Branch:** `task/p48-key-requirement-and-base-url` ·
+**Raised by:** the owner on 2026-09-20, settled by
+[ADR-0062](../adr/0062-a-provider-declares-its-key-requirements.md)
+
+A block gains an optional `base-url`, `api-key` stops being required for every block, and each
+provider declares whether a block may and must set either key. It is the schema half of
+reaching a server that is not the vendor's; [P49](#p49--an-ollama-provider) is the first
+provider that needs it.
+
+#### What to build
+
+- **`KeyRequirement`** in `io.github.maxtrezzi.modelrack4j.spi`: `FORBIDDEN`, `OPTIONAL`,
+  `MANDATORY`, with `permitted()` (not `FORBIDDEN`) and `required()` (only `MANDATORY`).
+- **`ProviderFactory.apiKeyRequirement()` and `baseUrlRequirement()`**, both abstract. Their
+  Javadoc says why there is no default, pointing at ADR-0062.
+- **`LlmConfig`**: `apiKey()` becomes `Optional<String>`, and a new component
+  `Optional<String> baseUrl()` is read from `base-url`. Both are read through `BlockReader`, so
+  ADR-0056 counts them as known keys; `api-key` moves from `requiredString` to an optional
+  read. A present but blank value is refused, as `description` already is.
+- **`LlmConfig.toString()`** keeps `apiKey=***` when a key is present and says it is absent when
+  it is not. It prints `base-url` with any user-info part replaced by `***`: a URL of the form
+  `https://user:secret@host` carries a credential, and ADR-0047's reasoning applies to it.
+  `equals` is untouched, so a changed `base-url` is a configuration change and reloads the
+  bundle.
+- **`SnapshotLoader.validateCapabilities`** applies both requirements before
+  `factory.validate(config)`, with two messages parameterised by the key:
+
+  ```
+  llm.LOCAL sets api-key, but provider 'ollama' does not use one. Remove api-key from this block.
+  llm.LOCAL has no base-url, but provider 'ollama' requires one. Set base-url in this block.
+  ```
+
+  A factory that returns `null` from either method is refused in the words the `null`
+  `tokenEstimation()` case already uses.
+- **The four factories** declare `openai` `OPTIONAL`/`OPTIONAL` and `anthropic`, `gemini`,
+  `glm` `MANDATORY`/`OPTIONAL` (api-key/base-url). Each passes `base-url` to **every** builder
+  it calls for the block — chat, streaming, `OpenAiModerationModel`,
+  `AnthropicTokenCountEstimator`, `GoogleAiGeminiTokenCountEstimator` — and `openai` passes the
+  key only when present. For a `MANDATORY` provider core has already checked the key, so
+  `orElseThrow()` in the factory cannot fire; say so where it is written.
+- **`OpenAiProviderFactory.validate()`** gains the one rule core cannot see:
+
+  ```
+  llm.X has neither api-key nor base-url. Provider 'openai' calls api.openai.com when base-url
+  is absent, and that endpoint requires a key. Set api-key, or set base-url to a server that
+  does not need one.
+  ```
+
+- **`FakeProviderFactory`** in core test scope takes both requirements as parameters, so core
+  tests reach all three values without a real provider.
+
+#### What not to do
+
+- **Do not give either method a default.** ADR-0062 records why: the change breaks every
+  implementer anyway, and a default of `MANDATORY` would refuse every block of a keyless
+  provider that forgot to override it.
+- **Do not check a missing key in a provider's `validate()`.** Core owns the rule and the
+  message (ADR-0048). The `openai` rule is the exception because it depends on `base-url`.
+- **Do not pass `base-url` to the chat model alone.** A block behind a proxy would send its
+  moderation or its remote token count to the vendor's own address.
+- **Do not list the known keys by hand.** They come from what `BlockReader` was asked for.
+
+#### Tests worth naming
+
+For each key and each of the three values, a block with the key and one without: six cases per
+key, twelve in all, with `FakeProviderFactory`, asserting the two messages name the block, the
+provider and the key. A `null` requirement is refused. A blank `base-url` is refused, and
+`base-url` is not reported as unknown. A change to `base-url` alone names that bundle in
+`ReloadChange.updated()`. `toString()` shows neither the key nor a URL's user-info. For
+`openai`: no key and no `base-url` is refused with its own message, and no key with a
+`base-url` builds. For each factory, a `base-url` pointing at a closed local port makes the
+first call fail to connect instead of reaching the vendor — `ZhipuAiKeyHandlingTest` already
+builds a client that way. The 6 direct `new LlmConfig(…)` calls in 5 test files change with
+the record.
+
+#### Documentation and guidance
+
+- **The reference** gains `base-url`, and its `api-key` entry says the requirement now depends
+  on the provider, with a table. A section says how to reach a local server — LocalAI,
+  llama.cpp, vLLM, LM Studio — through `provider = openai`, and that no placeholder key is
+  needed. User-facing prose, under ADR-0039.
+- **The README** and **the tutorial** name `api-key` too: read both for a sentence that says it
+  is always required.
+- **The CHANGELOG**, under *Changed*: the source break with its migration, and the binary break
+  for a factory compiled against `0.2.0` — `AbstractMethodError` or `NoSuchMethodError` at run
+  time — which a reader of a source break does not expect. Under *Added*: `base-url`.
+- **`AGENTS.md`**: the paragraph on capabilities says a factory reports two things and "three of
+  the four are empty and GLM's is not". After this item a factory reports four things and
+  `openai`'s `validate()` is not empty either.
+
+#### What was done, and what was found
+
+Built as specified above; the points below are where the result differs from the plan or adds
+to it.
+
+- **The 11 builders were read again with `javap` on 2026-09-22** before any code was written:
+  every one of them has `baseUrl(String)`, Gemini's on `GoogleAiGeminiChatModelBaseBuilder` as
+  ADR-0062 says. `base-url` is passed with `ifPresent`, never as `null`, so an absent value
+  leaves each client's own default untouched.
+- **"A closed local port" was not enough for the provider tests, so they do not use one.** A
+  call to a closed port fails, and so does a call that ignored `base-url` and went to the
+  vendor with a dummy key, offline or not, so a failure proves nothing about where the request
+  went. Each provider module has a test-scope `CountingPort`, a loopback listener that accepts,
+  counts and closes each connection; a model reached the configured address only if the count
+  went up. Probed by deleting the `baseUrl` line from `AnthropicProviderFactory`'s estimator:
+  the test failed with `the token count estimator did not connect to http://127.0.0.1:…`. The
+  class is copied into the four modules because no provider depends on a core test-jar, and
+  one does not seem worth creating for thirty lines.
+- **The OpenAI client sends no `Authorization` header without a key — measured, not read.**
+  `noKeyMeansNoAuthorizationHeader` reads the request's headers off a loopback socket: `POST
+  /v1/chat/completions` and no `authorization:`. That is the fact ADR-0062's "the only thing
+  that demands a key is this library" rests on.
+- **The binary break is `AbstractMethodError`, and it is the only one a user meets.**
+  `modelrack4j-provider-openai:0.2.0` from Central, on a classpath with this branch's core,
+  fails `build()` at once with `AbstractMethodError: … OpenAiProviderFactory.apiKeyRequirement()
+  … is abstract`. The `NoSuchMethodError` on `config.apiKey()` that ADR-0062 also names is real
+  but unreachable through the registry, because the first error fires before any `create…`
+  call; the CHANGELOG names only the one that was measured. **Corrected in P49:** as first
+  committed, that error escaped a reload and ended the watcher thread; core now translates it
+  — see P49's findings.
+- **`FakeProviderFactory` takes both requirements through its constructor**, as planned, but
+  core's fakes are found by `ServiceLoader` and need a no-argument constructor, so each
+  combination is still a class: `fake-keyless` (`FORBIDDEN`/`MANDATORY`),
+  `fake-fixed-address` (`MANDATORY`/`FORBIDDEN`, a shape no real provider has, there to reach
+  the two values the others leave out) and `fake-null-requirement`. With `fake-local`
+  (`OPTIONAL`/`OPTIONAL`) that is every value of both keys; the twelve cases are one
+  `@CsvSource`, each asserting the whole message from `llm.LOCAL` on.
+- **The null-requirement test covers `api-key` only**, because the check reads `api-key` first
+  and one helper serves both keys.
+- **A stale sentence the plan did not list.** The reference said `${?VAR}` on a credential
+  "defers the failure to the first request". With `api-key` optional it now does one of two
+  other things — a refusal at load on a provider that requires a key, or on `openai` with a
+  `base-url` a block that sends no key — and the paragraph says so. README's layering example
+  also claimed a block was "pointing at a local gateway" while setting no address, which was
+  untrue until `base-url` existed; it now sets one.
+- **The tutorial needed no change.** Read for a sentence saying `api-key` is always required:
+  there is none, and every step it walks through uses `${VAR}`, which stays mandatory.
+- **Tests: 254 → 294 offline**, all passing — core 207 → 233, OpenAI 7 → 12, Anthropic 9 → 12,
+  Gemini 9 → 12, GLM 22 → 25. `mvn -Pintegration verify` was run at the end of P49, over
+  both items — see there.
+
+### P49 — An Ollama provider
+
+**Status:** Done — target 0.3.0 ·
+**Branch:** `task/p49-ollama-provider`, branched from P48's branch at the owner's request, so
+that a correction to P48 found while doing this lands here rather than on a branch of its own ·
+**Raised by:** the owner on 2026-09-20, settled by
+[ADR-0062](../adr/0062-a-provider-declares-its-key-requirements.md)
+
+A fifth provider module, and the first whose block takes no credential and needs an address.
+It is also the first that can be tested against a live model at no cost.
+
+#### What to build
+
+- **`modelrack4j-provider-ollama`** on `dev.langchain4j:langchain4j-ollama`, which the main BOM
+  manages at `${langchain4j.stable.version}`: no `<version>` in the module POM (ADR-0018), and no
+  second BOM import.
+- **`OllamaProviderFactory`**, provider id `ollama`: `apiKeyRequirement()` `FORBIDDEN`,
+  `baseUrlRequirement()` `MANDATORY`, `TokenEstimation.ABSENT`, `supportsModeration()`
+  `false`, and an empty `validate()`. Read from `langchain4j-ollama` `1.20.0` on 2026-09-21:
+  no estimator and no moderation model in any class, and `OllamaClient` refuses a blank
+  `baseUrl`, so there is no default address. The chat and streaming builders take `baseUrl`,
+  `modelName`, `temperature`, `logRequests`, `logResponses` and a single `timeout(Duration)`,
+  which the schema's `timeout` maps onto directly (ADR-0030).
+- **Wiring**: the `META-INF/services` entry, the module in the parent POM's `<modules>`, the
+  artifact in `modelrack4j-bom`, and a dependency from `modelrack4j-examples`.
+- **The dependency check M0 and P34 ran.** What does `langchain4j-ollama` bring, and does
+  `DependencyConvergence` stay green? Record the answer here, not only the build result.
+- **`OllamaProviderIT`**, under `-Pintegration`, enabled by `OLLAMA_BASE_URL` the way the others
+  are enabled by their key (`@EnabledIfEnvironmentVariable`). It needs a running server and a
+  pulled model rather than money; its Javadoc names both.
+- **One example** with a development layer on Ollama over a production layer on OpenAI, one
+  file apart. It is what layering is for, and no provider could show it before this one.
+
+#### What not to do
+
+- **Do not make Ollama the default of the examples or the tutorial.** Installing a local
+  inference server is a longer path to a first run than exporting a key, and P18 worked to
+  shorten that path.
+- **Do not add a module for LocalAI**, llama.cpp, vLLM or LM Studio. ADR-0062 records why:
+  `langchain4j-local-ai` wraps the OpenAI client and is on the beta line, so `provider = openai`
+  with a `base-url` is the same thing without the cost.
+- **Do not add the PIT plugin to the new module** (ADR-0041).
+
+#### Documentation and guidance
+
+Every table that names GLM for what it lacks names Ollama too, because the two have the same
+capabilities. Read on 2026-09-21: the capability matrix, in the README and in the reference;
+the token-window table that says *not at all* for GLM, in both; and two rows of the reference's
+troubleshooting table, for `ships no moderation model` ("Anthropic, Gemini or GLM") and for
+`no token count estimator` ("`token-window` on GLM"). The reference's table of provider modules
+gains a row. `AGENTS.md` says "Seven Maven modules, four providers" and lists the provider
+modules by name: after this item it is eight and five.
+
+#### What was done, and what was found
+
+- **The builders, read on 2026-09-22 with `javap`**, match what this entry said: `baseUrl`,
+  `modelName`, `temperature`, `logRequests`, `logResponses` and a single `timeout`, on
+  `OllamaBaseChatModel.Builder`; no `apiKey` method anywhere; `OllamaClient` calls
+  `ensureNotBlank(baseUrl, "baseUrl")`; and no `localhost` or `11434` string in the jar.
+- **The dependency check.** Core's runtime closure is 9 artifacts; the Ollama module's is 12.
+  The three it adds are `langchain4j-ollama` (124 KB), `langchain4j-http-client` (42 KB) and
+  `langchain4j-http-client-jdk` (19 KB, runtime scope), and the two HTTP client jars are
+  already in the OpenAI module's closure. `jackson-annotations` shows under
+  `langchain4j-ollama` in the tree, but core already has it through `jackson-databind`.
+  `DependencyConvergence` passes with no exclusion and no new pin.
+- **`OllamaProviderIT` skips without `OLLAMA_BASE_URL`**, which was checked; its live run is
+  recorded at the end of this entry. The eleven offline tests cover the rest, including a
+  `CountingPort` test that both models reach the configured address.
+- **The example is `LocalDevelopment`, run by `./run-local.sh`, and it is free.** It rests on
+  one property that had no test: a higher layer's `api-key = null` over a lower layer's
+  `${OPENAI_API_KEY}` with the variable unset. It loads, and the key is absent, because the
+  null replaces the substitution before resolution runs. `LayeredResolutionTest` now pins it.
+  Run from `/tmp` through the launcher with no server: step 1 prints the Ollama bundle and a
+  `ConnectException` with the hint, step 2 builds the OpenAI bundle with the key from `.env`,
+  and without the key step 2 prints the unresolved-substitution message instead.
+- **A failed connection is not a `LangChain4jException`, on Ollama or on OpenAI.** Probed with
+  both clients against `127.0.0.1:1`: each throws a plain `RuntimeException` whose cause is
+  `java.net.ConnectException`. The reference said that catching `LangChain4jException` makes
+  error handling survive any provider swap, and that "all four providers throw beneath it";
+  that was measured in P6 on errors a server answered with, never on a server that could not
+  be reached. With a server of your own, not running is the first error a user meets, so the
+  paragraph now says which errors the claim covers and names the other one. GLM and Gemini
+  were not probed.
+- **Stale counts outside the list above**, all fixed: `docs/manual/README.md` said "two of the
+  five are free" while there were six examples and three free ones; the reference's list of
+  launcher scripts left out `run-properties.sh`; `DatabaseSource` spoke of "the four other
+  examples"; and each `run-*.sh` said "the other five". `AGENTS.md`'s command block also
+  omitted `properties`.
+- **CI's offline job now blanks `OLLAMA_BASE_URL`** beside the four keys, so a test that
+  started depending on a server would fail there.
+- **A code review of P48 and P49 together found that P48 let a factory built for `0.2.0`
+  stop hot reload in silence**, and it was fixed here, on this branch, as the owner asked for
+  corrections to P48. The two requirement methods have no default, so such a factory throws
+  `AbstractMethodError` from `validateCapabilities`, and both `LlmRegistry.reload()` and the
+  watcher loop catch only `RuntimeException`. Measured with the `0.2.0` OpenAI provider from
+  Central, added by a reload to a registry that had started with an empty configuration:
+  `reload()` threw the raw error, `onReloadFailure` was called 0 times, and with `watch(true)`
+  the `modelrack4j-config-watcher` thread died, so no later edit was ever applied.
+  `SnapshotLoader.requirementOf` now turns it into a `ConfigValidationException` naming the
+  provider; the same probe then gives a rejected reload, one listener call per attempt and a
+  watcher that is still alive. `FakeOutdatedProviderFactory` throws the error itself, since a
+  class missing the methods cannot be compiled here, and `anOutdatedFactoryIsARejectedReload`
+  pins the path. Translating was preferred to checking every factory at `build()`, which would
+  let an outdated provider that no block uses stop the application from starting.
+- **The same review's smaller points, also fixed:** the four `orElseThrow()` calls in the
+  factories now carry a message for a caller that bypasses the registry, and the loopback
+  listeners in the provider tests bind `127.0.0.1` by name, because `getLoopbackAddress()` is
+  `::1` under `-Djava.net.preferIPv6Addresses=true` while the URLs said `127.0.0.1` (checked;
+  the OpenAI and Ollama tests pass with that flag). Two points were left as they are: `LlmConfig`
+  now has `apiKey` and `baseUrl` as adjacent `Optional<String>` components, so a caller of the
+  public constructor can swap them and still compile, which changing would mean changing the
+  API; and `CountingPort` stays copied into five modules rather than moving to a test-jar.
+- **PIT on core, 2026-09-22, over P48, P49 and the review fixes.** The report was checked to
+  contain `KeyRequirement` and `SnapshotLoader` before it was read (P31). First run: 296
+  mutants, 283 killed, 1 timed out, 11 survived, 1 uncovered; 3 min 48 s. Seven are the set
+  P41 accounted for and nothing new joined them — the five redundant `record(path)` calls in
+  `BlockReader`, the equivalent `Optional.empty()` in `LlmRegistry.reload`, the uncovered
+  cleanup in `WritableFileConfigSource.stage`, and the timeout on `Builder.chooseNotifier`.
+  **The five new survivors were all in `LlmConfig.withoutUserInfo`**, P48's redaction of a
+  URL's user-info, whose tests had covered the ordinary shapes and no boundary:
+
+  | Line | Mutant | Answer |
+  |---|---|---|
+  | 201 | `scheme < 0` → `<= 0` | killable: `://user:pw@host` |
+  | 205 | `found >= 0` → `> 0` | killable: `/v1/a@b`, no scheme and a path from index 0 |
+  | 205 | `found < end` → `<= end` | **equivalent**: two different delimiters never share an index. Checked by making the edit by hand — the suite passes |
+  | 209 | `end - 1` → `end + 1` | killable, and the one that mattered: `http://host/@x` treated an `@` just after the authority as user-info |
+  | 210 | `at < start` → `<= start` | killable: `http://@host`, empty user-info, which is still replaced |
+
+  Four cases were added to `LlmConfigTest`, and a second run gave 296 mutants, 287 killed,
+  1 timed out, 7 survived, 1 uncovered: the known seven and the equivalent one above.
+- **A second review, over the whole branch, found two more and fixed both.**
+  - **Any `LinkageError` from a factory took the same path as the `AbstractMethodError`
+    above**, and that predates this branch: a provider jar built against another LangChain4j
+    throws `NoSuchMethodError` or `NoClassDefFoundError` from `createChatModel`, and a reload
+    that met one ended the watcher thread the same way. `buildBundleReportingLinkage` now
+    wraps the whole build, and `aMismatchedProviderIsARejectedReload` pins it with a factory
+    that throws `NoSuchMethodError`. The catch is `LinkageError`, never `Error`.
+  - **`withoutUserInfo` could print part of a password.** It ended the authority at the first
+    `/`, `?` or `#`, as the URL rules say, so `https://user:pa/ss@host` — a password written
+    unencoded — was left as it was. It now replaces everything between the scheme and the last
+    `@` of the whole text. An `@` in a path or query now hides the host too, which reverses two
+    cases the PIT pass above had pinned as unchanged (`http://host/@x`, `/v1/a@b`); that is
+    the trade the record already makes for `custom-properties`. The method is three lines,
+    and a targeted PIT run over `LlmConfig` and `SnapshotLoader` killed all 105 mutants.
+- **PIT on core again, 2026-09-22, over the whole branch after the second review** — AMD
+  Ryzen 7 7840HS, Temurin 25. The report was checked to contain `KeyRequirement`,
+  `SnapshotLoader` and `LlmConfig` before it was read. 291 mutants, 284 killed, 1 timed out,
+  6 survived, 1 uncovered; line coverage 748/780; 3 min 42 s. Every one of the eight is in the
+  set P41 accounted for: the five redundant `record(path)` calls in `BlockReader`, the
+  equivalent `Optional.empty()` in `LlmRegistry.reload`, the timeout on
+  `Builder.chooseNotifier` and the uncovered cleanup in `WritableFileConfigSource.stage`. The
+  equivalent mutant in `withoutUserInfo` is gone with the code it was in, and nothing new
+  survives in the three-line version.
+- **Tests: 294 → 316 offline**, all passing — core 233 → 243, and 11 in the new module.
+- **A documentation review, at the owner's request, made local models visible where a reader
+  starts.** Before it, Ollama and the OpenAI-compatible route were described only in the
+  Providers sections, halfway down the README and the reference; the tutorial required a paid
+  key; and no example but `LocalDevelopment` touched either. Now the README's opening shows a
+  local block and names both routes; the tutorial has *A model on your own machine instead*,
+  with both forms and the three ways its steps then differ, and step 8 ends with a
+  `local.conf` that switches `SL` to Ollama; the reference's section is titled for local models
+  and OpenAI-compatible servers, and its contents table says so. A new
+  `modelrack4j-examples/src/main/resources/local-models.conf` gives ConsoleChat and
+  ThreeModelCouncil one block per route on the same server, and `build/run-example.sh` no
+  longer demands the two provider keys when a script is given a file of the caller's own.
+  Both scripts were run that way with no key in the environment and `.env` moved aside: both
+  blocks answered, streaming included. The review also found the same stale sentence in three
+  places — README, tutorial step 2 and `examples.conf` — saying that `${?VAR}` on a key fails
+  "at the first request, as an authentication error". Since P48 the block is refused at load
+  for a missing `api-key`; all three now say that. Machine-specific notes about where Ollama
+  runs were taken out of `AGENTS.md` at the owner's request.
+- **A second documentation pass, for consistency across the documents, found eight things.**
+  The README and the reference on `dev` described `base-url`, the Ollama provider and optional
+  keys while their status lines and dependency snippets said `0.2.0`, which has none of them.
+  GitHub shows `dev` (ADR-0061), so a reader would try them against `0.2.0` and meet an
+  unknown-key error. Both status lines now say the page is ahead of the release and point at
+  `main`; step 4 of P36's release checklist, which already rewrites those two lines, removes the
+  note with them. The README's list of launcher scripts left out `run-local.sh`; its layering
+  example still showed a fake key and a "local gateway" on Anthropic, while the tutorial and
+  `LocalDevelopment` told the same story with Ollama and `api-key = null`, so it now does too;
+  its Quick start did not say which artifact a provider needs. Its Providers section still said
+  that catching `LangChain4jException` covers a swap, which the reference had already
+  corrected for an unreachable server. The two ways to reach a local model were two separate
+  paragraphs in the README and a sentence that sent every local server to `provider = openai`
+  in the reference; both now open with the same two-row table and say to prefer
+  `provider = ollama` for Ollama. The reason was measured against Ollama `0.17.5` through
+  `provider = openai`: with moderation enabled the block loads and the first moderation request
+  fails with `ModelNotFoundException` (404), and `token-window` is refused by the tokenizer
+  message rather than by one about Ollama. The manual's index now says the tutorial can be
+  followed with no request at all.
+- **`mvn -Pintegration verify`, 2026-09-22, at `c28d54a`: green.** One live request each
+  through OpenAI, Anthropic, Gemini and GLM, all passing — so the four configured `model-name`
+  values still exist upstream (P6), and the four keyed providers still reach their vendor with
+  `base-url` absent and `api-key` read through `Optional`. `OllamaProviderIT` was skipped, as
+  expected with no `OLLAMA_BASE_URL`. 49 s for the whole reactor.
+- **`OllamaProviderIT` against a live server, 2026-09-22: green.** Ollama `0.17.5` on CPU, with
+  `OLLAMA_MODEL=tinyllama`, because that server had not pulled `llama3.2`; 14.7 s for the one
+  request. `./run-local.sh` with the same model got a real answer in step 1. Run with the
+  default `llama3.2`, it printed Ollama's own `{"error":"model 'llama3.2' not found"}` and the
+  hint, which is the failure the IT's Javadoc describes for a model that was never pulled.
+
+- **A third documentation pass, 2026-09-22, read every claim against the code.** Six fixes.
+  The tutorial's step 8 ended with a paragraph directly above a `---`, which Markdown renders as
+  a second-level heading, so the paragraph showed as a title. The reference said "all four
+  providers" were called live in P6, true of P6 and misleading next to a five-row table; it now
+  says the four hosted ones. Its reason for a three-valued `tokenEstimation()` still said a
+  boolean "would return true almost everywhere", which two providers out of five now
+  contradict; the argument is now the one that holds — among the three that estimate, what
+  differs is the cost. The README and the CHANGELOG said an OpenAI-compatible server needs no
+  key, which is true of Ollama and not of a vLLM started with `--api-key`; both now say "unless
+  the server checks one". The CHANGELOG gained a Fixed entry for the `LinkageError` translation,
+  a user-visible change — a watcher that used to stop now reports a rejected reload — which it
+  had not mentioned. `LocalDevelopment`'s Javadoc named `ConsoleChat` alone as a user of
+  `local-models.conf`, which `ThreeModelCouncil` takes too.
+
+### P50 — The pre-release check of 0.3.0
+
+**Status:** Done — green; no defect, nothing changed in the code ·
+**Branch:** `task/p50-pre-release-check-0.3.0` ·
+**Raised by:** the owner on 2026-10-04, as the check before 0.3.0 is released
+
+P48 and P49 were checked on their own branch on 2026-09-22 — two reviews, two PIT runs, a live
+run per provider, three documentation passes. This item re-runs what can change without a
+commit on `dev`: the build of the merged tree, and the live calls, because a model identifier
+rots upstream (P6). Measured at `8fd4089`, on an AMD Ryzen 7 7840HS, Temurin 25, Pop!_OS 24.04.
+
+| | |
+|---|---|
+| `mvn clean install` | green, 9 modules — 243 core tests and 72 provider unit tests (OpenAI 12, Anthropic 12, Gemini 12, GLM 25, Ollama 11) |
+| `mvn -Pintegration verify` | green, one live IT per provider and none skipped: OpenAI, Anthropic, Gemini, GLM, and Ollama `0.17.5` with `OLLAMA_MODEL=tinyllama`. The four configured hosted `model-name` values still exist upstream |
+| `build/check-docs.py` | clean, 62 ADRs and 77 tracked markdown files |
+
+**Why the review and PIT were not repeated.** Between `c28d54a`, where P49's live run was taken,
+and `8fd4089` on `dev`, 13 files changed and none is in a library module: the README, the
+manual, the CHANGELOG, `AGENTS.md`, `docs/tasks/`, `build/run-example.sh` and the examples
+module, which is not published.
+
+**Javadoc prints 12 warnings, and none is new in 0.3.0.** Seven in core — no main description
+on `ReloadFailure`, `ReloadChange` and two in `MemoryConfig`, no comment on two
+`StaleLayerException` fields and one in `UnknownConfigurationException` — and one per provider
+for the implicit default constructor. The five core classes are unchanged since `v0.2.0`, and
+the four older factories had no explicit constructor then either; `OllamaProviderFactory`
+follows their pattern. Left as they are; they do not fail the build.
+
+**LangChain4j `1.21.0` is on Central since 2026-10-02, and 0.3.0 cannot take it yet.** The
+community train, which the GLM module needs, is still at `1.20.0-beta30` (2026-09-04), and the
+parent POM requires the two BOMs to move together (ADR-0018, ADR-0022). So 0.3.0 ships on
+`1.20.0` unless the owner chooses to wait for the community release; the bump then needs
+P34's re-measurement of core's dependencies and the `jspecify` pin re-checked.

@@ -13,7 +13,7 @@
 
   <groupId>io.github.maxtrezzi</groupId>
   <artifactId>modelrack4j-parent</artifactId>
-  <version>0.2.0</version>
+  <version>0.3.0</version>
   <packaging>pom</packaging>
 
   <name>modelrack4j</name>
@@ -60,6 +60,7 @@
     <module>modelrack4j-provider-anthropic</module>
     <module>modelrack4j-provider-gemini</module>
     <module>modelrack4j-provider-glm</module>
+    <module>modelrack4j-provider-ollama</module>
     <module>modelrack4j-bom</module>
     <module>modelrack4j-examples</module>
   </modules>
@@ -77,7 +78,7 @@
       build embeds "now" and nobody downstream can verify that a published jar was built
       from the tag it claims. Bump this at each release, to that release's date.
     -->
-    <project.build.outputTimestamp>2026-09-07T00:00:00Z</project.build.outputTimestamp>
+    <project.build.outputTimestamp>2026-10-04T00:00:00Z</project.build.outputTimestamp>
 
     <!--
       A1: the JPMS module name every published jar advertises. Overridden per module. It
