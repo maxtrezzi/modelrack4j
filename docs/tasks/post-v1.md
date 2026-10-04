@@ -6008,7 +6008,9 @@ onto `main` as `383a83d` (#73) with the five checks green on both the push and t
 - the Ollama jar downloaded from Central carries its `META-INF/services` entry, and every entry
   in it is dated `2026-10-04 00:00` — `versions:set` had written `2026-10-04T20:01:37Z`;
 - its signature, downloaded from Central, is good for the key below. Before the upload, all 26
-  signatures in the bundle verified with `gpg --verify`.
+  signatures in the bundle verified with `gpg --verify`;
+- the core, OpenAI and Ollama jars that `mvn install` on `release/0.3.0` left in `~/.m2` are
+  identical byte for byte to the ones Central serves, so the build reproduces.
 
 **The signing key changed.** `0.1.0` and `0.2.0` were signed with
 `B9602C495E92406FF5DF24A9336FF7186A35E877`, whose passphrase is lost. `0.3.0` is signed with
@@ -6038,5 +6040,10 @@ are the same tree. `AGENTS.md`'s paragraph on `main`'s frozen documentation said
 `CONTRIBUTING.md` still told a contributor to branch from `main`; `0.3.0` carried `dev`'s copy
 across, as ADR-0061 intended, and the paragraph now says so in the past tense.
 
-Still to do after this branch: the tag `v0.3.0` on `main`, the GitHub release, whose notes
-name the new key, and `dev` on the next `-SNAPSHOT` with `[Unreleased]` reopened.
+**After the documentation, the last three steps of the checklist.** The annotated tag `v0.3.0`
+on `main` at `383a83d`, created after the publish. The GitHub release from that tag, marked
+latest, whose notes name both keys and say to add the new one. And `dev` on `0.4.0-SNAPSHOT`
+with `[Unreleased]` reopened, on `release/dev-to-0.4.0-snapshot`: `versions:set` wrote
+`2026-10-04T20:52:54Z` into `project.build.outputTimestamp` once more, and it is back at
+`2026-10-04T00:00:00Z`. `0.4.0` is a placeholder, as P46 said of `0.3.0`; the release commit
+sets the real number.
