@@ -5952,3 +5952,38 @@ modules by name: after this item it is eight and five.
   a user-visible change — a watcher that used to stop now reports a rejected reload — which it
   had not mentioned. `LocalDevelopment`'s Javadoc named `ConsoleChat` alone as a user of
   `local-models.conf`, which `ThreeModelCouncil` takes too.
+
+### P50 — The pre-release check of 0.3.0
+
+**Status:** Done — green; no defect, nothing changed in the code ·
+**Branch:** `task/p50-pre-release-check-0.3.0` ·
+**Raised by:** the owner on 2026-10-04, as the check before 0.3.0 is released
+
+P48 and P49 were checked on their own branch on 2026-09-22 — two reviews, two PIT runs, a live
+run per provider, three documentation passes. This item re-runs what can change without a
+commit on `dev`: the build of the merged tree, and the live calls, because a model identifier
+rots upstream (P6). Measured at `8fd4089`, on an AMD Ryzen 7 7840HS, Temurin 25, Pop!_OS 24.04.
+
+| | |
+|---|---|
+| `mvn clean install` | green, 9 modules — 243 core tests and 72 provider unit tests (OpenAI 12, Anthropic 12, Gemini 12, GLM 25, Ollama 11) |
+| `mvn -Pintegration verify` | green, one live IT per provider and none skipped: OpenAI, Anthropic, Gemini, GLM, and Ollama `0.17.5` with `OLLAMA_MODEL=tinyllama`. The four configured hosted `model-name` values still exist upstream |
+| `build/check-docs.py` | clean, 62 ADRs and 77 tracked markdown files |
+
+**Why the review and PIT were not repeated.** Between `c28d54a`, where P49's live run was taken,
+and `8fd4089` on `dev`, 13 files changed and none is in a library module: the README, the
+manual, the CHANGELOG, `AGENTS.md`, `docs/tasks/`, `build/run-example.sh` and the examples
+module, which is not published.
+
+**Javadoc prints 12 warnings, and none is new in 0.3.0.** Seven in core — no main description
+on `ReloadFailure`, `ReloadChange` and two in `MemoryConfig`, no comment on two
+`StaleLayerException` fields and one in `UnknownConfigurationException` — and one per provider
+for the implicit default constructor. The five core classes are unchanged since `v0.2.0`, and
+the four older factories had no explicit constructor then either; `OllamaProviderFactory`
+follows their pattern. Left as they are; they do not fail the build.
+
+**LangChain4j `1.21.0` is on Central since 2026-10-02, and 0.3.0 cannot take it yet.** The
+community train, which the GLM module needs, is still at `1.20.0-beta30` (2026-09-04), and the
+parent POM requires the two BOMs to move together (ADR-0018, ADR-0022). So 0.3.0 ships on
+`1.20.0` unless the owner chooses to wait for the community release; the bump then needs
+P34's re-measurement of core's dependencies and the `jspecify` pin re-checked.
