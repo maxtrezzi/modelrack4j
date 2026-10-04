@@ -55,6 +55,15 @@ class ReloadTest {
     /** Short enough to keep the suite quick, still ~25x the event burst one write makes. */
     private static final Duration DEBOUNCE = Duration.ofMillis(60);
 
+    /**
+     * For the one test that counts reloads across several writes. The watcher times the quiet
+     * period from when it reads an event, so a stall longer than the debounce between two writes
+     * is a real pause and the extra reload it causes is correct. At {@link #DEBOUNCE} a 60 ms
+     * stall on a shared CI runner was enough: all ten failed CI runs up to 2026-10-04 were that
+     * test, counting 2 or 3 reloads (P52).
+     */
+    private static final Duration BURST_DEBOUNCE = Duration.ofSeconds(1);
+
     /** Generous: a loaded CI runner is slow, and a too-tight bound is a flaky test. */
     private static final Duration TIMEOUT = Duration.ofSeconds(10);
 
@@ -105,7 +114,7 @@ class ReloadTest {
     @DisplayName("a burst of rapid writes produces exactly one reload")
     void rapidWritesCollapseIntoOneReload() throws IOException {
         Path file = write("app.conf", block("SL", "v0"));
-        watch(file);
+        watch(BURST_DEBOUNCE, file);
 
         for (int i = 1; i <= 5; i++) {
             write("app.conf", block("SL", "v" + i));
@@ -401,10 +410,14 @@ class ReloadTest {
     }
 
     private void watch(Path... files) {
+        watch(DEBOUNCE, files);
+    }
+
+    private void watch(Duration debounce, Path... files) {
         registry = LlmRegistry.builder()
                 .configFiles(List.of(files))
                 .watch(true)
-                .debounce(DEBOUNCE)
+                .debounce(debounce)
                 .build();
         listen();
     }

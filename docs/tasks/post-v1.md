@@ -6050,7 +6050,7 @@ sets the real number.
 
 ### P52 — `rapidWritesCollapseIntoOneReload` fails on CI about one run in fourteen
 
-**Status:** Open — the cause is found; the fix waits on the owner ·
+**Status:** Done — this test now has a 1 s debounce of its own; the assertion is unchanged ·
 **Branch:** `task/p52-rapid-writes-test-flakes` ·
 **Raised by:** the owner on 2026-10-04, after the test failed on #75, the snapshot bump that
 followed 0.3.0, and a re-run of the job passed
@@ -6089,3 +6089,11 @@ CPU load alone does not make the stall; on the runner it may come from the VM or
    that did nothing would pass it.
 3. **Keep the assertion and re-run on failure** (Surefire's `rerunFailingTestsCount`). Hides the
    next real regression in the same place.
+
+**The owner chose 1.** `ReloadTest` gains `BURST_DEBOUNCE` (1 s) and a `watch(Duration, Path...)`
+overload; `rapidWritesCollapseIntoOneReload` is the only caller, and every other test keeps 60 ms.
+The assertion is still exactly one reload. A throwaway probe that slept 1.2 s after the third of
+the five writes made the test fail with 2 reloads, so it still detects a burst the debounce did
+not collapse. `ReloadTest` takes 7.7 s instead of 6.6 s on this machine, and core's 243 tests
+pass. Whether the fix holds on CI can only be seen over the next runs, since the failure was
+never reproduced here.
