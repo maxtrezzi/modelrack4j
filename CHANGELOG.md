@@ -9,7 +9,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 release. Breaking changes will be called out under **Changed** with the migration, but they
 will not be held back for a major bump until the API settles at `1.0.0`.
 
-## [Unreleased]
+## [0.3.0] — 2026-10-04
 
 ### Added
 
@@ -513,5 +513,6 @@ than listed as one long **Added** block.
   version once and forever, so a tag written first would be a promise the publish might not
   keep (ADR-0045).
 -->
+[0.3.0]: https://github.com/maxtrezzi/modelrack4j/releases/tag/v0.3.0
 [0.2.0]: https://github.com/maxtrezzi/modelrack4j/releases/tag/v0.2.0
 [0.1.0]: https://github.com/maxtrezzi/modelrack4j/releases/tag/v0.1.0
