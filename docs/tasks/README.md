@@ -130,6 +130,7 @@ Phase 0 gates everything else; nothing below M0 should start before its blockers
 | [P48](post-v1.md#p48--api-key-and-base-url-what-a-provider-permits-and-requires) | `api-key` and `base-url`: what a provider permits and requires | Done — target 0.3.0; ADR-0062 |
 | [P49](post-v1.md#p49--an-ollama-provider) | An Ollama provider | Done — target 0.3.0 |
 | [P50](post-v1.md#p50--the-pre-release-check-of-030) | The pre-release check of 0.3.0 | **Done** — `dev` at `8fd4089` builds green and all five live ITs pass, Ollama included; no code changed. LangChain4j `1.21.0` is out but its community train is not, so 0.3.0 stays on `1.20.0` |
+| [P51](post-v1.md#p51--030-published) | 0.3.0 published | **Done** — on Maven Central 2026-10-04, verified from an empty local repository. Signed with a new key, because the old one's passphrase is lost; `-B` turned out to make signing impossible, and the bundle check reported present signatures as missing on some runs |
 | [D1](open-decisions.md#d1--glm-route-if-no-maintained-module-exists) | GLM route if no maintained module | **Closed** — never became live |
 | [D2](open-decisions.md#d2--repository-visibility) | Repository visibility | **Settled** — public, not released; ADR-0034 |
 | [D3](open-decisions.md#d3--token-window-memory-on-a-remote-estimator) | Token-window memory on a remote estimator | **Settled** — opt-in flag |

@@ -5987,3 +5987,56 @@ community train, which the GLM module needs, is still at `1.20.0-beta30` (2026-0
 parent POM requires the two BOMs to move together (ADR-0018, ADR-0022). So 0.3.0 ships on
 `1.20.0` unless the owner chooses to wait for the community release; the bump then needs
 P34's re-measurement of core's dependencies and the `jspecify` pin re-checked.
+
+### P51 — 0.3.0 published
+
+**Status:** Done — on Maven Central 2026-10-04 ·
+**Branch:** `docs/0.3.0-on-central` ·
+**Raised by:** the owner on 2026-10-04, after [P50](#p50--the-pre-release-check-of-030)
+
+The version commit landed on `dev` as `a23f455` (#72), and the release pull request squashed it
+onto `main` as `383a83d` (#73) with the five checks green on both the push and the pull request.
+`mvn -Prelease clean deploy` from `main` uploaded deployment
+`a57798d0-36a5-4702-884e-a4823e0ddcae`, which reached `VALIDATED`; the owner pressed Publish.
+
+**What was verified against Central rather than assumed:**
+
+- the POM and its `.asc` for all eight published modules — parent, BOM, core and five
+  providers — answer `200` on `repo1.maven.org`, and `modelrack4j-examples` answers `404`;
+- `modelrack4j-provider-ollama` and `modelrack4j-provider-glm` resolve with `dependency:get`
+  into an empty local repository, bringing core and LangChain4j `1.20.0`;
+- the Ollama jar downloaded from Central carries its `META-INF/services` entry, and every entry
+  in it is dated `2026-10-04 00:00` — `versions:set` had written `2026-10-04T20:01:37Z`;
+- its signature, downloaded from Central, is good for the key below. Before the upload, all 26
+  signatures in the bundle verified with `gpg --verify`.
+
+**The signing key changed.** `0.1.0` and `0.2.0` were signed with
+`B9602C495E92406FF5DF24A9336FF7186A35E877`, whose passphrase is lost. `0.3.0` is signed with
+`EB71EAD0CD7AEE667D093D309EC2E218A2086E72`, created 2026-09-28 and already on
+`keyserver.ubuntu.com` and `keys.openpgp.org`, which is all Central checks. The new key could
+not be certified by the old one, for the same reason. With two secret keys in the keyring,
+`maven-gpg-plugin` signs with the first unless the release passes `-Dgpg.keyname`. Whether to
+revoke the old key is left to the owner; the signatures of the two earlier releases verify
+either way.
+
+**`-B` makes signing impossible.** In batch mode `maven-gpg-plugin` passes
+`--pinentry-mode error` to gpg, so no dialog opens and the build fails with `No pinentry`. The
+signing step runs without `-B`. `AGENTS.md` now says both of these next to the passphrase.
+
+**`build/check-release-bundle.sh` reported signatures as missing that were present.** Its loop
+ran `echo "$entries" | grep -qxF` under `set -o pipefail`: `grep -q` exits at the first match,
+the `echo` then dies of `SIGPIPE`, and the pipeline fails. Measured on the 0.3.0 bundle, 156
+entries: the old script failed 5 runs in 30, while `gpg --verify` found all 26 signatures
+present and good. It now reads a here-string, and failed 0 runs in 30; with one `.asc` deleted
+from a copy of the bundle, it still names that artifact and fails.
+
+**Documentation moved after the publish:** the six dependency snippets — four in the README
+including the BOM block, one in the tutorial, one in the reference — the README's status line,
+the reference's current release, and `AGENTS.md`'s Project state. The two "ahead of the
+release" notes P49 added to the README and the reference are gone, since `dev` and the release
+are the same tree. `AGENTS.md`'s paragraph on `main`'s frozen documentation said `main`'s
+`CONTRIBUTING.md` still told a contributor to branch from `main`; `0.3.0` carried `dev`'s copy
+across, as ADR-0061 intended, and the paragraph now says so in the past tense.
+
+Still to do after this branch: the tag `v0.3.0` on `main`, the GitHub release, whose notes
+name the new key, and `dev` on the next `-SNAPSHOT` with `[Unreleased]` reopened.

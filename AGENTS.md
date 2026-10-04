@@ -7,14 +7,16 @@ and points here; every ADR that cites the old name still resolves.
 
 ## Project state
 
-**v1 is complete, the repository is public, and `0.2.0` is the current release.** Nine Maven
+**v1 is complete, the repository is public, and `0.3.0` is the current release.** Nine Maven
 modules, five providers, hot reload, a two-part manual and seven runnable examples. M0–M6 are
 done: M6's trigger fired on 2026-09-02, when the owner tested the library and judged it
 publishable, and `io.github.maxtrezzi:modelrack4j-*:0.1.0` was signed and published to Maven
 Central the same evening. `0.2.0` followed on 2026-09-07 — custom properties, a closed schema,
 an empty configuration, `writableSources()`, and a generic registry that is a source break for
-a caller who used the raw type. `modelrack4j-examples` is not published and is confirmed absent
-from Central for both releases.
+a caller who used the raw type. `0.3.0` followed on 2026-10-04 — `base-url`, the Ollama
+provider, and `api-key` optional where a provider allows it, with `LlmConfig.apiKey()` now an
+`Optional` and two methods every `ProviderFactory` must implement. `modelrack4j-examples` is not
+published and is confirmed absent from Central for all three releases.
 
 **A published version can never be changed or deleted.** That is new, and it changes what a
 mistake costs: before M6 a wrong API shape was a commit, now it is a permanent artifact. The
@@ -120,12 +122,13 @@ force-pushing is blocked anyway.
 
 **`main`'s documentation is frozen at release time, and that is the design rather than drift.**
 `main` holds what Maven Central holds, so everything on it — `CONTRIBUTING.md`, this file, the
-ADR index — describes the project as it was on the day of that release. Right now `main`'s
-`CONTRIBUTING.md` still says to branch from `main` and its `build.yml` still triggers on `main`
-alone, because both were true when `0.2.0` shipped. **Do not "fix" them there**: a commit on
-`main` that is not a release is what ADR-0061 point 2 forbids, and the next release carries the
-correction across with everything else. The exposure is small because GitHub reads the
-community files, the repository home and a new pull request's base from the *default* branch,
+ADR index — describes the project as it was on the day of that release. Between `0.2.0` and
+`0.3.0`, `main`'s `CONTRIBUTING.md` said to branch from `main` and its `build.yml` triggered on
+`main` alone, because both were true when `0.2.0` shipped; `0.3.0` carried the correction
+across, which is the mechanism working as intended. **Do not "fix" such a file on `main`**: a
+commit on `main` that is not a release is what ADR-0061 point 2 forbids, and the next release
+carries the correction across with everything else. The exposure is small because GitHub reads
+the community files, the repository home and a new pull request's base from the *default* branch,
 which is `dev` — checked on 2026-09-08, `CONTRIBUTING.md` served by the API matched `dev`'s
 blob and not `main`'s. The one thing to confirm rather than assume at each release is that the
 release pull request still runs the five checks: it does, because a `pull_request` event uses
@@ -212,7 +215,13 @@ passphrase, which is not cached. The passphrase does not require an interactive 
 default pinentry here is `pinentry-gnome3` and `DISPLAY` is set, so a signing step started
 from any shell opens a dialog on the desktop for a human to type into. **Do not conclude
 otherwise from `gpg --pinentry-mode error`** — that flag orders gpg to fail rather than ask,
-so its `No pinentry` says nothing about what is available.
+so its `No pinentry` says nothing about what is available. **Never run the signing step with
+`-B`**: in batch mode `maven-gpg-plugin` passes that same flag itself, so the dialog never opens
+and the build fails with `No pinentry`. The dialog gives up after about a minute if nobody
+types. **From `0.3.0` the artifacts are signed with a second key**,
+`EB71EAD0CD7AEE667D093D309EC2E218A2086E72`, because the passphrase of the key that signed
+`0.1.0` and `0.2.0` was lost; with both in the keyring, gpg picks the old one unless the
+release names the new one with `-Dgpg.keyname=<fingerprint>`.
 `build/check-release-bundle.sh` checks a built bundle before it is uploaded.
 
 ```bash
