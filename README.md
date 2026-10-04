@@ -1,8 +1,8 @@
 # modelrack4j
 
 Turn layered HOCON configuration into **named, ready-to-use bundles of LangChain4j
-objects** — for OpenAI, Anthropic, GLM, a local Ollama, or any OpenAI-compatible server — with
-validated hot reload.
+objects** — for OpenAI, Anthropic, Gemini, GLM, a local Ollama, or any OpenAI-compatible
+server — with validated hot reload.
 
 Declare `SL`, `CR`, `GL` and `LOCAL` in a config file; ask the registry for each by name and get a
 consistent `ChatModel` + `StreamingChatModel` + `ModerationModel` + `ChatMemoryProvider`

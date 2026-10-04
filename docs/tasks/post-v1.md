@@ -6100,7 +6100,7 @@ never reproduced here.
 
 ### P53 — The README's opening sentence leaves out Gemini
 
-**Status:** Not started ·
+**Status:** Done — the sentence names all five providers ·
 **Branch:** `task/p53-readme-opening-names-gemini` ·
 **Raised by:** the owner on 2026-10-04, after 0.3.0 was published
 
@@ -6120,3 +6120,12 @@ manual page as well before calling the item done.
 
 **Not on `main`.** `main`'s README is frozen at the `0.3.0` release (ADR-0061, and `AGENTS.md`
 on `main`'s documentation); the correction reaches it with the next release.
+
+**What was done.** The sentence now reads "for OpenAI, Anthropic, Gemini, GLM, a local Ollama, or
+any OpenAI-compatible server", in the order of the paragraph at line 27. The opening of each
+manual page was read as well: `docs/manual/README.md`, `part-1-tutorial.md` and
+`part-2-reference.md` name no list of providers there. A wider `grep -i` over the README, the
+three manual pages and `CONTRIBUTING.md`, for a provider count and for `OpenAI, Anthropic`,
+finds the corrected line, the paragraph at line 27, and three sentences that say *five*:
+`part-1-tutorial.md:327`, `part-2-reference.md:1212` and `CONTRIBUTING.md:41`. No `CHANGELOG.md`
+entry: the change is to the README's wording, and the released artifacts are unchanged.
