@@ -6097,3 +6097,35 @@ the five writes made the test fail with 2 reloads, so it still detects a burst t
 not collapse. `ReloadTest` takes 7.7 s instead of 6.6 s on this machine, and core's 243 tests
 pass. Whether the fix holds on CI can only be seen over the next runs, since the failure was
 never reproduced here.
+
+### P53 — The README's opening sentence leaves out Gemini
+
+**Status:** Done — the sentence names all five providers ·
+**Branch:** `task/p53-readme-opening-names-gemini` ·
+**Raised by:** the owner on 2026-10-04, after 0.3.0 was published
+
+The README's first sentence, on `dev` at `d3c5118`, says the library builds bundles "for OpenAI,
+Anthropic, GLM, a local Ollama, or any OpenAI-compatible server". Gemini is not in it. P49
+(`8fd4089`) wrote that list; before it, the sentence named no provider. At line 27, still before
+the first section heading, the paragraph that opens with "Hosted and local models, side by
+side" names all five, so the page contradicts itself on its first screen. The four names match the four blocks of the
+example directly under the sentence — `SL` on Anthropic, `CR` on OpenAI, `GL` on GLM, `LOCAL`
+on Ollama — and that example has no Gemini block.
+
+**What to do:** name Gemini in that sentence. A `git grep` of the tracked Markdown outside
+`CHANGELOG.md`, `docs/tasks/` and `docs/adr/`, run on 2026-10-04 for `OpenAI, Anthropic, GLM`
+and for `four providers`, finds this line and one sentence in `AGENTS.md` that quotes a
+miscount as its example. That search finds only these two wordings, so read the opening of each
+manual page as well before calling the item done.
+
+**Not on `main`.** `main`'s README is frozen at the `0.3.0` release (ADR-0061, and `AGENTS.md`
+on `main`'s documentation); the correction reaches it with the next release.
+
+**What was done.** The sentence now reads "for OpenAI, Anthropic, Gemini, GLM, a local Ollama, or
+any OpenAI-compatible server", in the order of the paragraph at line 27. The opening of each
+manual page was read as well: `docs/manual/README.md`, `part-1-tutorial.md` and
+`part-2-reference.md` name no list of providers there. A wider `grep -i` over the README, the
+three manual pages and `CONTRIBUTING.md`, for a provider count and for `OpenAI, Anthropic`,
+finds the corrected line, the paragraph at line 27, and three sentences that say *five*:
+`part-1-tutorial.md:327`, `part-2-reference.md:1212` and `CONTRIBUTING.md:41`. No `CHANGELOG.md`
+entry: the change is to the README's wording, and the released artifacts are unchanged.
