@@ -47,10 +47,12 @@ else
 fi
 
 # Every .jar and .pom needs a sibling .asc. Checksums (.md5/.sha1/.sha256/.sha512) do not.
+# A here-string, not `echo | grep -q`: grep -q exits at the first match, the echo then dies of
+# SIGPIPE, and pipefail reports a signature that is present as missing — on some runs only.
 missing=0
 while read -r artifact; do
   [[ -z "$artifact" ]] && continue
-  if ! echo "$entries" | grep -qxF "$artifact.asc"; then
+  if ! grep -qxF "$artifact.asc" <<< "$entries"; then
     echo "FAIL: no signature for $artifact" >&2
     missing=$((missing + 1))
   fi

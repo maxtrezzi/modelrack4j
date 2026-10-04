@@ -41,13 +41,8 @@ dependencies and the full schema.
 📖 **[The manual](docs/manual/README.md)** — a [tutorial](docs/manual/part-1-tutorial.md) that
 starts from nothing, and a [reference](docs/manual/part-2-reference.md) for everything else.
 
-**Status: `0.2.0`, on Maven Central.** The API is 0.x and may still
+**Status: `0.3.0`, on Maven Central.** The API is 0.x and may still
 change in a minor release; see [CHANGELOG.md](CHANGELOG.md).
-
-> **This page is ahead of the release.** It describes the `dev` branch. `base-url`, the
-> Ollama provider, `api-key` being optional on some providers, and `local-models.conf` arrive
-> in `0.3.0` and are not in `0.2.0`. The pages for `0.2.0` are on the
-> [`main` branch](https://github.com/maxtrezzi/modelrack4j/tree/main).
 
 ---
 
@@ -190,17 +185,17 @@ each one registers itself through `ServiceLoader`. The module for `provider = x`
 <dependency>
   <groupId>io.github.maxtrezzi</groupId>
   <artifactId>modelrack4j-core</artifactId>
-  <version>0.2.0</version>
+  <version>0.3.0</version>
 </dependency>
 <dependency>
   <groupId>io.github.maxtrezzi</groupId>
   <artifactId>modelrack4j-provider-anthropic</artifactId>
-  <version>0.2.0</version>
+  <version>0.3.0</version>
 </dependency>
 <dependency>
   <groupId>io.github.maxtrezzi</groupId>
   <artifactId>modelrack4j-provider-openai</artifactId>
-  <version>0.2.0</version>
+  <version>0.3.0</version>
 </dependency>
 ```
 
@@ -212,7 +207,7 @@ Or import the BOM once and drop the versions:
     <dependency>
       <groupId>io.github.maxtrezzi</groupId>
       <artifactId>modelrack4j-bom</artifactId>
-      <version>0.2.0</version>
+      <version>0.3.0</version>
       <type>pom</type>
       <scope>import</scope>
     </dependency>

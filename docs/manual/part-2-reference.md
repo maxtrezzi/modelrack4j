@@ -3,11 +3,6 @@
 What every key means, what every method promises, and what the library does when things go
 wrong. [Part 1](part-1-tutorial.md) is the way in; this is the page you come back to.
 
-> **This page is ahead of the release.** It describes the `dev` branch. `base-url`, the
-> Ollama provider, `api-key` being optional on some providers, and `local-models.conf` arrive
-> in `0.3.0` and are not in `0.2.0`. The pages for `0.2.0` are on the
-> [`main` branch](https://github.com/maxtrezzi/modelrack4j/tree/main).
-
 **Contents**
 
 | | |
@@ -46,7 +41,7 @@ wrong. [Part 1](part-1-tutorial.md) is the way in; this is the page you come bac
 
 **Java 17 or newer.** Built and tested on 17, 21 and 25.
 
-**On Maven Central** since `0.1.0`; the current release is `0.2.0`. Import the BOM once, then
+**On Maven Central** since `0.1.0`; the current release is `0.3.0`. Import the BOM once, then
 declare artifacts without versions:
 
 ```xml
@@ -55,7 +50,7 @@ declare artifacts without versions:
     <dependency>
       <groupId>io.github.maxtrezzi</groupId>
       <artifactId>modelrack4j-bom</artifactId>
-      <version>0.2.0</version>
+      <version>0.3.0</version>
       <type>pom</type>
       <scope>import</scope>
     </dependency>
