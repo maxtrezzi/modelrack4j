@@ -133,6 +133,10 @@ Phase 0 gates everything else; nothing below M0 should start before its blockers
 | [P51](post-v1.md#p51--030-published) | 0.3.0 published | **Done** — on Maven Central 2026-10-04, verified from an empty local repository. Signed with a new key, because the old one's passphrase is lost; `-B` turned out to make signing impossible, and the bundle check reported present signatures as missing on some runs |
 | [P52](post-v1.md#p52--rapidwritescollapseintoonereload-fails-on-ci-about-one-run-in-fourteen) | `rapidWritesCollapseIntoOneReload` fails on CI about one run in fourteen | **Done** — all ten failed CI runs since 2026-08-20 were this test; a stall longer than the 60 ms test debounce is a real quiet period, so the extra reload was correct. The test now has a 1 s debounce of its own and still asserts exactly one reload |
 | [P53](post-v1.md#p53--the-readmes-opening-sentence-leaves-out-gemini) | The README's opening sentence leaves out Gemini | **Done** — the README's first sentence named four of the five providers, the four of the example under it; it now names Gemini too. No other provider list in the README, the manual or `CONTRIBUTING.md` leaves one out |
+| [P54](post-v1.md#p54--langchain4j-1220) | LangChain4j `1.22.0` | Not started — target 0.4.0 |
+| [P55](post-v1.md#p55--listeners-on-the-models-the-registry-builds) | Listeners on the models the registry builds | Not started — target 0.4.0; closes with an ADR |
+| [P56](post-v1.md#p56--a-mistral-provider) | A Mistral provider | Blocked — on P55; target 0.4.0 |
+| [P57](post-v1.md#p57--a-catalogue-of-providers-and-compatible-services) | A catalogue of providers and compatible services | Blocked — on P56; target 0.4.0 |
 | [D1](open-decisions.md#d1--glm-route-if-no-maintained-module-exists) | GLM route if no maintained module | **Closed** — never became live |
 | [D2](open-decisions.md#d2--repository-visibility) | Repository visibility | **Settled** — public, not released; ADR-0034 |
 | [D3](open-decisions.md#d3--token-window-memory-on-a-remote-estimator) | Token-window memory on a remote estimator | **Settled** — opt-in flag |
