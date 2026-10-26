@@ -13,6 +13,27 @@ will not be held back for a major bump until the API settles at `1.0.0`.
 
 ### Added
 
+- **`modelrack4j-provider-mistral`, a sixth provider**, on the stable `langchain4j-mistral-ai`
+  module. It builds a chat model, a streaming chat model and a moderation model, so it is the
+  second provider that can moderate. It has no token counter, so `token-window` memory is
+  refused and `message-window` is the way to bound a conversation. `api-key` is required, and
+  `base-url` is optional:
+
+  ```hocon
+  llm.MI {
+    provider   = mistral
+    api-key    = ${MISTRAL_API_KEY}
+    model-name = "mistral-small-latest"
+    moderation { enabled = true }
+  }
+  ```
+
+  The moderation model is `mistral-moderation-latest`, not the block's `model-name`, which
+  names a chat model. It adds three jars to core's: `langchain4j-mistral-ai` and the two HTTP
+  client jars the OpenAI and Ollama providers already bring. The message that refuses
+  `moderation.enabled = true` on a provider without moderation now names both providers that
+  have it, `openai` and `mistral`.
+
 - **Listeners on the models the registry builds.** `LlmRegistry.Builder` has
   `chatModelListeners(...)` and `moderationModelListeners(...)`, each a function from a
   configuration to its LangChain4j listeners. The registry calls it for each bundle it builds,

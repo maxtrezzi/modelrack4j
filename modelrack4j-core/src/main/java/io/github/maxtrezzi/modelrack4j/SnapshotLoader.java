@@ -457,7 +457,8 @@ final class SnapshotLoader<T> {
             throw new ConfigValidationException(path(config)
                     + " sets moderation.enabled = true, but provider '" + config.provider()
                     + "' ships no moderation model. Remove the moderation block, or route"
-                    + " moderation through an OpenAI-family configuration.");
+                    + " moderation through a configuration on a provider that has one, such as"
+                    + " openai or mistral.");
         }
 
         Optional<MemoryConfig> configured = config.memory();

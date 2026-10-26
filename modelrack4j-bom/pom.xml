@@ -47,6 +47,11 @@
         <artifactId>modelrack4j-provider-ollama</artifactId>
         <version>${project.version}</version>
       </dependency>
+      <dependency>
+        <groupId>io.github.maxtrezzi</groupId>
+        <artifactId>modelrack4j-provider-mistral</artifactId>
+        <version>${project.version}</version>
+      </dependency>
     </dependencies>
   </dependencyManagement>
 </project>

@@ -94,8 +94,8 @@ public interface ProviderFactory {
      * Returns whether this provider can build a {@code ModerationModel}, which decides
      * whether a block may set {@code moderation.enabled = true}.
      *
-     * <p>Of the providers in this repository, only OpenAI can. Reporting it here rather than
-     * rejecting it in {@link #validate(LlmConfig)} keeps the rule and its message in core,
+     * <p>Of the providers in this repository, OpenAI and Mistral can. Reporting it here rather
+     * than rejecting it in {@link #validate(LlmConfig)} keeps the rule and its message in core,
      * beside the {@link #tokenEstimation()} rules, so every provider refuses the same
      * configuration in the same words.
      *

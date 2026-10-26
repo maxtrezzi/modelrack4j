@@ -77,6 +77,7 @@ declare artifacts without versions:
 | `modelrack4j-provider-gemini` | `provider = gemini` |
 | `modelrack4j-provider-glm` | `provider = glm` |
 | `modelrack4j-provider-ollama` | `provider = ollama` |
+| `modelrack4j-provider-mistral` | `provider = mistral` |
 | `modelrack4j-bom` | to version all of the above from one coordinate |
 
 **Core knows no providers.** It contains no provider artifact and never will: each provider
@@ -312,7 +313,7 @@ memory { type = message-window, max-messages = 20 }
 |---|---|
 | **locally** (OpenAI, via a bundled tokenizer) | built, with no extra configuration |
 | **remotely** (Anthropic, Gemini) | **rejected unless** `allow-remote-token-counting = true` |
-| **not at all** (GLM, Ollama) | rejected outright; the flag does not apply |
+| **not at all** (GLM, Ollama, Mistral) | rejected outright; the flag does not apply |
 
 ```hocon
 memory { type = token-window, max-tokens = 2000, allow-remote-token-counting = true }
@@ -1127,11 +1128,12 @@ configuring only Anthropic never has OpenAI's dependencies on its classpath.
 | `modelrack4j-provider-gemini` | `gemini` | ✅ | ✅ | ❌ | remote | required | optional |
 | `modelrack4j-provider-glm` | `glm` | ✅ | ✅ | ❌ | none | required | optional |
 | `modelrack4j-provider-ollama` | `ollama` | ✅ | ✅ | ❌ | none | **not allowed** | required |
+| `modelrack4j-provider-mistral` | `mistral` | ✅ | ✅ | ✅ | none | required | optional |
 
 Read out of the LangChain4j 1.22.0 artifacts rather than from documentation. Gemini is the
 stable `langchain4j-google-ai-gemini` module; GLM comes from `langchain4j-community-zhipu-ai`,
-which is released on the community cycle, separately from the stable modules. Ollama is the
-stable `langchain4j-ollama` module.
+which is released on the community cycle, separately from the stable modules. Ollama and
+Mistral are the stable `langchain4j-ollama` and `langchain4j-mistral-ai` modules.
 
 The last two columns are checked when the configuration loads, like the capabilities. A block
 that leaves out a required key, or sets one its provider does not use, is refused with a
@@ -1219,8 +1221,13 @@ Two things to know:
   schema's `timeout` maps to the client's single timeout directly. A local model can take
   much longer to answer than a hosted one, especially the first time it is loaded, so a
   longer `timeout` than the default `60s` is often needed.
-- **All providers except OpenAI** — moderation is unavailable, and enabling it is a
-  configuration error.
+- **Mistral** — has a moderation model, and it is called with Mistral's moderation model,
+  `mistral-moderation-latest`, never with your `model-name`: the endpoint takes a moderation
+  model, and the client has no default. The name comes from LangChain4j's own list, so it
+  changes only with a LangChain4j upgrade. There is no token counter, so `token-window` memory
+  is refused; use `message-window`.
+- **All providers except OpenAI and Mistral** — moderation is unavailable, and enabling it is
+  a configuration error.
 
 **One upstream limitation to know:** LangChain4j silently ignores moderation on the
 `AiServices` streaming path ([#2779](https://github.com/langchain4j/langchain4j/issues/2779)).
@@ -1285,7 +1292,7 @@ new rule is written once instead of once per module. Do not repeat these checks 
 `validate()`.
 
 `tokenEstimation()` is three-valued rather than boolean on purpose. A boolean would say only
-whether an estimator exists, and three of the five providers have one. What differs between
+whether an estimator exists, and three of the six providers have one. What differs between
 those three is the *cost*: OpenAI counts on your machine, while Anthropic and Gemini send a
 billed request for every count. A boolean would treat them alike, and the opt-in for the
 billed kind could not exist.
@@ -1312,11 +1319,11 @@ present, to every builder you call, not only to the chat model.
 
 `validate()` is for what core cannot see — a rule specific to your provider. Throw
 `ConfigValidationException` with a message naming the block and the way out; those messages
-are part of the contract, and the tests assert on them. Three of the five factories in this
+are part of the contract, and the tests assert on them. Four of the six factories in this
 repository have an empty `validate()`: Anthropic and Gemini used to reject moderation here,
-and that is reported through `supportsModeration()` instead, and Ollama has nothing core does
-not already check. The other two each check one rule that
-belongs to their own code. GLM checks the *shape* of the API key, because its own code splits
+and that is reported through `supportsModeration()` instead, and Ollama and Mistral have
+nothing core does not already check. The other two each check one rule that belongs to their
+own code. GLM checks the *shape* of the API key, because its own code splits
 the key and signs a token with the halves before any call. OpenAI refuses a block with neither
 `api-key` nor `base-url`, because only the OpenAI factory knows that no address means
 `api.openai.com`. An empty body is the normal case, not a sign of an unfinished provider.
@@ -1442,9 +1449,9 @@ Deliberate and permanent:
 | `sets api-key, but provider '…' does not use one` | `api-key` on `ollama`, which takes no key | Remove the key from the block. If a lower layer sets it, clear it with `api-key = null`. |
 | `has no base-url, but provider '…' requires one` | An `ollama` block without an address | Set `base-url` to your server, for example `http://localhost:11434`. |
 | `has neither api-key nor base-url` | An `openai` block with no key and no address, which would call `api.openai.com` without a key | Set `api-key`, or set `base-url` to a server that does not need one. |
-| `ships no moderation model` | `moderation.enabled = true` on Anthropic, Gemini, GLM or Ollama | Only OpenAI has one. Route moderation through an OpenAI configuration. |
+| `ships no moderation model` | `moderation.enabled = true` on Anthropic, Gemini, GLM or Ollama | Only OpenAI and Mistral have one. Route moderation through a configuration on one of them. |
 | `counts tokens by calling its API` | `token-window` on a remote counter | Add `allow-remote-token-counting = true`, or use `message-window`. |
-| `no token count estimator` | `token-window` on GLM or Ollama | Use `message-window`. No flag helps. |
+| `no token count estimator` | `token-window` on GLM, Ollama or Mistral | Use `message-window`. No flag helps. |
 | `is not shaped like a GLM key` | `api-key` on GLM is not `id.secret`, or its secret half is under 16 bytes | GLM signs a token with the two halves instead of sending the key, so a wrong shape fails before any call. Copy the key again in full. |
 | `` `temperature` is deprecated for this model `` | A non-default `temperature` on a model that rejects one, such as `claude-sonnet-5` | Remove the key. The model then uses its own sampling settings. |
 | `UnknownConfigurationException` at runtime | The name was removed from the configuration while running | Catch it and re-read `names()`, or keep the block. The exception's `configurationName()` gives the name that was asked for. |

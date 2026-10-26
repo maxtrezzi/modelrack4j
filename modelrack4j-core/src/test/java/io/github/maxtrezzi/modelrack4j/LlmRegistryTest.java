@@ -173,8 +173,11 @@ class LlmRegistryTest {
                            moderation { enabled = true } } }
                 """))
                 .isInstanceOf(ConfigValidationException.class)
-                .hasMessageContaining("fake-remote")
-                .hasMessageContaining("ships no moderation model");
+                // The whole message, because part-1-tutorial.md step 6 prints it word for word.
+                .hasMessage("llm.SL sets moderation.enabled = true, but provider 'fake-remote'"
+                        + " ships no moderation model. Remove the moderation block, or route"
+                        + " moderation through a configuration on a provider that has one,"
+                        + " such as openai or mistral.");
     }
 
     @Test

@@ -6412,9 +6412,8 @@ On an AMD Ryzen 7 7840HS, Temurin 25, Maven 3.8.7.
 
 ### P56 — A Mistral provider
 
-**Status:** Not started — [P55](#p55--listeners-on-the-models-the-registry-builds) is done, so
-the module is written against the SPI it will ship with: implement the two-argument `create`
-methods and pass `ModelContext`'s listeners, the moderation ones included · target 0.4.0 ·
+**Status:** In progress — built, tested offline and documented; the live run waits for a
+`MISTRAL_API_KEY` · target 0.4.0 · **Branch:** `task/p56-mistral-provider` · no ADR ·
 **Raised by:** the owner on 2026-10-26
 
 A sixth provider module, and the second whose provider has a moderation model.
@@ -6465,6 +6464,83 @@ lines 272 and 327, and line 1364 of the reference, the `ships no moderation mode
 troubleshooting table. Read the rows that name the providers without a token estimator too:
 Mistral belongs there, and does not belong in that moderation row. `AGENTS.md` says nine Maven modules and five providers,
 and lists the provider modules by name.
+
+#### What was found
+
+Read from `langchain4j-mistral-ai` `1.22.0` with `javap` on 2026-10-26.
+
+**The moderation model has no default name, and the chat name is wrong for it.**
+`MistralAiModerationModel`'s constructor passes the builder's `modelName` through
+`ValidationUtils.ensureNotBlank`, so a moderation model built without a name throws. OpenAI's
+leaves it `null` and its server applies a default, which is why OpenAI's factory can omit it.
+The block's `model-name` names a chat model, which the moderation endpoint does not take. So
+this factory supplies one: `MistralAiChatModelName.MISTRAL_MODERATION_LATEST.toString()`,
+`mistral-moderation-latest`, the only moderation name the jar contains. It is taken from
+upstream's enum rather than spelled in the factory, so it changes with a LangChain4j bump and
+not by hand. It is not configurable, as OpenAI's is not; a `moderation.model-name` key would be
+a schema change for every provider and was left out of this item. A test asserts the name,
+and fails with `mistral-small-latest` when the factory passes the block's `model-name`
+instead.
+
+**Everything else the entry predicted held.** The chat and streaming builders take `apiKey`,
+`baseUrl`, `modelName`, `temperature`, `timeout`, `logRequests`, `logResponses` and
+`listeners`; the moderation builder takes all of those but `temperature`, with
+`ModerationModelListener`. No class in the jar estimates tokens. `ModelProvider.MISTRAL_AI`
+is what the chat model reports.
+
+**Dependencies.** The artifact declares `langchain4j-core`, `langchain4j-http-client`,
+`langchain4j-http-client-jdk` (runtime) and three Jackson jars, all at the versions core
+already resolves. The module's runtime classpath is core's plus three jars:
+`langchain4j-mistral-ai` (182 KB) and the two HTTP client jars (41 KB and 19 KB) — the same
+shape as Ollama. `DependencyConvergence` passes in all ten reactor projects.
+
+**What else had to change.**
+
+- **Core's moderation refusal named one provider.** It ended "route moderation through an
+  OpenAI-family configuration", which Mistral is not. It now says "through a configuration on
+  a provider that has one, such as openai or mistral", and `LlmRegistryTest` asserts the whole
+  message, because step 6 of the tutorial prints it word for word.
+- **The offline CI job** blanks every provider key so that a test depending on one fails
+  there; `MISTRAL_API_KEY` is now among them.
+- **Two sentences in `AGENTS.md` were already wrong before this item**, and were corrected
+  while adding Mistral to them: the token-estimation list gave `ABSENT` as GLM only, leaving
+  out Ollama since P49, and "two of the four `validate()` bodies are empty" had been three of
+  five since P49. They now read GLM, Ollama and Mistral, and four of six. The same file's
+  "two of the four" model identifiers outside upstream's enums was checked rather than
+  carried over: of the five hosted IDs the ITs use, `gemini-3.6-flash` and `glm-5.3` are in no
+  enum at `1.22.0` — Gemini's module has no chat model enum at all, and GLM's
+  `ChatCompletionModel` goes no further than `glm-5.1` and `glm-5v-turbo` — while `gpt-5-mini`,
+  `claude-sonnet-4-6` and
+  `mistral-small-latest` are listed.
+- The provider tables in the README and the reference, the reference's artifact table, both
+  memory tables, the per-provider notes, two troubleshooting rows, the tutorial's two
+  OpenAI-only sentences and its list of keys, the README's opening sentences and its list of
+  integration keys, the `ProviderFactory` Javadoc, `CONTRIBUTING.md`'s module count and the
+  CHANGELOG.
+
+#### The live run, and what it costs
+
+`MistralProviderIT` sends one chat request to `mistral-small-latest` and moderates one
+sentence. Read on 2026-10-26 from Mistral's pricing page, `docs.mistral.ai/inference/pricing`:
+Mistral Small 4 costs **$0.15 per million input tokens and $0.60 per million output tokens**,
+and Moderation 2 is listed as **free**. The page names models, not the `-latest` aliases, so
+that `mistral-small-latest` is Small 4 is an assumption. The request is about 20 tokens in and
+a few out, so **one run costs about $0.00001**.
+
+**Not run yet:** this machine has no `MISTRAL_API_KEY`. Until it runs, nothing here shows that
+the endpoint accepts `mistral-moderation-latest`, which is the one value the factory chose.
+
+#### Verified
+
+On an AMD Ryzen 7 7840HS, Temurin 25, Maven 3.8.7.
+
+- `mvn clean install`: green on all ten reactor projects, **348 tests** offline — the 336 of
+  P55 and **12** in the new module. `build/check-docs.py`: clean.
+- The new module's tests cover discovery, the two capabilities, the two key requirements,
+  `base-url` reaching all three models and the listeners reaching all three against
+  `CountingPort`, the moderation model name, a missing key and `token-window` refused through
+  the registry, the chat model's parameters, an omitted temperature, and a bundle built end
+  to end.
 
 ### P57 — A catalogue of providers and compatible services
 
