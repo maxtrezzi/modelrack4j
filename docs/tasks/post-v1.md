@@ -6681,3 +6681,50 @@ On an AMD Ryzen 7 7840HS, Temurin 25, Maven 3.8.7.
 - `mvn clean install`: green on all ten reactor projects, **350 tests** offline — the 348 of
   P56 and the 2 of `CatalogTest`. `build/check-docs.py`: clean.
 
+### P58 — The pre-release check of 0.4.0
+
+**Status:** In progress — everything offline is green; the live run of all six providers waits
+for `MISTRAL_API_KEY` · **Branch:** `task/p58-pre-release-check-0.4.0` ·
+**Raised by:** the owner on 2026-10-26, as the check before 0.4.0 is released
+
+P54 to P57 were each checked on their own branch. This item re-runs, on the merged tree, what a
+merge or the outside world can change, and closes P56, whose live IT has never run: the owner
+decided on 2026-10-26 to run it here rather than before P56 merged. Measured at `f2972fd`, on an
+AMD Ryzen 7 7840HS, Temurin 25, Maven 3.8.7, Pop!_OS 24.04.
+
+| | |
+|---|---|
+| `mvn clean install` | green, 10 modules — 350 offline tests: core 259, OpenAI, Anthropic and Gemini 13 each, GLM 26, Ollama 12, Mistral 12, and 2 in `modelrack4j-examples`. `DependencyConvergence` passes in all ten |
+| `build/check-docs.py` | clean, 63 ADRs and 79 tracked markdown files |
+| PIT on core | 315 mutants, 307 killed, 1 timed out, 6 survived, 1 uncovered; line coverage 802/834; 4 min 10 s. The report contains `ModelContext`. The eight are the eight P54 lists; the same counts as P55's last run |
+| `./run-atomic.sh`, `./run-database.sh`, `./run-properties.sh` | green; none contacts a provider |
+| LangChain4j on Central | `1.22.0` and `1.22.0-beta32` are still the latest releases of both BOMs, and of `langchain4j-mistral-ai` |
+
+**Core's public API changed only by addition.** `javap -public` over every class of the
+released `modelrack4j-core-0.3.0.jar` and of this build, diffed: two methods on
+`LlmRegistry.Builder` (`chatModelListeners`, `moderationModelListeners`), the class
+`spi.ModelContext`, and three `default` methods on `ProviderFactory`. Nothing removed, no
+signature changed.
+
+**A provider jar from 0.3.0 still works, which is the CHANGELOG's central claim.** The
+released `modelrack4j-provider-openai-0.3.0.jar`, loaded by `ServiceLoader` from its own file
+beside this build's core and LangChain4j `1.22.0`, built a block with streaming and moderation.
+With a chat model listener registered, the same block was refused with the message
+`requireListeners` gives — "built a chat model without the listeners this registry was given
+… probably because it was built for a modelrack4j older than 0.4.0". The CHANGELOG now says it
+was checked this way.
+
+**Javadoc prints 13 warnings: P50's twelve and one new of the same kind**, the implicit default
+constructor of `MistralProviderFactory`, which follows the other five factories. None is in a
+type added in 0.4.0.
+
+**The CHANGELOG's `[Unreleased]` section, read through as release notes, needed two
+corrections.** The LangChain4j bullet said "Nothing in this library's API changes", true of the
+bump when P54 wrote it and ambiguous in a version that adds API; it now says the upgrade itself
+changes nothing. The rewording of the moderation refusal sat inside the Mistral bullet under
+*Added*; it is a change of behaviour that code matching on the text would notice, so it moved
+to *Changed*, with that warning.
+
+**Not done here, because it belongs to the release commit:** the `[Unreleased]` and `[0.4.0]`
+links at the end of the CHANGELOG, the version in every POM, and the README's status line.
+

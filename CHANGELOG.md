@@ -30,9 +30,7 @@ will not be held back for a major bump until the API settles at `1.0.0`.
 
   The moderation model is `mistral-moderation-latest`, not the block's `model-name`, which
   names a chat model. It adds three jars to core's: `langchain4j-mistral-ai` and the two HTTP
-  client jars the OpenAI and Ollama providers already bring. The message that refuses
-  `moderation.enabled = true` on a provider without moderation now names both providers that
-  have it, `openai` and `mistral`.
+  client jars the OpenAI and Ollama providers already bring.
 
 - **Listeners on the models the registry builds.** `LlmRegistry.Builder` has
   `chatModelListeners(...)` and `moderationModelListeners(...)`, each a function from a
@@ -59,15 +57,21 @@ will not be held back for a major bump until the API settles at `1.0.0`.
   the old ones. Such a factory builds its models without the listeners, so when an application
   registers listeners, the registry sees that a model does not report them and refuses the
   configuration with a message that names the provider. To support listeners, override the
-  new methods and pass the listeners to each model's builder.
+  new methods and pass the listeners to each model's builder. Checked with the released
+  `modelrack4j-provider-openai` `0.3.0`: on this version's core it builds every model as
+  before, and is refused, with that message, only when listeners are registered.
 
 ### Changed
 
 - **Built against LangChain4j 1.22.0** (community modules at `1.22.0-beta32`), up from
-  `1.20.0`. Nothing in this library's API changes, and no new jar reaches your classpath: the
+  `1.20.0`. The upgrade itself changes nothing in this library's API, and no new jar reaches
+  your classpath: the
   LangChain4j artifacts move to the new version, and the GLM provider brings Guava
   `33.7.2-jre` instead of `33.6.0-jre`. Guava now brings the same `org.jspecify:jspecify`
   as `langchain4j-core`, `1.0.1`, so this project no longer pins it.
+- **The message that refuses `moderation.enabled = true`** on a provider without a moderation
+  model now names both providers that have one, `openai` and `mistral`, instead of "an
+  OpenAI-family configuration". Code that matches on the old wording needs updating.
 
 ### Fixed
 
