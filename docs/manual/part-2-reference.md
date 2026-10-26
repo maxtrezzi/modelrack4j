@@ -209,7 +209,7 @@ different things, and the one it does not mean is the one that would be ignored.
 **Model names are not validated.** `model-name` goes straight to the provider's builder.
 LangChain4j ships model-name enums, but they are a convenience rather than a whitelist, and
 being compiled at release time they lag the providers — a model released after LangChain4j
-1.20.0 works fine here. The cost is that a typo surfaces as the provider's own error on the
+1.22.0 works fine here. The cost is that a typo surfaces as the provider's own error on the
 first request rather than at load time.
 
 ### Layering
@@ -1081,7 +1081,7 @@ configuring only Anthropic never has OpenAI's dependencies on its classpath.
 | `modelrack4j-provider-glm` | `glm` | ✅ | ✅ | ❌ | none | required | optional |
 | `modelrack4j-provider-ollama` | `ollama` | ✅ | ✅ | ❌ | none | **not allowed** | required |
 
-Read out of the LangChain4j 1.20.0 artifacts rather than from documentation. Gemini is the
+Read out of the LangChain4j 1.22.0 artifacts rather than from documentation. Gemini is the
 stable `langchain4j-google-ai-gemini` module; GLM comes from `langchain4j-community-zhipu-ai`,
 which is released on the community cycle, separately from the stable modules. Ollama is the
 stable `langchain4j-ollama` module.
@@ -1402,7 +1402,7 @@ back for a major bump until the API settles at `1.0.0`.
 javadoc jar for each artifact. `modelrack4j-examples` is not published: it is demo code, and
 you read it in the repository rather than depending on it.
 
-**LangChain4j is pinned** at 1.20.0, imported through both its stable and community BOMs. The
+**LangChain4j is pinned** at 1.22.0, imported through both its stable and community BOMs. The
 capability matrix on this page is a fact about that version, not a permanent property — it is
 re-verified against the artifacts on every bump.
 

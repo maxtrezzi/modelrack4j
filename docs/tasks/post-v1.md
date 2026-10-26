@@ -6132,7 +6132,7 @@ entry: the change is to the README's wording, and the released artifacts are unc
 
 ### P54 — LangChain4j 1.22.0
 
-**Status:** Not started — target 0.4.0 ·
+**Status:** Done 2026-10-26 — target 0.4.0 · **Branch:** `task/p54-langchain4j-1.22.0` · no ADR ·
 **Raised by:** the owner on 2026-10-26, once the community train had caught up
 
 [P50](#p50--the-pre-release-check-of-030) left 0.3.0 on `1.20.0` because the community BOM,
@@ -6171,6 +6171,81 @@ sentences in `AGENTS.md` that tell P34's story and stay as they are. Read each o
 describe the pin and change, some describe what happened at `1.20.0` and do not. The
 CHANGELOG gets an entry under *Changed*, because a new LangChain4j minor changes the
 transitive dependencies of every user.
+
+#### What was found
+
+Everything below was read from the `1.22.0` and `1.22.0-beta32` artifacts in the local
+repository on 2026-10-26, and compared with `1.20.0` / `1.20.0-beta30` where a comparison
+says something.
+
+**Nothing landed in core's compile scope.** `dependency:list -DincludeScope=compile` on core
+gives the same nine artifacts as at `1.20.0`, now at `1.22.0` where they are LangChain4j's:
+`langchain4j-core`, three Jackson jars, `jspecify` 1.0.1, the aggregate, `mutiny-zero` 1.3.1,
+`com.typesafe:config` 1.4.9 and `slf4j-api` 2.0.18. The aggregate's POM declares the same
+seven dependencies, `opennlp-tools` among them, still at `2.5.11`, so the ADR-0020 exclusion
+is still required. The aggregate's jar grew from 389 KB to 456 KB. M0's verification block
+carries the new figure.
+
+**The `jspecify` pin is gone, because the tree no longer needs it.** Guava moved from
+`33.6.0-jre` to `33.7.2-jre` in `langchain4j-community-zhipu-ai` `1.22.0-beta32`, and the new
+Guava brings `jspecify` 1.0.1 — the version `langchain4j-core` brings. With the pin removed,
+`mvn clean install` passes `DependencyConvergence` in all nine reactor projects. JUnit 6.1.3
+still brings `jspecify` 1.0.0, five times in every module's tree, but in `test` scope, and
+`DependencyConvergence` in `enforcer-rules` 3.6.3 excludes `test` and `provided` by default —
+read with `javap -c` from the rule class, where its constructor sets `excludedScopes` to those
+two strings. Keeping a pin the tree does not need would also hide the next divergence, since a
+managed version always converges. `AGENTS.md` now says the pin is the fix to put back if the
+rule names `jspecify` again.
+
+**Every provider artifact only moves its version.** The compile and runtime dependencies
+declared by `langchain4j-open-ai`, `-anthropic`, `-google-ai-gemini`, `-ollama`,
+`-http-client`, `-http-client-jdk` and `-community-zhipu-ai` are the same artifacts at both
+versions. The one change outside LangChain4j is the Guava version above.
+
+| Gated by the pin | Re-checked against | Result |
+|---|---|---|
+| [Task 0.2](phase-0-verification.md#task-02--verify-the-java-baseline) — Java baseline | bytecode of `langchain4j-core-1.22.0` and `langchain4j-1.22.0` | major **61** on all **847** classes, no `META-INF/versions` overlays — `release` 17 stands |
+| [Task 0.5](phase-0-verification.md#task-05--confirm-interface-names) — interface names | both jars' entry listings | all nine types unmoved: six in `langchain4j-core`, `ChatMemoryProvider` and the two window memories in the aggregate; `ChatLanguageModel` still absent |
+| [Task 0.6](phase-0-verification.md#task-06--provider-capability-matrix) — capability matrix | `javap` over every class of the five provider jars, for an `implements ModerationModel` or `TokenCountEstimator` | unchanged: `OpenAiModerationModel` and `OpenAiTokenCountEstimator` in `-open-ai`, an estimator and no moderation model in `-anthropic` and `-google-ai-gemini`, neither in `-community-zhipu-ai` nor in `-ollama`. `jtokkit` 1.1.0 is still a compile dependency of `-open-ai`, so its estimator is still local |
+| [ADR-0018](../adr/0018-manage-langchain4j-versions-via-bom.md) — the two release lines | `langchain4j-bom-1.22.0.pom` | `langchain4j.stable.version` = `1.22.0`, `langchain4j.beta.version` = `1.22.0-beta32`; `langchain4j-google-genai` is still on the beta line |
+| `examples.conf`'s enum claim | `javap` on the two enums | still true: `GPT_5_1` is in `OpenAiChatModelName`, and `AnthropicChatModelName`'s newest Sonnet is `CLAUDE_SONNET_4_6` |
+
+**The builders the factories call changed only by addition.** `javap` on each builder class at
+both versions, diffed member by member: the OpenAI chat and streaming builders gained
+`promptCacheKey` and `promptCacheOptions`, the Anthropic chat and streaming builders gained
+`cacheAutomatically` and `cacheTtl`. Nothing was removed or renamed in any of them, and the
+build prints no `[deprecation]` or `[removal]` warning under `-Xlint:all`, so no method a
+factory calls is deprecated. `baseUrl` is still on every builder that talks to a server —
+OpenAI's chat, streaming and moderation, Anthropic's chat, streaming and estimator, Gemini's
+shared chat base builder and estimator, both GLM builders, Ollama's base builder — so ADR-0062
+holds. The timeout setters are unchanged too: `timeout` everywhere, and `connectTimeout` with
+`readTimeout` on GLM. None of the four new caching options is exposed: they are
+provider-builder features the schema does not carry, like Gemini's context cache in P34.
+
+#### Verified
+
+On an AMD Ryzen 7 7840HS, Temurin 25, Maven 3.8.7.
+
+- `mvn clean install`: green on all nine reactor projects, **315 tests** offline: core 243,
+  OpenAI, Anthropic and Gemini 12 each, GLM 25, Ollama 11. `dev` at `1.20.0`
+  gives the same 315, run in a separate worktree, so the bump changes no test.
+  [P49](#p49--an-ollama-provider) recorded 316 over the same test sources, while
+  [P50](#p50--the-pre-release-check-of-030) counted 315 there, as here.
+- `build/check-docs.py`: clean, 62 ADRs and 77 tracked markdown files.
+- PIT on core: **291 mutants, 283 killed, 1 timed out, 6 survived, 1 uncovered; 4 min 6 s**
+  of wall time including Maven's start. PIT's own summary says *Killed 284* because it counts
+  the timeout as killed, and 284 is the figure the last run in P49 recorded, so the counts
+  are the same. The eight are the same eight: the five redundant
+  `record(path)` calls in `BlockReader`, the equivalent `Optional.empty()` in
+  `LlmRegistry.reload`, the timeout on `Builder.chooseNotifier` and the uncovered cleanup in
+  `WritableFileConfigSource.stage`.
+- `./run-atomic.sh` and `./run-database.sh` against the new jars: both green, neither
+  contacts a provider.
+- **`mvn -Pintegration verify`, run on the owner's go-ahead: green, five live tests, one per
+  provider.** Four paid calls with the keys from the environment — `gpt-5-mini`,
+  `claude-sonnet-4-6`, `gemini-3.6-flash` and `glm-5.3` all answered — and `OllamaProviderIT`
+  against a local Ollama 0.17.5 server with `OLLAMA_MODEL=tinyllama`, because `llama3.2` is not
+  pulled on it. None of the four configured model identifiers had rotted.
 
 ### P55 — Listeners on the models the registry builds
 
