@@ -11,7 +11,13 @@ will not be held back for a major bump until the API settles at `1.0.0`.
 
 ## [Unreleased]
 
-Nothing yet.
+### Changed
+
+- **Built against LangChain4j 1.22.0** (community modules at `1.22.0-beta32`), up from
+  `1.20.0`. Nothing in this library's API changes, and no new jar reaches your classpath: the
+  LangChain4j artifacts move to the new version, and the GLM provider brings Guava
+  `33.7.2-jre` instead of `33.6.0-jre`. Guava now brings the same `org.jspecify:jspecify`
+  as `langchain4j-core`, `1.0.1`, so this project no longer pins it.
 
 ## [0.3.0] — 2026-10-04
 

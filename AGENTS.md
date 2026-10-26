@@ -446,11 +446,13 @@ it also brings `io.smallrye.reactive:mutiny-zero` (58 KB), which the reactive `A
 path added in that release needs. **Do not exclude that one.** The opennlp exclusion is safe
 because `DocumentBySentenceSplitter` is out-of-scope RAG splitting (ADR-0003), while
 mutiny-zero backs a way of *using* `AiServices`, which was never out of scope and which P21
-said out loud. The measurement is in M0's verification block, re-run in P34 — **re-run it
-yourself on every bump**, because an upstream dependency lands there silently — one did at
+said out loud. The measurement is in M0's verification block, re-run in P34 and P54 — **re-run
+it yourself on every bump**, because an upstream dependency lands there silently — one did at
 `1.20.0`, and the release notes did not mention it. A bump has a second trap in the same
-place: neither BOM manages `jspecify`, guava brings an older one through the GLM module, and
-the parent POM pins it to keep `DependencyConvergence` green. **No provider artifact, ever.**
+place: neither BOM manages `jspecify`, so when guava, through the GLM module, brings a
+different one than `langchain4j-core`, `DependencyConvergence` fails the build. At `1.20.0` it
+did and the parent POM pinned it; at `1.22.0` the two agree and P54 removed the pin. If the
+rule names `jspecify` again, the pin is the fix to put back. **No provider artifact, ever.**
 Each provider lives in its own module
 (`modelrack4j-provider-openai|anthropic|gemini|glm|ollama`) implementing the `ProviderFactory`
 SPI, discovered via `java.util.ServiceLoader` (`META-INF/services/...spi.ProviderFactory`).
