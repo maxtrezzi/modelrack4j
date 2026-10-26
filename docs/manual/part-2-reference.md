@@ -1121,6 +1121,11 @@ it back and leaves `-q` in place.
 Each provider is a separate module. Core takes **no** provider artifact, so an application
 configuring only Anthropic never has OpenAI's dependencies on its classpath.
 
+**Using a service that is not in this table** — Kimi, DeepSeek, Groq, OpenRouter, and others?
+Many are reached through `openai` or `anthropic` with a `base-url`.
+[Providers and compatible services](providers.md) lists them, with the address, an example,
+and how sure each row is.
+
 | Module | `provider =` | Chat | Streaming | Moderation | Token estimation | `api-key` | `base-url` |
 |---|---|---|---|---|---|---|---|
 | `modelrack4j-provider-openai` | `openai` | ✅ | ✅ | ✅ | **local** | optional | optional |

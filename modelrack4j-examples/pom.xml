@@ -65,6 +65,17 @@
       <artifactId>modelrack4j-provider-mistral</artifactId>
       <version>${project.version}</version>
     </dependency>
+    <!-- Gemini and GLM are here for catalog.conf, which has a block for every provider. -->
+    <dependency>
+      <groupId>io.github.maxtrezzi</groupId>
+      <artifactId>modelrack4j-provider-gemini</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>io.github.maxtrezzi</groupId>
+      <artifactId>modelrack4j-provider-glm</artifactId>
+      <version>${project.version}</version>
+    </dependency>
     <!-- Demos print through SLF4J's simple binding; the library itself binds nothing. -->
     <dependency>
       <groupId>org.slf4j</groupId>
