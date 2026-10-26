@@ -9,7 +9,8 @@ and points here; every ADR that cites the old name still resolves.
 
 **v1 is complete, the repository is public, and `0.3.0` is the current release.** Ten Maven
 modules and six providers on `dev` — the sixth, Mistral, arrived in P56 and is not released
-yet — hot reload, a two-part manual and seven runnable examples. M0–M6 are
+yet — hot reload, a two-part manual with a provider catalogue beside it, and seven runnable
+examples. M0–M6 are
 done: M6's trigger fired on 2026-09-02, when the owner tested the library and judged it
 publishable, and `io.github.maxtrezzi:modelrack4j-*:0.1.0` was signed and published to Maven
 Central the same evening. `0.2.0` followed on 2026-09-07 — custom properties, a closed schema,

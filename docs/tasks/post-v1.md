@@ -6544,8 +6544,8 @@ On an AMD Ryzen 7 7840HS, Temurin 25, Maven 3.8.7.
 
 ### P57 — A catalogue of providers and compatible services
 
-**Status:** Blocked — on [P56](#p56--a-mistral-provider), so the catalogue includes it ·
-target 0.4.0 ·
+**Status:** Done 2026-10-26 — target 0.4.0 · **Branch:** `task/p57-provider-catalogue` ·
+no ADR ·
 **Raised by:** the owner on 2026-10-26
 
 The reference lists the five **modules**, and a section on `base-url` lists the **local servers**
@@ -6616,3 +6616,68 @@ smallest model: a few cents per service, but a key for each. A row with no key s
 - Which services can be "Tested", that is, for which ones a key is available.
 - Whether the pre-release check of each version re-tests the "Tested" rows, as it re-runs the
   integration tests, or the rows keep their date and age visibly.
+
+#### What the owner settled
+
+Asked on 2026-10-26. **No key for any outside service is available**, so every row that is not
+a module is **Declared**, except the one this machine can test for free. **A "Tested" row keeps
+its date** and ages visibly; the pre-release check does not re-test it.
+
+#### What was built
+
+- **`docs/manual/providers.md`**, linked from the *Providers* section of the reference and of
+  the README, and from the manual's index. Fifteen rows: the six modules, Ollama through its
+  OpenAI endpoint, one row for LocalAI, llama.cpp, vLLM and LM Studio together, and seven for
+  hosted services — Kimi twice, through `openai` and through `anthropic`, then DeepSeek, Groq,
+  OpenRouter, Together and xAI. A section on the two limits of a row that is not a module, one
+  on Kimi through `anthropic`, one on the services with no row, and one HOCON block per row.
+- **`modelrack4j-examples/src/main/resources/catalog.conf`**, the same fifteen blocks.
+- **`CatalogTest`**, the first test in `modelrack4j-examples`. It loads `catalog.conf`, and
+  every `hocon` block of the page, under a higher layer that defines each `${VAR}` the text
+  uses, so the result does not depend on the keys of whoever runs it. It asserts the fifteen
+  names, and that the page and the file give **equal `LlmConfig` records** — the comparison a
+  reload uses — so a value changed in one and not the other fails. Changing one model name on
+  the page failed it.
+- **Gemini and GLM became dependencies of `modelrack4j-examples`**, because the catalogue has
+  a block for each.
+
+#### What was read, and where it was not settled
+
+Every hosted row was read from the vendor's own page on 2026-10-26; the page lists the links.
+
+- **The address each provider is given.** `HttpRequest.Builder.url(base, path)` joins the two
+  with one `/` whatever the slashes, so a trailing slash does not matter. The OpenAI client
+  appends `chat/completions`, the Anthropic client `messages`. So an OpenAI-protocol address
+  is the one the vendor documents for the OpenAI SDK, and an Anthropic-protocol address must
+  already end in `/v1`, which Anthropic's own SDKs add themselves.
+- **Kimi through `anthropic` stays doubtful.** Kimi's Messages API page gives
+  `https://api.moonshot.ai/anthropic` and the path `/anthropic/v1/messages`, so the catalogue
+  uses `https://api.moonshot.ai/anthropic/v1`. It documents its key in `Authorization: Bearer`,
+  and `DefaultAnthropicClient` in `langchain4j-anthropic` `1.22.0` sends `x-api-key`. Whether
+  Kimi accepts that header is not documented, and the page says so.
+- **DeepSeek** documents `https://api.deepseek.com` for the OpenAI SDK and says nothing about a
+  `/v1`, so the row uses it as written. It also has an Anthropic endpoint, which maps
+  `claude-*` model names onto its own; it was left out, since it adds nothing the `openai` row
+  does not.
+- **xAI**'s migration and integrations pages answered 404; its overview gives
+  `https://api.x.ai/v1` and `grok-4.7`, and shows the OpenAI SDK without stating
+  compatibility in words. A third-party copy of its documentation says Anthropic compatibility
+  is deprecated, so the row is through `openai` only.
+- **Together** states that `moderations.create` is not implemented, which the row repeats.
+  Groq's page does not say either way.
+- **Azure OpenAI, Bedrock, Vertex AI and watsonx have no row**, for the reason ADR-0062 gives:
+  their builders have not been read, and whether any fits one `api-key` and one `base-url` is
+  open. The page makes no claim either way, rather than calling them unreachable.
+
+#### Verified
+
+On an AMD Ryzen 7 7840HS, Temurin 25, Maven 3.8.7.
+
+- **Ollama through `provider = openai` is Tested.** One chat call and one streaming call
+  through a registry, `base-url = "http://localhost:11434/v1"`, against Ollama 0.17.5 in the
+  local container with `tinyllama`: both answered. Free.
+- **Building every block sends nothing.** The fifteen blocks load with placeholder keys and no
+  network.
+- `mvn clean install`: green on all ten reactor projects, **350 tests** offline — the 348 of
+  P56 and the 2 of `CatalogTest`. `build/check-docs.py`: clean.
+

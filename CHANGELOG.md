@@ -76,6 +76,16 @@ will not be held back for a major bump until the API settles at `1.0.0`.
   thrown away. No model from a rejected configuration was ever used; the change only stops
   building them.
 
+### Documentation and examples
+
+- **A catalogue of providers and compatible services**, `docs/manual/providers.md`. It answers
+  "does it work with Kimi, DeepSeek, Groq…?": one row per service, with `provider =`, the
+  `base-url`, an example, and how sure the row is — a module of its own, tested by hand on a
+  date, or only declared compatible by the vendor. It also says what a service reached through
+  `openai` cannot do, and which services have no row. Every block on the page is also in
+  `modelrack4j-examples/src/main/resources/catalog.conf`, and a test loads both, with
+  placeholder keys, and checks that they agree.
+
 ## [0.3.0] — 2026-10-04
 
 ### Added
