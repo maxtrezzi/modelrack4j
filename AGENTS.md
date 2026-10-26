@@ -7,8 +7,9 @@ and points here; every ADR that cites the old name still resolves.
 
 ## Project state
 
-**v1 is complete, the repository is public, and `0.3.0` is the current release.** Nine Maven
-modules, five providers, hot reload, a two-part manual and seven runnable examples. M0–M6 are
+**v1 is complete, the repository is public, and `0.3.0` is the current release.** Ten Maven
+modules and six providers on `dev` — the sixth, Mistral, arrived in P56 and is not released
+yet — hot reload, a two-part manual and seven runnable examples. M0–M6 are
 done: M6's trigger fired on 2026-09-02, when the owner tested the library and judged it
 publishable, and `io.github.maxtrezzi:modelrack4j-*:0.1.0` was signed and published to Maven
 Central the same evening. `0.2.0` followed on 2026-09-07 — custom properties, a closed schema,
@@ -292,8 +293,9 @@ pointing at the wrong method. `docs/tasks/post-v1.md` carries the per-run tables
 deterministic syntactic edits, so none of this bears on the concurrency guarantee in ADR-0038;
 do not read a high score as evidence for it.
 
-**Model identifiers rot, and only a live run catches it.** Two of the four are now outside
-upstream's enums, so `mvn -Pintegration verify` is the only check that a configured model
+**Model identifiers rot, and only a live run catches it.** Two of the five hosted ones the ITs
+use — `gemini-3.6-flash` and `glm-5.3` — are outside upstream's enums at `1.22.0`, so
+`mvn -Pintegration verify` is the only check that a configured model
 still exists. It cost two stale IDs the first time it ran (P6).
 
 ## Architecture: the load-bearing constraints
@@ -454,11 +456,12 @@ different one than `langchain4j-core`, `DependencyConvergence` fails the build. 
 did and the parent POM pinned it; at `1.22.0` the two agree and P54 removed the pin. If the
 rule names `jspecify` again, the pin is the fix to put back. **No provider artifact, ever.**
 Each provider lives in its own module
-(`modelrack4j-provider-openai|anthropic|gemini|glm|ollama`) implementing the `ProviderFactory`
-SPI, discovered via `java.util.ServiceLoader` (`META-INF/services/...spi.ProviderFactory`).
-Providers differ in *capabilities* — moderation is OpenAI-only, and token estimation is
-three-valued rather than a boolean: `ABSENT` (GLM), `LOCAL` (OpenAI), `REMOTE` (Anthropic,
-Gemini), because a remote estimator puts a billed network call inside memory eviction
+(`modelrack4j-provider-openai|anthropic|gemini|glm|ollama|mistral`) implementing the
+`ProviderFactory` SPI, discovered via `java.util.ServiceLoader`
+(`META-INF/services/...spi.ProviderFactory`). Providers differ in *capabilities* — only OpenAI
+and Mistral moderate, and token estimation is three-valued rather than a boolean: `ABSENT`
+(GLM, Ollama, Mistral), `LOCAL` (OpenAI), `REMOTE` (Anthropic, Gemini), because a remote
+estimator puts a billed network call inside memory eviction
 (ADR-0021, opt-in per ADR-0027). **A factory *reports* a capability; core enforces it
 (ADR-0048).** A factory reports four things: `tokenEstimation()` and `supportsModeration()`
 say what the provider can do, and `apiKeyRequirement()` and `baseUrlRequirement()` say whether
@@ -477,7 +480,7 @@ widen the catch to `Error`** — a linkage error belongs to one provider's class
 `OutOfMemoryError` does not. It is a `ConfigValidationException` rather than a new type
 because that is what a rejected reload is reported as; it stretches ADR-0053's "read something
 and objected" a little, since the objection is to the provider rather than to the text. P27 emptied the three `validate()` bodies that had been restating a capability;
-P25 then gave GLM's real work, and P48 gave OpenAI's one rule, so **two of the four are empty
+P25 then gave GLM's real work, and P48 gave OpenAI's one rule, so **four of the six are empty
 and GLM's and OpenAI's are not**. OpenAI's refuses a block with neither `api-key` nor
 `base-url`, because only that factory knows no address means `api.openai.com`; it is the one
 key rule that stays in a provider. **`base-url` goes to every builder a factory calls for the

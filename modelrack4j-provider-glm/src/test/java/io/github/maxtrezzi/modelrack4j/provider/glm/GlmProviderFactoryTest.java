@@ -184,7 +184,7 @@ class GlmProviderFactoryTest {
                 """))
                 .isInstanceOf(ConfigValidationException.class)
                 .hasMessageContaining("ships no moderation model")
-                .hasMessageContaining("OpenAI");
+                .hasMessageContaining("such as openai or mistral");
     }
 
     @Test

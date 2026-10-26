@@ -1,8 +1,8 @@
 # modelrack4j
 
 Turn layered HOCON configuration into **named, ready-to-use bundles of LangChain4j
-objects** — for OpenAI, Anthropic, Gemini, GLM, a local Ollama, or any OpenAI-compatible
-server — with validated hot reload.
+objects** — for OpenAI, Anthropic, Gemini, GLM, Mistral, a local Ollama, or any
+OpenAI-compatible server — with validated hot reload.
 
 Declare `SL`, `CR`, `GL` and `LOCAL` in a config file; ask the registry for each by name and get a
 consistent `ChatModel` + `StreamingChatModel` + `ModerationModel` + `ChatMemoryProvider`
@@ -24,9 +24,10 @@ var registry = LlmRegistry.builder().configFiles(List.of(Path.of("llm.conf"))).b
 String answer = registry.get("SL").chatModel().chat("Why is the sky blue?");
 ```
 
-**Hosted and local models, side by side.** The providers are OpenAI, Anthropic, Gemini, GLM
-and **Ollama**, which runs models on your own machine with no key and no cost. Any other server
-that speaks the **OpenAI protocol** — LocalAI, llama.cpp's server, vLLM, LM Studio — is reached
+**Hosted and local models, side by side.** The providers are OpenAI, Anthropic, Gemini, GLM,
+Mistral and **Ollama**, which runs models on your own machine with no key and no cost. Any
+other server that speaks the **OpenAI protocol** — LocalAI, llama.cpp's server, vLLM, LM
+Studio — is reached
 through `provider = openai` and a `base-url`, with no key unless the server asks for one. See
 [Providers](#providers).
 
@@ -119,8 +120,8 @@ Four things follow, and they are the whole library:
    [Values of your own](#values-of-your-own).
 
 One more thing makes all four safe to rely on: **mistakes fail when the file loads, not at
-the first request.** Providers differ in what they can actually do — moderation
-is OpenAI-only among the five here, and token counting is local, remote or absent depending
+the first request.** Providers differ in what they can actually do — of the six here, only
+OpenAI and Mistral moderate, and token counting is local, remote or absent depending
 on the provider — so the configuration is validated against the provider's real capabilities.
 Enabling moderation on Anthropic is a startup error naming the block, not an empty `Optional`
 you discover in production. A handler of your own runs in the same step, so a block your
@@ -742,11 +743,12 @@ application configuring only Anthropic never has OpenAI's dependencies on its cl
 | `modelrack4j-provider-gemini` | `gemini` | ✅ | ✅ | ❌ | remote | required | optional |
 | `modelrack4j-provider-glm` | `glm` | ✅ | ✅ | ❌ | none | required | optional |
 | `modelrack4j-provider-ollama` | `ollama` | ✅ | ✅ | ❌ | none | **not allowed** | required |
+| `modelrack4j-provider-mistral` | `mistral` | ✅ | ✅ | ✅ | none | required | optional |
 
 Read out of the LangChain4j 1.22.0 artifacts, not from documentation. Gemini is the stable
 `langchain4j-google-ai-gemini` module; GLM comes from `langchain4j-community-zhipu-ai`,
-which is released on the community cycle, separately from the stable modules. Ollama is the
-stable `langchain4j-ollama` module.
+which is released on the community cycle, separately from the stable modules. Ollama and
+Mistral are the stable `langchain4j-ollama` and `langchain4j-mistral-ai` modules.
 
 Capabilities are enforced at load time. `moderation { enabled = true }` on Anthropic,
 Gemini, GLM or Ollama is a configuration error naming the block, not an empty `Optional` you
@@ -834,7 +836,7 @@ depends entirely on the provider:
 |---|---|
 | **locally** (OpenAI) | built, with no extra configuration |
 | **remotely** (Anthropic, Gemini) | **rejected unless you opt in** with `allow-remote-token-counting = true` |
-| **not at all** (GLM, Ollama) | rejected outright; the opt-in flag does not apply |
+| **not at all** (GLM, Ollama, Mistral) | rejected outright; the opt-in flag does not apply |
 
 The middle row is the point. On a remote counter, ordinary conversation turns make a billed,
 rate-limited, network-dependent HTTP call inside what the application reasonably assumes is
@@ -936,7 +938,7 @@ runs with the credential environment scrubbed. Integration tests are doubly guar
 only run under `-Pintegration`, and each one skips itself when its own key is absent, so
 running the profile with one provider configured skips the rest instead of failing. They
 cost real money. The keys they look for are `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`,
-`GEMINI_API_KEY` and `ZHIPU_API_KEY`.
+`GEMINI_API_KEY`, `ZHIPU_API_KEY` and `MISTRAL_API_KEY`.
 
 CI runs JDK 17 (the floor), 21 and 25.
 
