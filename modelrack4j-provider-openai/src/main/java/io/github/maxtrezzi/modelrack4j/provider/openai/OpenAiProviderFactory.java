@@ -26,6 +26,7 @@ import dev.langchain4j.model.openai.OpenAiTokenCountEstimator;
 import io.github.maxtrezzi.modelrack4j.ConfigValidationException;
 import io.github.maxtrezzi.modelrack4j.LlmConfig;
 import io.github.maxtrezzi.modelrack4j.spi.KeyRequirement;
+import io.github.maxtrezzi.modelrack4j.spi.ModelContext;
 import io.github.maxtrezzi.modelrack4j.spi.ProviderFactory;
 import io.github.maxtrezzi.modelrack4j.spi.TokenEstimation;
 import java.util.Optional;
@@ -95,11 +96,17 @@ public final class OpenAiProviderFactory implements ProviderFactory {
 
     @Override
     public ChatModel createChatModel(LlmConfig config) {
+        return createChatModel(config, ModelContext.empty());
+    }
+
+    @Override
+    public ChatModel createChatModel(LlmConfig config, ModelContext context) {
         OpenAiChatModel.OpenAiChatModelBuilder builder = OpenAiChatModel.builder()
                 .modelName(config.modelName())
                 .timeout(config.timeout())
                 .logRequests(config.logRequests())
                 .logResponses(config.logResponses());
+        builder.listeners(context.chatModelListeners());
         config.temperature().ifPresent(builder::temperature);
         config.apiKey().ifPresent(builder::apiKey);
         config.baseUrl().ifPresent(builder::baseUrl);
@@ -108,12 +115,19 @@ public final class OpenAiProviderFactory implements ProviderFactory {
 
     @Override
     public Optional<StreamingChatModel> createStreamingChatModel(LlmConfig config) {
+        return createStreamingChatModel(config, ModelContext.empty());
+    }
+
+    @Override
+    public Optional<StreamingChatModel> createStreamingChatModel(
+            LlmConfig config, ModelContext context) {
         OpenAiStreamingChatModel.OpenAiStreamingChatModelBuilder builder =
                 OpenAiStreamingChatModel.builder()
                         .modelName(config.modelName())
                         .timeout(config.timeout())
                         .logRequests(config.logRequests())
                         .logResponses(config.logResponses());
+        builder.listeners(context.chatModelListeners());
         config.temperature().ifPresent(builder::temperature);
         config.apiKey().ifPresent(builder::apiKey);
         config.baseUrl().ifPresent(builder::baseUrl);
@@ -122,6 +136,12 @@ public final class OpenAiProviderFactory implements ProviderFactory {
 
     @Override
     public Optional<ModerationModel> createModerationModel(LlmConfig config) {
+        return createModerationModel(config, ModelContext.empty());
+    }
+
+    @Override
+    public Optional<ModerationModel> createModerationModel(
+            LlmConfig config, ModelContext context) {
         // modelName is deliberately NOT passed through: it names a chat model, and OpenAI's
         // moderation endpoint takes its own separate model. Forwarding the chat model name
         // here would send a request the API rejects.
@@ -130,6 +150,7 @@ public final class OpenAiProviderFactory implements ProviderFactory {
                         .timeout(config.timeout())
                         .logRequests(config.logRequests())
                         .logResponses(config.logResponses());
+        builder.listeners(context.moderationModelListeners());
         config.apiKey().ifPresent(builder::apiKey);
         // The same address as the chat model: a block behind a proxy must not send its
         // moderation to the vendor's own address (ADR-0062).

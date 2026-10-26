@@ -114,6 +114,7 @@ by number, since the numbering only reflects the order of the original appendix.
 | [0059](0059-the-generic-registry-is-a-source-break.md) | Accept that a generic registry breaks source compatibility | Accepted |
 | [0060](0060-the-registry-hands-over-its-writable-layers.md) | The registry hands over its writable layers | Accepted |
 | [0062](0062-a-provider-declares-its-key-requirements.md) | A provider declares whether a block may or must set `api-key` and `base-url` | Accepted |
+| [0063](0063-listeners-are-registered-on-the-registry-and-reach-the-factory-in-a-context.md) | Model listeners are registered on the registry, per configuration, and reach the factory in a context | Accepted |
 | [0030](0030-one-timeout-in-the-schema.md) | One `timeout` in the schema; providers map it onto their own client | Accepted |
 | [0018](0018-manage-langchain4j-versions-via-bom.md) | Manage LangChain4j versions by importing its BOM | Accepted — the BOM import set amended by ADR-0022 |
 | [0022](0022-glm-via-the-community-module-and-its-bom.md) | Take GLM from the community module, and import its BOM alongside the main one | Accepted |

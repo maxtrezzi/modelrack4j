@@ -495,6 +495,18 @@ and it is not redundant.
 `ChatMemoryProvider` is built in core (provider-independent), except the
 `TokenCountEstimator` needed by token-window memory, which comes from the factory.
 
+**A factory now also receives something: a `ModelContext` carrying the application's model
+listeners (ADR-0063).** Core calls only the two-argument `create` methods; their defaults call
+the one-argument ones, so a factory built before `0.4.0` still works. That default drops the
+listeners, and `SnapshotLoader.requireListeners` is what turns the drop into a refusal: it
+compares each model's `listeners()` with what it was given. **Do not remove it as redundant**
+because the five factories here all pass them — it is what makes the defaults safe for
+factories the project does not own, the same role `requireProduced` plays for
+`supportsModeration()`. The listeners come from functions on `LlmRegistry.Builder`, called per
+bundle built, and never enter `LlmConfig`, for the reason ADR-0055 keeps the parsed custom
+properties out of it. The next thing a factory needs from the registry goes on `ModelContext`,
+which is a class rather than a record so that adding to it breaks nobody.
+
 **A block's custom properties are text in `LlmConfig` and an object on `LlmBundle`
 (ADR-0055).** The `custom-properties` sub-block is rendered from the merged configuration with
 `ConfigRenderOptions.concise()` and carried as a JSON string; an optional

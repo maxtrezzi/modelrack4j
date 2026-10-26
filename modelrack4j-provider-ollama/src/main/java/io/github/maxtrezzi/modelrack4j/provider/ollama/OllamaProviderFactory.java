@@ -23,6 +23,7 @@ import dev.langchain4j.model.ollama.OllamaChatModel;
 import dev.langchain4j.model.ollama.OllamaStreamingChatModel;
 import io.github.maxtrezzi.modelrack4j.LlmConfig;
 import io.github.maxtrezzi.modelrack4j.spi.KeyRequirement;
+import io.github.maxtrezzi.modelrack4j.spi.ModelContext;
 import io.github.maxtrezzi.modelrack4j.spi.ProviderFactory;
 import io.github.maxtrezzi.modelrack4j.spi.TokenEstimation;
 import java.util.Optional;
@@ -84,18 +85,30 @@ public final class OllamaProviderFactory implements ProviderFactory {
 
     @Override
     public ChatModel createChatModel(LlmConfig config) {
+        return createChatModel(config, ModelContext.empty());
+    }
+
+    @Override
+    public ChatModel createChatModel(LlmConfig config, ModelContext context) {
         OllamaChatModel.OllamaChatModelBuilder builder = OllamaChatModel.builder()
                 .baseUrl(baseUrl(config))
                 .modelName(config.modelName())
                 .timeout(config.timeout())
                 .logRequests(config.logRequests())
                 .logResponses(config.logResponses());
+        builder.listeners(context.chatModelListeners());
         config.temperature().ifPresent(builder::temperature);
         return builder.build();
     }
 
     @Override
     public Optional<StreamingChatModel> createStreamingChatModel(LlmConfig config) {
+        return createStreamingChatModel(config, ModelContext.empty());
+    }
+
+    @Override
+    public Optional<StreamingChatModel> createStreamingChatModel(
+            LlmConfig config, ModelContext context) {
         OllamaStreamingChatModel.OllamaStreamingChatModelBuilder builder =
                 OllamaStreamingChatModel.builder()
                         .baseUrl(baseUrl(config))
@@ -103,6 +116,7 @@ public final class OllamaProviderFactory implements ProviderFactory {
                         .timeout(config.timeout())
                         .logRequests(config.logRequests())
                         .logResponses(config.logResponses());
+        builder.listeners(context.chatModelListeners());
         config.temperature().ifPresent(builder::temperature);
         return Optional.of(builder.build());
     }
