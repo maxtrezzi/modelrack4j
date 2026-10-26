@@ -15,6 +15,8 @@
  */
 package io.github.maxtrezzi.modelrack4j;
 
+import dev.langchain4j.model.chat.listener.ChatModelListener;
+import dev.langchain4j.model.moderation.listener.ModerationModelListener;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Path;
@@ -28,6 +30,7 @@ import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -673,8 +676,72 @@ public final class LlmRegistry<T> implements AutoCloseable {
         private Duration debounce = DEFAULT_DEBOUNCE;
         private ChangeNotifier notifier;
         private CustomPropertiesHandler<T> customPropertiesHandler;
+        private Function<? super LlmConfig, ? extends List<? extends ChatModelListener>>
+                chatModelListeners;
+        private Function<? super LlmConfig, ? extends List<? extends ModerationModelListener>>
+                moderationModelListeners;
 
         private Builder() {
+        }
+
+        /**
+         * Sets the listeners for the chat model and the streaming chat model of each
+         * configuration.
+         *
+         * <p>Optional. The registry builds every model, and builds it again when a reload
+         * changes its configuration, so this is where you attach a
+         * {@link ChatModelListener}: for logging, for metrics, or for one of LangChain4j's own
+         * observability modules. The function is called each time a bundle is built — at
+         * {@link #build()} for every configuration, and at a reload for each configuration
+         * that changed — and the listeners it returns go to both chat models of that bundle.
+         *
+         * <pre>{@code
+         * LlmRegistry<Void> registry = LlmRegistry.builder()
+         *         .configFiles(List.of(base))
+         *         .chatModelListeners(config -> List.of(new RequestLogger(config.name())))
+         *         .build();
+         * }</pre>
+         *
+         * <p>A listener cannot see which configuration it observes: LangChain4j tells it the
+         * provider and the request, and two configurations may share both. The function
+         * receives the configuration, so a listener that needs the name can be given it, as
+         * above. Return the same instance for every configuration if it does not.
+         *
+         * <p>What a listener throws while a model is called is caught and logged by
+         * LangChain4j, and does not fail the call. Listeners are not called while a model is
+         * built, so a listener cannot fail a reload; the function itself can, and what it
+         * throws is reported as a {@link ConfigValidationException} naming the
+         * configuration.
+         *
+         * @param listeners what gives each configuration its listeners, never returning null,
+         *     or null for none
+         * @return this builder
+         */
+        public Builder<T> chatModelListeners(
+                Function<? super LlmConfig, ? extends List<? extends ChatModelListener>>
+                        listeners) {
+            this.chatModelListeners = listeners;
+            return this;
+        }
+
+        /**
+         * Sets the listeners for the moderation model of each configuration.
+         *
+         * <p>Like {@link #chatModelListeners(Function)}, for the moderation model, which
+         * LangChain4j gives a listener type of its own. It is called each time a bundle is
+         * built, like the chat function. For a configuration without
+         * {@code moderation.enabled = true} there is no moderation model, and what it returns
+         * is not used.
+         *
+         * @param listeners what gives each configuration its moderation listeners, never
+         *     returning null, or null for none
+         * @return this builder
+         */
+        public Builder<T> moderationModelListeners(
+                Function<? super LlmConfig, ? extends List<? extends ModerationModelListener>>
+                        listeners) {
+            this.moderationModelListeners = listeners;
+            return this;
         }
 
         /**
@@ -846,7 +913,8 @@ public final class LlmRegistry<T> implements AutoCloseable {
          * @throws ConfigValidationException if no layer was given, two layers share an id,
          *     any block is invalid or carries a key the schema does not know, a configuration
          *     is set to {@code null}, any provider or the custom-properties handler rejects a
-         *     configuration, or watching was asked for and no layer is a file. A configuration
+         *     configuration, a listener function fails, a provider builds a model without the
+         *     listeners it was given, or watching was asked for and no layer is a file. A configuration
          *     that defines no names is not an error: the registry is simply empty
          * @throws ConfigAccessException if any layer cannot be read
          * @throws UncheckedIOException if watching is enabled and a configured directory
@@ -860,7 +928,8 @@ public final class LlmRegistry<T> implements AutoCloseable {
             ChangeNotifier chosen = chooseNotifier(layers);
             LlmRegistry<T> registry;
             try {
-                SnapshotLoader<T> loader = new SnapshotLoader<>(layers, customPropertiesHandler);
+                SnapshotLoader<T> loader = new SnapshotLoader<>(layers, customPropertiesHandler,
+                        chatModelListeners, moderationModelListeners);
                 registry = new LlmRegistry<>(layers, loader, loader.load(Map.of()));
             } catch (RuntimeException e) {
                 // A bad layer must not leave a notifier the caller thinks we took ownership

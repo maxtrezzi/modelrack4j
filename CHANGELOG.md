@@ -11,6 +11,35 @@ will not be held back for a major bump until the API settles at `1.0.0`.
 
 ## [Unreleased]
 
+### Added
+
+- **Listeners on the models the registry builds.** `LlmRegistry.Builder` has
+  `chatModelListeners(...)` and `moderationModelListeners(...)`, each a function from a
+  configuration to its LangChain4j listeners. The registry calls it for each bundle it builds,
+  at `build()` and at every reload that changes that configuration, so the listeners survive
+  reloads. The chat listeners go to the chat model and to the streaming chat model:
+
+  ```java
+  var registry = LlmRegistry.builder()
+          .configFiles(List.of(path))
+          .chatModelListeners(config -> List.of(new RequestLogger(config.name())))
+          .build();
+  ```
+
+  A listener is not told which configuration it observes, which is why the function receives
+  the configuration. Listeners are not part of `LlmConfig`, so they never make a block look
+  changed. A function that throws or returns `null` is reported as a
+  `ConfigValidationException` naming the configuration.
+
+- **`ModelContext` and three methods on `ProviderFactory`** for a provider of your own:
+  `createChatModel`, `createStreamingChatModel` and `createModerationModel` each have a second
+  form that also takes a `ModelContext`, which carries the listeners. The registry calls that
+  form. **This does not break an existing factory:** the new methods have defaults that call
+  the old ones. Such a factory builds its models without the listeners, so when an application
+  registers listeners, the registry sees that a model does not report them and refuses the
+  configuration with a message that names the provider. To support listeners, override the
+  new methods and pass the listeners to each model's builder.
+
 ### Changed
 
 - **Built against LangChain4j 1.22.0** (community modules at `1.22.0-beta32`), up from
@@ -18,6 +47,13 @@ will not be held back for a major bump until the API settles at `1.0.0`.
   LangChain4j artifacts move to the new version, and the GLM provider brings Guava
   `33.7.2-jre` instead of `33.6.0-jre`. Guava now brings the same `org.jspecify:jspecify`
   as `langchain4j-core`, `1.0.1`, so this project no longer pins it.
+
+### Fixed
+
+- **A custom-properties handler now runs before any model of its configuration is built.** It
+  ran after them, so a configuration the handler rejected first built models that were then
+  thrown away. No model from a rejected configuration was ever used; the change only stops
+  building them.
 
 ## [0.3.0] — 2026-10-04
 

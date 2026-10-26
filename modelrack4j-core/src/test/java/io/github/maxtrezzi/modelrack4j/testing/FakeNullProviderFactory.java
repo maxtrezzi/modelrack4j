@@ -17,6 +17,7 @@ package io.github.maxtrezzi.modelrack4j.testing;
 
 import dev.langchain4j.model.chat.ChatModel;
 import io.github.maxtrezzi.modelrack4j.LlmConfig;
+import io.github.maxtrezzi.modelrack4j.spi.ModelContext;
 import io.github.maxtrezzi.modelrack4j.spi.TokenEstimation;
 
 /**
@@ -44,7 +45,7 @@ public final class FakeNullProviderFactory extends FakeProviderFactory {
     }
 
     @Override
-    public ChatModel createChatModel(LlmConfig config) {
+    public ChatModel createChatModel(LlmConfig config, ModelContext context) {
         return null;
     }
 }

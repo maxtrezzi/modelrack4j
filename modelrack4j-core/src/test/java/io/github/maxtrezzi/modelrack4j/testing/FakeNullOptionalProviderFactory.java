@@ -19,6 +19,7 @@ import dev.langchain4j.model.TokenCountEstimator;
 import dev.langchain4j.model.chat.StreamingChatModel;
 import dev.langchain4j.model.moderation.ModerationModel;
 import io.github.maxtrezzi.modelrack4j.LlmConfig;
+import io.github.maxtrezzi.modelrack4j.spi.ModelContext;
 import io.github.maxtrezzi.modelrack4j.spi.TokenEstimation;
 import java.util.Optional;
 
@@ -51,12 +52,12 @@ public final class FakeNullOptionalProviderFactory extends FakeProviderFactory {
     }
 
     @Override
-    public Optional<StreamingChatModel> createStreamingChatModel(LlmConfig config) {
+    public Optional<StreamingChatModel> createStreamingChatModel(LlmConfig config, ModelContext context) {
         return null;
     }
 
     @Override
-    public Optional<ModerationModel> createModerationModel(LlmConfig config) {
+    public Optional<ModerationModel> createModerationModel(LlmConfig config, ModelContext context) {
         return null;
     }
 

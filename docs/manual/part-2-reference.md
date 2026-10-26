@@ -464,7 +464,9 @@ var registry = LlmRegistry.builder()
 | `notifier(ChangeNotifier)` | Something of your own that tells the registry when the configuration changed. Cannot be combined with `watch(true)`. |
 | `debounce(Duration)` | How long the files must be quiet before a reload runs. Must be positive. |
 | `customPropertiesHandler(...)` | Turns each block's `custom-properties` into an object of yours, and fixes the registry's type: see *[Values of your own](#values-of-your-own)*. Optional; without it the registry is an `LlmRegistry<Void>`. |
-| `build()` | Parses, validates and builds everything, then starts the notifier if there is one. Throws `ConfigValidationException` if no layer was given, two layers share an id, any block is invalid, a block carries a key the schema does not know, a configuration is set to `null`, or `watch(true)` was set and no layer is a file. A configuration that defines no names is **not** an error; `ConfigAccessException` if a layer cannot be read; `UncheckedIOException` if a directory cannot be watched. |
+| `chatModelListeners(...)` | Gives each configuration's chat model and streaming chat model their `ChatModelListener`s: see *[Listeners on the models](#listeners-on-the-models)*. Optional. |
+| `moderationModelListeners(...)` | The same for the moderation model, which takes a `ModerationModelListener`. Optional. |
+| `build()` | Parses, validates and builds everything, then starts the notifier if there is one. Throws `ConfigValidationException` if no layer was given, two layers share an id, any block is invalid, a block carries a key the schema does not know, a configuration is set to `null`, a listener function fails, a provider does not attach the listeners, or `watch(true)` was set and no layer is a file. A configuration that defines no names is **not** an error; `ConfigAccessException` if a layer cannot be read; `UncheckedIOException` if a directory cannot be watched. |
 
 `build()` is all-or-nothing: one bad block means no registry, not a registry missing one name.
 
@@ -484,6 +486,50 @@ var registry = LlmRegistry.builder()
 
 `get()` is a volatile read, one small wrapper object, and a map lookup. It is meant to be
 called per request — that is the primary API, and listeners are secondary.
+
+### Listeners on the models
+
+The registry builds every model, and builds it again when a reload changes its
+configuration. So a LangChain4j `ChatModelListener` — for logging, for metrics, or one of
+LangChain4j's observability modules — is registered on the builder, not on a model:
+
+```java
+var registry = LlmRegistry.builder()
+        .configFiles(List.of(path))
+        .chatModelListeners(config -> List.of(new RequestLogger(config.name())))
+        .moderationModelListeners(config -> List.of(new ModerationLogger()))
+        .build();
+```
+
+`RequestLogger` and `ModerationLogger` stand for your own classes, which implement
+`ChatModelListener` and `ModerationModelListener`.
+
+Each method takes a function from the configuration to its listeners. The registry calls it
+each time it builds a bundle: at `build()` for every configuration, and at a reload for each
+configuration that changed. A configuration that did not change keeps its bundle, and its
+listeners with it. The chat listeners go to both the chat model and the streaming chat model
+of the bundle; the moderation listeners go to the moderation model, when the block has one.
+
+**Why a function and not a list.** A listener is told the provider and the request, but not
+the configuration name, and two configurations can use the same provider and the same
+model. If the listener needs the name — for a metric per configuration, for example — the
+function gives it, as above. A listener that does not need it can be one instance returned
+for every configuration: `config -> List.of(logger)`.
+
+What is guaranteed:
+
+- **Listeners change nothing in the configuration.** They are not part of `LlmConfig`, so they
+  never make a block look changed, and a reload with the same text still reports nothing.
+- **A listener cannot break a reload.** LangChain4j calls listeners only around a model call,
+  never while a model is built, and it catches and logs what a listener throws, so the call
+  itself still succeeds. The *function* can fail a reload: if it throws, returns `null`, or
+  returns a list with `null` in it, the build or the reload is rejected with a
+  `ConfigValidationException` that names the configuration, and the previous bundles stay
+  live.
+- **A listener is never dropped without a message.** After building each model, the registry
+  checks that the model reports the listeners it was given. A provider written for a version
+  before 0.4.0 does not pass them on, and the configuration is refused with a message that
+  says so, instead of a listener that is never called.
 
 ### Configuration that is not a file
 
@@ -1046,7 +1092,8 @@ no-provider notice and everything below is discarded.
 | Logger | Level | Event |
 |---|---|---|
 | `io.github.maxtrezzi.modelrack4j.LlmRegistry` | `WARN` | A reload was rejected, with the cause. **Logged whether or not you registered `onReloadFailure`.** |
-| `io.github.maxtrezzi.modelrack4j.LlmRegistry` | `ERROR` | A listener threw. The reload itself is unaffected. |
+| `io.github.maxtrezzi.modelrack4j.LlmRegistry` | `ERROR` | An `onReload` or `onReloadFailure` listener threw. The reload itself is unaffected. |
+| `dev.langchain4j.model.chat.ChatModelListenerUtils` | `WARN` | A [model listener](#listeners-on-the-models) threw during a call. This is LangChain4j's own log line, not the library's; the call itself is unaffected. |
 | `io.github.maxtrezzi.modelrack4j.ConfigWatcher` | `ERROR` | A reload callback threw. Watching continues. |
 | `io.github.maxtrezzi.modelrack4j.ConfigWatcher` | `DEBUG` | A watched directory cannot be re-registered yet; the watch service did not close cleanly. |
 | `io.github.maxtrezzi.modelrack4j.WritableFileConfigSource` | `WARN` | A store ended — applied or rejected — and its temporary file could not be removed. A `.modelrack4j-staged-*.conf` file is left beside the layer, which nothing reads. Whether the layer changed is what the store itself returned or threw, not what this line says. |
@@ -1195,11 +1242,40 @@ public interface ProviderFactory {
     default boolean supportsModeration() { return true; }             // can it build a ModerationModel?
     void validate(LlmConfig config);                                  // anything core cannot see
     ChatModel createChatModel(LlmConfig config);
+    default ChatModel createChatModel(LlmConfig config, ModelContext context) { … }
     Optional<StreamingChatModel> createStreamingChatModel(LlmConfig config);
+    default Optional<StreamingChatModel> createStreamingChatModel(LlmConfig config, ModelContext context) { … }
     Optional<ModerationModel> createModerationModel(LlmConfig config);
+    default Optional<ModerationModel> createModerationModel(LlmConfig config, ModelContext context) { … }
     Optional<TokenCountEstimator> createTokenCountEstimator(LlmConfig config);
 }
 ```
+
+**Each model has two `create` methods, and core calls the one with a `ModelContext`.** The
+context carries the [listeners](#listeners-on-the-models) the application registered for this
+block. Build the model in that method, and pass `context.chatModelListeners()` — or
+`context.moderationModelListeners()` for the moderation model — to its builder. Implement the
+one-argument method as a call to it with `ModelContext.empty()`:
+
+```java
+@Override
+public ChatModel createChatModel(LlmConfig config) {
+    return createChatModel(config, ModelContext.empty());
+}
+
+@Override
+public ChatModel createChatModel(LlmConfig config, ModelContext context) {
+    return MyChatModel.builder()
+            .modelName(config.modelName())
+            .listeners(context.chatModelListeners())
+            .build();
+}
+```
+
+The two-argument methods have a default that calls the one-argument method and ignores the
+context. That keeps a factory written before 0.4.0 working. Such a factory builds models
+without the listeners, so when an application registers some, core sees that the model does
+not report them and refuses the configuration with a message that names your provider.
 
 **Report a capability; do not enforce it.** `tokenEstimation()`, `supportsModeration()`,
 `apiKeyRequirement()` and `baseUrlRequirement()` say what your provider can do and needs, and
@@ -1259,21 +1335,26 @@ the key and signs a token with the halves before any call. OpenAI refuses a bloc
   earlier one away after its listeners had already announced it.
 - **`get()`, `snapshot()` and `names()` are safe from any thread**, during a reload included,
   and never take that lock. A reader either sees the whole old snapshot or the whole new one.
-- **Listeners run on the thread that caused the reload** — the watcher thread, or the caller
-  of `reload()`. Long work in a listener delays the next reload; hand it off to your own
-  executor if it is not quick. A listener must not call `reload()`, because it is already
-  running inside one.
+- **Reload listeners — `onReload` and `onReloadFailure` — run on the thread that caused the
+  reload**: the watcher thread, or the caller of `reload()`. Long work in a listener delays
+  the next reload; hand it off to your own executor if it is not quick. A listener must not
+  call `reload()`, because it is already running inside one.
 - **A [custom-properties handler](#values-of-your-own) runs on the same thread, and while the
-  lock is held** — earlier than a listener, since it is part of building the snapshot rather
-  than of announcing it. Keep it to parsing and checking: no I/O, no network, no blocking. It
-  is the contract a `ProviderFactory` already works under, for the same reason.
+  lock is held** — earlier than a reload listener, since it is part of building the snapshot
+  rather than of announcing it. Keep it to parsing and checking: no I/O, no network, no
+  blocking. It is the contract a `ProviderFactory` already works under, for the same reason.
+- **A [model listener](#listeners-on-the-models) runs on the thread that calls the model**,
+  inside the call, so a slow listener makes every call slower. The *function* that gives the
+  listeners runs while the bundle is built, on the reload thread and while the lock is held,
+  like the custom-properties handler: keep it quick.
 - **A store takes the same lock, and holds it across the layer's own write.** So
   `store()` and `storeIfUnchanged()` are serialised against reloads and against each other,
   and a slow `WritableConfigSource.write` — a database that is not answering — delays the
   next reload for as long as it runs. Readers are unaffected: they never take that lock.
-- **Listeners may be registered at any time, from any thread.** The registration lists are
-  copy-on-write, so adding one during a reload is safe and does not block it.
-- **Registering a listener does not replay anything.** It is called on the next reload, never
+- **Reload listeners may be registered at any time, from any thread.** The registration lists
+  are copy-on-write, so adding one during a reload is safe and does not block it. Model
+  listeners are different: they are fixed at `build()`.
+- **Registering a reload listener does not replay anything.** It is called on the next reload, never
   for one that already happened; the current state is `get()`, not a callback.
 - **`close()` does not wait for a reload another thread is running.** That reload finishes
   on its own and its listeners run, so a listener can still be called after `close()` has
@@ -1378,6 +1459,8 @@ Deliberate and permanent:
 | `` llm.SL.custom-properties must be a block of values `` | `custom-properties` set to a number, a string or a list | It has to be a block: `custom-properties { … }`. |
 | `` the custom-properties handler rejected this configuration `` | Your own `CustomPropertiesHandler` threw | The message continues with yours, and the cause is the exception you threw. The previous configuration is still live. |
 | `` the custom-properties handler returned null `` | Your own `CustomPropertiesHandler` returned `null` instead of an object | Return a value. `null` is refused because the registry's type parameter says the object is there, so it would reach your code much later. To mean "nothing here", return an empty record of your own, or use `Optional` as your type. |
+| `` built a chat model without the listeners this registry was given `` | Listeners are registered, and a provider module was built for a version before 0.4.0, so its factory does not pass them to the model | Use the provider versions the modelrack4j BOM manages. A provider of your own needs the two-argument `create` methods: see *[Adding a provider](#adding-a-provider)*. Or register no listeners: the provider then works as before. |
+| `` listener function failed ``, `` listener function returned null ``, `` returned a list holding null `` | Your own function given to `chatModelListeners` or `moderationModelListeners` threw, or did not return a list of listeners | Return a list, empty for none. The cause is the exception you threw. The previous configuration is still live. |
 | `` cannot find symbol: method added() `` — `` location: variable change of type Object `` | Code that mentions no generics, after upgrading. `LlmRegistry` now takes a type parameter, and a **raw** `LlmRegistry` erases every generic member of the class — including the `Optional<ReloadChange>` that `reload()` and `store()` return, which is why the error names a method of `ReloadChange` and blames `Object` | Write `LlmRegistry<Void>`, or `var` for a local. Assigning the result to a declared `Optional<ReloadChange>` also compiles, with an unchecked warning. **Build clean before you conclude anything**: Maven does not recompile a source file it thinks is unchanged, so an incremental build after the upgrade can pass while `clean compile` fails |
 | `names()` is empty and every `get(...)` throws | No layer defines a configuration — an empty file, or one whose `llm` block has no names | Not an error in itself: check for the names your application requires. See *[Missing and malformed files](#missing-and-malformed-files)*. |
 | An `include` in a layer adds nothing, and nothing is logged | The layer is not a file, so the include is looked up on the classpath, and a HOCON include that finds nothing is not an error | Includes work in file layers. For a layer from a database, assemble the text before handing it over. |

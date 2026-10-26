@@ -24,7 +24,12 @@ import dev.langchain4j.memory.chat.MessageWindowChatMemory;
 import dev.langchain4j.memory.chat.TokenWindowChatMemory;
 import dev.langchain4j.model.TokenCountEstimator;
 import dev.langchain4j.model.chat.ChatModel;
+import dev.langchain4j.model.chat.StreamingChatModel;
+import dev.langchain4j.model.chat.listener.ChatModelListener;
+import dev.langchain4j.model.moderation.ModerationModel;
+import dev.langchain4j.model.moderation.listener.ModerationModelListener;
 import io.github.maxtrezzi.modelrack4j.spi.KeyRequirement;
+import io.github.maxtrezzi.modelrack4j.spi.ModelContext;
 import io.github.maxtrezzi.modelrack4j.spi.ProviderFactory;
 import io.github.maxtrezzi.modelrack4j.spi.TokenEstimation;
 import java.util.ArrayList;
@@ -37,6 +42,7 @@ import java.util.Optional;
 import java.util.ServiceLoader;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 /**
@@ -64,10 +70,24 @@ final class SnapshotLoader<T> {
     /** What turns a block's custom properties into the application's own object; may be null. */
     private final CustomPropertiesHandler<T> customPropertiesHandler;
 
-    SnapshotLoader(List<Layer> layers, CustomPropertiesHandler<T> customPropertiesHandler) {
+    /** What gives each block its chat model listeners; may be null. */
+    private final Function<? super LlmConfig, ? extends List<? extends ChatModelListener>>
+            chatModelListeners;
+
+    /** What gives each block its moderation model listeners; may be null. */
+    private final Function<? super LlmConfig, ? extends List<? extends ModerationModelListener>>
+            moderationModelListeners;
+
+    SnapshotLoader(List<Layer> layers, CustomPropertiesHandler<T> customPropertiesHandler,
+            Function<? super LlmConfig, ? extends List<? extends ChatModelListener>>
+                    chatModelListeners,
+            Function<? super LlmConfig, ? extends List<? extends ModerationModelListener>>
+                    moderationModelListeners) {
         this.layers = List.copyOf(layers);
         this.factories = discoverFactories();
         this.customPropertiesHandler = customPropertiesHandler;
+        this.chatModelListeners = chatModelListeners;
+        this.moderationModelListeners = moderationModelListeners;
     }
 
     /**
@@ -216,27 +236,130 @@ final class SnapshotLoader<T> {
 
         validateCapabilities(config, factory);
         factory.validate(config);
+        // Before any model is built, as buildCustomProperties explains: a configuration the
+        // application rejects must not first construct models that are then thrown away.
+        T customProperties = buildCustomProperties(config);
+        ModelContext context = buildContext(config);
 
-        ChatModel chatModel = factory.createChatModel(config);
+        ChatModel chatModel = factory.createChatModel(config, context);
         if (chatModel == null) {
             throw new ConfigValidationException(path(config) + ": provider '"
                     + config.provider() + "' produced no chat model, which every bundle"
                     + " must have.");
         }
+        requireListeners(chatModel.listeners(), context.chatModelListeners(), config,
+                "chat model");
+
+        Optional<StreamingChatModel> streamingChatModel = Optional.empty();
+        if (config.streaming()) {
+            streamingChatModel = requireProduced(
+                    factory.createStreamingChatModel(config, context), config,
+                    "streaming = true", "streaming chat model");
+            requireListeners(streamingChatModel.get().listeners(), context.chatModelListeners(),
+                    config, "streaming chat model");
+        }
+
+        Optional<ModerationModel> moderationModel = Optional.empty();
+        if (config.moderationEnabled()) {
+            moderationModel = requireProduced(
+                    factory.createModerationModel(config, context), config,
+                    "moderation.enabled = true", "moderation model");
+            requireListeners(moderationModel.get().listeners(),
+                    context.moderationModelListeners(), config, "moderation model");
+        }
 
         return new LlmBundle<>(
                 config,
                 chatModel,
-                config.streaming()
-                        ? requireProduced(factory.createStreamingChatModel(config), config,
-                                "streaming = true", "streaming chat model")
-                        : Optional.empty(),
-                config.moderationEnabled()
-                        ? requireProduced(factory.createModerationModel(config), config,
-                                "moderation.enabled = true", "moderation model")
-                        : Optional.empty(),
+                streamingChatModel,
+                moderationModel,
                 buildMemoryProvider(config, factory),
-                buildCustomProperties(config));
+                customProperties);
+    }
+
+    /**
+     * Asks the application for this block's listeners.
+     *
+     * @param config the configuration being built
+     * @return the context to pass to every model of the bundle
+     * @throws ConfigValidationException if a listener function throws, returns {@code null},
+     *     or returns a list holding {@code null}
+     * @implNote ADR-0063. Called once per bundle that is built, and not for a bundle carried
+     *     over unchanged: the listeners are fixed at {@code build()}, so a carried bundle
+     *     already has the ones the function would return.
+     */
+    private ModelContext buildContext(LlmConfig config) {
+        if (chatModelListeners == null && moderationModelListeners == null) {
+            return ModelContext.empty();
+        }
+        return ModelContext.of(
+                listenersFrom(chatModelListeners, config, "chat model"),
+                listenersFrom(moderationModelListeners, config, "moderation model"));
+    }
+
+    private static <L> List<L> listenersFrom(
+            Function<? super LlmConfig, ? extends List<? extends L>> function,
+            LlmConfig config, String what) {
+        if (function == null) {
+            return List.of();
+        }
+        List<? extends L> listeners;
+        try {
+            listeners = function.apply(config);
+        } catch (RuntimeException failed) {
+            // Wrapped like a custom-properties handler that throws, and worded the same way,
+            // so a reload reports it through onReloadFailure with the block named instead of
+            // letting a foreign exception type escape a method that documents this one.
+            String said = failed.getMessage() == null
+                    ? failed.getClass().getName()
+                    : failed.getMessage();
+            throw new ConfigValidationException(path(config) + ": the " + what
+                    + " listener function failed: " + said, failed);
+        }
+        if (listeners == null) {
+            throw new ConfigValidationException(path(config) + ": the " + what
+                    + " listener function returned null. Return an empty list for no"
+                    + " listeners.");
+        }
+        // A loop rather than contains(null), which List.of() answers with a
+        // NullPointerException instead of false.
+        for (L listener : listeners) {
+            if (listener == null) {
+                throw new ConfigValidationException(path(config) + ": the " + what
+                        + " listener function returned a list holding null. Every element"
+                        + " must be a listener.");
+            }
+        }
+        return List.copyOf(listeners);
+    }
+
+    /**
+     * Refuses a model that does not report the listeners it was given.
+     *
+     * @param reported what the model's {@code listeners()} returned
+     * @param given what the factory was given for it
+     * @param config the configuration being built, for the message
+     * @param what the model, for the message
+     * @throws ConfigValidationException if any listener given is missing from the model
+     * @implNote ADR-0063. The SPI's two-argument {@code create} methods default to ignoring
+     *     the context, so that a factory built before {@code 0.4.0} still works. This check
+     *     is what makes that default safe: without it, such a factory would drop every
+     *     listener, and none of them would ever be called, with nothing to say why. It
+     *     compares with {@code containsAll}, so a model may report more listeners than it was
+     *     given, but not fewer.
+     */
+    private static <L> void requireListeners(
+            List<L> reported, List<L> given, LlmConfig config, String what) {
+        if (given.isEmpty()) {
+            return;
+        }
+        if (reported == null || !reported.containsAll(given)) {
+            throw new ConfigValidationException(path(config) + ": provider '"
+                    + config.provider() + "' built a " + what + " without the listeners"
+                    + " this registry was given. Its factory does not pass them on, probably"
+                    + " because it was built for a modelrack4j older than 0.4.0. Rebuild it"
+                    + " against this version, or register no " + what + " listeners.");
+        }
     }
 
     /**

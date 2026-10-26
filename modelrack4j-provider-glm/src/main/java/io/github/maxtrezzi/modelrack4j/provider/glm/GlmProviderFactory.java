@@ -24,6 +24,7 @@ import dev.langchain4j.model.moderation.ModerationModel;
 import io.github.maxtrezzi.modelrack4j.ConfigValidationException;
 import io.github.maxtrezzi.modelrack4j.LlmConfig;
 import io.github.maxtrezzi.modelrack4j.spi.KeyRequirement;
+import io.github.maxtrezzi.modelrack4j.spi.ModelContext;
 import io.github.maxtrezzi.modelrack4j.spi.ProviderFactory;
 import io.github.maxtrezzi.modelrack4j.spi.TokenEstimation;
 import java.nio.charset.StandardCharsets;
@@ -121,6 +122,11 @@ public final class GlmProviderFactory implements ProviderFactory {
 
     @Override
     public ChatModel createChatModel(LlmConfig config) {
+        return createChatModel(config, ModelContext.empty());
+    }
+
+    @Override
+    public ChatModel createChatModel(LlmConfig config, ModelContext context) {
         ZhipuAiChatModel.ZhipuAiChatModelBuilder builder = ZhipuAiChatModel.builder()
                 .apiKey(apiKey(config))
                 .model(config.modelName())
@@ -128,6 +134,7 @@ public final class GlmProviderFactory implements ProviderFactory {
                 .readTimeout(config.timeout())
                 .logRequests(config.logRequests())
                 .logResponses(config.logResponses());
+        builder.listeners(context.chatModelListeners());
         config.temperature().ifPresent(builder::temperature);
         config.baseUrl().ifPresent(builder::baseUrl);
         return builder.build();
@@ -135,6 +142,12 @@ public final class GlmProviderFactory implements ProviderFactory {
 
     @Override
     public Optional<StreamingChatModel> createStreamingChatModel(LlmConfig config) {
+        return createStreamingChatModel(config, ModelContext.empty());
+    }
+
+    @Override
+    public Optional<StreamingChatModel> createStreamingChatModel(
+            LlmConfig config, ModelContext context) {
         ZhipuAiStreamingChatModel.ZhipuAiStreamingChatModelBuilder builder =
                 ZhipuAiStreamingChatModel.builder()
                         .apiKey(apiKey(config))
@@ -143,6 +156,7 @@ public final class GlmProviderFactory implements ProviderFactory {
                         .readTimeout(config.timeout())
                         .logRequests(config.logRequests())
                         .logResponses(config.logResponses());
+        builder.listeners(context.chatModelListeners());
         config.temperature().ifPresent(builder::temperature);
         config.baseUrl().ifPresent(builder::baseUrl);
         return Optional.of(builder.build());

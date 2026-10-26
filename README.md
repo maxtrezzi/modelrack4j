@@ -683,8 +683,9 @@ These are logged on whichever thread caused them — the watcher's, or your own 
   either of those applies, which matters more than it sounds: a typo in a config file does
   not delay one reload, it makes *every* later edit to that file fail the same way, and when
   the watcher thread is the one that found it, the log is the only place it appears.
-- **A listener that threw**, at `ERROR`. The reload itself is unaffected. Nothing else
-  reports this: the exception is caught so that one bad listener cannot stop the others.
+- **An `onReload` or `onReloadFailure` listener that threw**, at `ERROR`. The reload itself is
+  unaffected. Nothing else reports this: the exception is caught so that one bad listener
+  cannot stop the others.
 
 The reference has [the full table](docs/manual/part-2-reference.md#logging), including what
 writing a layer back logs.
@@ -811,13 +812,14 @@ Three provider notes worth knowing before you hit them:
 ### Adding a provider
 
 Implement `io.github.maxtrezzi.modelrack4j.spi.ProviderFactory` and register it in
-`META-INF/services/io.github.maxtrezzi.modelrack4j.spi.ProviderFactory`. The interface is
-ten methods, three of which return `Optional.empty()` when the capability does not exist.
-The one that is not obvious is `tokenEstimation()`: it reports `ABSENT`, `LOCAL` or
-`REMOTE`, not a boolean, because availability is not what varies — cost is.
-`apiKeyRequirement()` and `baseUrlRequirement()` say whether a block may set each key and
-whether it must: `FORBIDDEN`, `OPTIONAL` or `MANDATORY`. Neither has a default, so you
-decide both.
+`META-INF/services/io.github.maxtrezzi.modelrack4j.spi.ProviderFactory`. The one method that
+is not obvious is `tokenEstimation()`: it reports `ABSENT`, `LOCAL` or `REMOTE`, not a
+boolean, because availability is not what varies — cost is. `apiKeyRequirement()` and
+`baseUrlRequirement()` say whether a block may set each key and whether it must:
+`FORBIDDEN`, `OPTIONAL` or `MANDATORY`. Neither has a default, so you decide both. Each model
+has two `create` methods, and the registry calls the one that also takes a `ModelContext`:
+build the model there, and pass the listeners it carries to the model's builder. The
+reference shows [the whole interface](docs/manual/part-2-reference.md#adding-a-provider).
 
 ---
 
@@ -839,6 +841,33 @@ rate-limited, network-dependent HTTP call inside what the application reasonably
 in-memory bookkeeping. That is a decision, so it is opted into explicitly, and the rejection
 message names the flag that permits it. On a local counter the flag has no effect rather
 than being an error — one config layer commonly spans several providers.
+
+---
+
+## Listeners on the models
+
+The registry builds every model, and builds it again on a reload, so a LangChain4j
+`ChatModelListener` — for logging, for metrics, or one of LangChain4j's observability
+modules — is registered on the builder rather than on a model:
+
+```java
+var registry = LlmRegistry.builder()
+        .configFiles(List.of(Path.of("llm.conf")))
+        .chatModelListeners(config -> List.of(new RequestLogger(config.name())))  // your class
+        .build();
+```
+
+The function is called for each bundle the registry builds, and gets that configuration. A
+listener is not told which configuration it observes, so pass it the name if it needs one;
+otherwise return the same listener for every configuration. The chat listeners go to the
+chat model and to the streaming chat model. `moderationModelListeners(...)` does the same for
+the moderation model.
+
+Listeners are not part of the configuration, so they never make a block look changed. A
+listener that throws does not fail the call, because LangChain4j catches what it throws, and
+no listener is called while the registry builds or reloads. See
+[Listeners on the models](docs/manual/part-2-reference.md#listeners-on-the-models) in the
+reference for the details.
 
 ---
 

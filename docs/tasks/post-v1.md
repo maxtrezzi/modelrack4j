@@ -6249,7 +6249,8 @@ On an AMD Ryzen 7 7840HS, Temurin 25, Maven 3.8.7.
 
 ### P55 — Listeners on the models the registry builds
 
-**Status:** Not started — target 0.4.0, before [P56](#p56--a-mistral-provider) ·
+**Status:** Done 2026-10-26 — target 0.4.0, before [P56](#p56--a-mistral-provider) ·
+**Branch:** `task/p55-model-listeners` · [ADR-0063](../adr/0063-listeners-are-registered-on-the-registry-and-reach-the-factory-in-a-context.md) ·
 **Raised by:** the owner on 2026-10-26
 
 The registry builds every model and rebuilds it on a reload, so an application has no place to
@@ -6321,10 +6322,99 @@ builder. The capability rule that *a factory reports and core enforces* (ADR-004
 unaffected; the paragraph in `AGENTS.md` that lists what a factory reports gains a line about
 what it now receives.
 
+#### What was settled
+
+The owner chose, on 2026-10-26, among the shapes the entry left open; ADR-0063 records the
+argument.
+
+| Question | Chosen | Not chosen |
+|---|---|---|
+| How a factory receives the listeners | `create…(LlmConfig, ModelContext)` overloads **with defaults** that call the one-argument methods, so no factory breaks | the same context as a break, like ADR-0062 |
+| How a listener learns its block | a **function from `LlmConfig` to the listeners**, called per bundle built | a fixed list; a fixed list plus a hidden listener writing the name into `attributes()` |
+| Moderation | **in 0.4.0**, through `moderationModelListeners(...)` | later |
+
+The defaults are safe because of one check: `SnapshotLoader.requireListeners` compares each
+model's `listeners()` with what the factory was given, and refuses the configuration when
+any is missing. A factory written before `0.4.0` therefore works until an application
+registers listeners, and then fails with a message instead of dropping them.
+
+#### What was read before deciding
+
+With `javap` on the `1.22.0` jars, 2026-10-26:
+
+- Every chat and streaming model of the five providers, and `OpenAiModerationModel`, returns
+  from `listeners()` the list its builder was given. That is what makes the check possible.
+- `ChatModel.chat(ChatRequest, ChatRequestOptions)` builds the listener `attributes()` map
+  from the caller's `ChatRequestOptions.listenerAttributes()`, per call. The registry cannot
+  put the block's name there, because the application calls the model directly.
+- `ChatModelListenerUtils` builds one context per event and hands it to each listener in list
+  order, catching and logging an `Exception` from each. A listener that throws therefore fails
+  neither the call nor a reload, and no listener runs while a model is built.
+
+#### What was built
+
+- **`ModelContext`**, a final class in `spi`, with `of(...)` and `empty()`, and three default
+  methods on `ProviderFactory`. `createTokenCountEstimator` takes no context: LangChain4j has
+  no estimator listener.
+- **`LlmRegistry.Builder.chatModelListeners(...)` and `moderationModelListeners(...)`**, each
+  a `Function<? super LlmConfig, ? extends List<? extends …Listener>>`. A function that
+  throws, returns `null` or returns a list holding `null` fails the build or the reload with a
+  `ConfigValidationException` naming the block.
+- **All five factories** implement the two-argument forms and pass the listeners to every
+  chat and streaming builder; OpenAI also to its moderation builder. The one-argument forms
+  call them with `ModelContext.empty()`.
+
+**One defect found in the method this changed.** `buildBundle` called the custom-properties
+handler as the last argument of the `LlmBundle` constructor, so it ran after every model of
+the block had been built. Its own `@implNote` said it ran *before* `createChatModel` "so that
+a rejected configuration does not first build a model that is then discarded", and
+`AGENTS.md` said the same; ADR-0055 says only "beside". It now runs before the context is
+built and before any model, with a test that counts the chat models a factory built when
+the handler rejects the block: zero. No model from a rejected configuration was ever
+published, so the effect was work thrown away, not a wrong result. The CHANGELOG records it
+under *Fixed*.
+
+#### Verified
+
+On an AMD Ryzen 7 7840HS, Temurin 25, Maven 3.8.7.
+
+- **Core: 16 tests in a new `ModelListenersTest`**, 243 → 259. They cover a listener on the
+  chat and the streaming model, two blocks on one model told apart by the function's
+  argument, a moderation listener, a reload that rebuilds one bundle and calls the function
+  again for that block only, the same text reloaded reporting nothing, a throwing listener
+  breaking neither build, reload nor call, listeners kept when `customPropertiesHandler`
+  retypes the builder after them, the refusal of `fake-legacy` — which implements only the
+  one-argument methods — with listeners and its success without, a factory that passes the
+  listeners to its chat model only, refused for its streaming and for its moderation model, a
+  factory with only the one-argument methods still building all three models, the three ways
+  a function can fail, a rejected reload keeping the previous listeners, and the handler order
+  above.
+- **Each provider: one test**, `listenersReachEveryModel`, against `CountingPort`: the
+  listener is in the model's `listeners()`, sees one request from the chat model and one from
+  the streaming model, and the one-argument form builds a model with none. OpenAI's also
+  covers moderation. Each run reported `Tests run: 1`.
+- **Each new check was made to fail.** Moving the handler back after the models and
+  disabling `requireListeners` failed exactly the two tests that name them; removing the
+  `listeners(...)` line from the GLM chat builder failed GLM's provider test.
+- **PIT on core found three gaps in the first 13 tests, and the last three tests close
+  them.** The first run gave 314 mutants with 4 non-killed beyond the known eight: the calls to
+  `requireListeners` for the streaming and the moderation model survived removal, because the
+  only factory that dropped listeners was refused at its chat model; the two-argument
+  `createModerationModel` default survived being replaced by `Optional.empty()`, and the
+  `createStreamingChatModel` default was not covered at all, because `fake-legacy` produces no
+  moderation model and no test asked it for a streaming one. `fake-partial` and
+  `fake-pre-context` exist for those. The last run, on the code as committed: **315 mutants,
+  307 killed, 1 timed out, 6 survived, 1 uncovered; line coverage 802/834; 4 min 11 s**, the
+  report checked to contain `ModelContext`. The eight are the eight P54 lists, and nothing
+  from this item survives.
+- `mvn clean install`: green; **336 tests** offline, 315 → 336 — core 259, OpenAI, Anthropic
+  and Gemini 13 each, GLM 26, Ollama 12. `build/check-docs.py`: clean.
+
 ### P56 — A Mistral provider
 
-**Status:** Blocked — on [P55](#p55--listeners-on-the-models-the-registry-builds), so the module
-is written against the SPI it will ship with · target 0.4.0 ·
+**Status:** Not started — [P55](#p55--listeners-on-the-models-the-registry-builds) is done, so
+the module is written against the SPI it will ship with: implement the two-argument `create`
+methods and pass `ModelContext`'s listeners, the moderation ones included · target 0.4.0 ·
 **Raised by:** the owner on 2026-10-26
 
 A sixth provider module, and the second whose provider has a moderation model.
