@@ -29,12 +29,12 @@ yours against the vendor's list.
 
 | Service | `provider =` | `base-url` | `api-key` | Level | Date | Known limits |
 |---|---|---|---|---|---|---|
-| OpenAI | `openai` | leave it out | required | Module | 2026-10-26 | |
-| Anthropic | `anthropic` | leave it out | required | Module | 2026-10-26 | no moderation; token counting is a billed call |
-| Google Gemini | `gemini` | leave it out | required | Module | 2026-10-26 | no moderation; token counting is a billed call |
-| Zhipu GLM | `glm` | leave it out | required, `id.secret` | Module | 2026-10-26 | no moderation, no token counting |
-| Mistral | `mistral` | leave it out | required | Module | integration test not run yet | no token counting |
-| Ollama | `ollama` | `http://localhost:11434` | not allowed | Module | 2026-10-26 | no moderation, no token counting |
+| OpenAI | `openai` | leave it out | required | Module | 2026-10-27 | |
+| Anthropic | `anthropic` | leave it out | required | Module | 2026-10-27 | no moderation; token counting is a billed call |
+| Google Gemini | `gemini` | leave it out | required | Module | 2026-10-27 | no moderation; token counting is a billed call |
+| Zhipu GLM | `glm` | leave it out | required, `id.secret` | Module | 2026-10-27 | no moderation, no token counting |
+| Mistral | `mistral` | leave it out | required | Module | 2026-10-27 | no token counting |
+| Ollama | `ollama` | `http://localhost:11434` | not allowed | Module | 2026-10-27 | no moderation, no token counting |
 | Ollama, through its OpenAI endpoint | `openai` | `http://localhost:11434/v1` | leave it out | Tested | 2026-10-26 | [both limits below](#limits-of-a-row-that-is-not-a-module); prefer `provider = ollama` |
 | LocalAI, llama.cpp's server, vLLM, LM Studio | `openai` | the server's OpenAI-compatible address | only if the server checks one | Declared | — | [both limits below](#limits-of-a-row-that-is-not-a-module) |
 | Kimi (Moonshot AI) | `openai` | `https://api.moonshot.ai/v1` | required | Declared | 2026-10-26 | [both limits below](#limits-of-a-row-that-is-not-a-module) |

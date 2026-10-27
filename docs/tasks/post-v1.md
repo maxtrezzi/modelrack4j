@@ -6412,8 +6412,8 @@ On an AMD Ryzen 7 7840HS, Temurin 25, Maven 3.8.7.
 
 ### P56 — A Mistral provider
 
-**Status:** In progress — built, tested offline and documented; the live run waits for a
-`MISTRAL_API_KEY` · target 0.4.0 · **Branch:** `task/p56-mistral-provider` · no ADR ·
+**Status:** Done 2026-10-27 — target 0.4.0 · **Branch:** `task/p56-mistral-provider`; the live run
+on `task/p58-pre-release-check-0.4.0` · no ADR ·
 **Raised by:** the owner on 2026-10-26
 
 A sixth provider module, and the second whose provider has a moderation model.
@@ -6527,8 +6527,11 @@ and Moderation 2 is listed as **free**. The page names models, not the `-latest`
 that `mistral-small-latest` is Small 4 is an assumption. The request is about 20 tokens in and
 a few out, so **one run costs about $0.00001**.
 
-**Not run yet:** this machine has no `MISTRAL_API_KEY`. Until it runs, nothing here shows that
-the endpoint accepts `mistral-moderation-latest`, which is the one value the factory chose.
+**Run on 2026-10-27, in P58: green.** One chat request to `mistral-small-latest` and one
+moderation of a harmless sentence through `mistral-moderation-latest`, which came back not
+flagged — so the endpoint accepts the one value the factory chose. The key is on Mistral's free
+plan; its first run, minutes after the key was created, got HTTP 429 "Rate limit exceeded"
+(code 1300) on the chat call, and passed once the owner had checked the account.
 
 #### Verified
 
@@ -6683,9 +6686,9 @@ On an AMD Ryzen 7 7840HS, Temurin 25, Maven 3.8.7.
 
 ### P58 — The pre-release check of 0.4.0
 
-**Status:** In progress — everything offline is green, Jackson moved off seven advisories, a
-vulnerability check added to CI; the live run of all six providers waits for `MISTRAL_API_KEY`
-· **Branch:** `task/p58-pre-release-check-0.4.0` · ADR-0064, ADR-0065 ·
+**Status:** In progress — everything offline is green, all six providers answered live,
+Jackson moved off seven advisories, a vulnerability check added to CI; the check has still to
+pass in CI and become required · **Branch:** `task/p58-pre-release-check-0.4.0` · ADR-0064, ADR-0065 ·
 **Raised by:** the owner on 2026-10-26, as the check before 0.4.0 is released
 
 P54 to P57 were each checked on their own branch. This item re-runs, on the merged tree, what a
@@ -6789,4 +6792,14 @@ explicit in the BOM so that they survive if it is.
 
 **Still to do before this item closes:** make `known vulnerabilities` a required check on `dev`
 and `main`, once it has passed on the pull request; and the live run of all six providers.
+
+#### The live run of all six providers
+
+`mvn -Pintegration verify` on 2026-10-27, with Ollama 0.17.5 in its local container and
+`OLLAMA_MODEL=tinyllama`, after Jackson moved to `2.22.4`: OpenAI (`gpt-5-mini`), Anthropic
+(`claude-sonnet-4-6`), Gemini (`gemini-3.6-flash`), GLM (`glm-5.3`) and Ollama passed.
+`MistralProviderIT` failed on its chat call with HTTP 429, "Rate limit exceeded", code 1300 —
+the key was new, on Mistral's free plan. After the owner checked the account it was run alone
+and passed: one chat request and one moderation, not flagged. That closes P56. None of the
+five configured hosted model identifiers has rotted.
 
