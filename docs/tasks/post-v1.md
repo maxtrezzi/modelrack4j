@@ -6803,3 +6803,29 @@ the key was new, on Mistral's free plan. After the owner checked the account it 
 and passed: one chat request and one moderation, not flagged. That closes P56. None of the
 five configured hosted model identifiers has rotted.
 
+### P59 — The pre-release check of 0.4.0, part two
+
+**Status:** In progress — opened 2026-10-27; scope to be settled with the owner ·
+**Branch:** `task/p59-pre-release-check-0.4.0-bis` ·
+**Raised by:** the owner on 2026-10-27, after P58 merged with its checks unfinished
+
+[P58](#p58--the-pre-release-check-of-040) merged as `52ed737` with the offline checks, the live
+run of all six providers, the Jackson fix and the `known vulnerabilities` check. The owner
+asked for a second branch for the checks still to do before 0.4.0 is released. P58 stays *In
+progress* until this item closes, and closes with it.
+
+#### Candidates found so far
+
+- **GitHub Actions versions.** The runs of `#83` warned that `actions/setup-java@v4` is
+  deprecated in favour of `v5`, and that `actions/checkout@v4` and `actions/setup-java@v4` target
+  Node.js 20, which GitHub now forces onto Node.js 24. Both workflows use them. Nothing fails
+  today.
+- **`modelrack4j-bom` exports its parent's `dependencyManagement`.** Found in P58: importing the
+  BOM brings 225 managed versions, not only the modelrack4j artifacts — measured with the
+  published `0.3.0` BOM, an application that declares JUnit and AssertJ without a version gets
+  6.1.3 and 3.27.7. Decoupling the BOM from the parent is a question for the owner; ADR-0065's
+  Jackson entries are explicit in the BOM so that they survive it.
+- **The weekly job's name** shows unexpanded on a pull request — `known vulnerabilities on
+  ${{ matrix.ref }}`, skipped — because a matrix is not expanded for a job that does not run.
+  Cosmetic.
+
