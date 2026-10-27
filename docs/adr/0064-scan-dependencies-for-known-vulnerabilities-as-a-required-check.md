@@ -35,6 +35,13 @@ run.
 - *OWASP dependency-check*. The best known for Java, but slow without an NVD API key, and
   Sonatype's OSS Index now requires a token: two secrets in the repository for a job anybody's
   fork runs.
+- *Trivy* (Aqua Security), which the owner asked about. Reading `pom.xml`, it shares
+  osv-scanner's weakness: it rebuilds the graph itself, and its documentation says a parent POM
+  it cannot reach leaves a version empty and the dependencies under it unscanned. Its real
+  advantage is that it can scan jars instead, so a job could let Maven resolve the graph with
+  `dependency:copy-dependencies` and scan exactly what the build uses. That costs a Java setup
+  and a dependency download in the job, and a database of its own rather than OSV, where the
+  Jackson advisories were found. The owner kept osv-scanner.
 
 **Required or not.** ADR-0043 kept mutation testing out of CI partly because a check that turns
 red for reasons outside the change under review is either ignored or blocks unrelated work.
