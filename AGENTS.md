@@ -133,14 +133,15 @@ carries the correction across with everything else. The exposure is small becaus
 the community files, the repository home and a new pull request's base from the *default* branch,
 which is `dev` — checked on 2026-09-08, `CONTRIBUTING.md` served by the API matched `dev`'s
 blob and not `main`'s. The one thing to confirm rather than assume at each release is that the
-release pull request still runs the five checks: it does, because a `pull_request` event uses
-the workflow from the merge result, and `dev`'s lists both branches.
+release pull request still runs the six checks: it does, because a `pull_request` event uses
+the workflow from the merge result, and both of `dev`'s workflows list both branches.
 
 **Both `dev` and `main` are protected on the remote (ADR-0040, widened by ADR-0061), but
 not against you.** A pull request is
-required, force-pushing and deleting are blocked, and the five checks in
-`.github/workflows/build.yml` must pass and be current with the branch before a merge, with
-no approving review needed — so for an outside contributor a green build is the whole gate.
+required, force-pushing and deleting are blocked, and six checks must pass and be current with
+the branch before a merge — the five in `.github/workflows/build.yml` and `known
+vulnerabilities` in `.github/workflows/vulnerabilities.yml` (ADR-0064) — with no approving
+review needed — so for an outside contributor a green build is the whole gate.
 **`enforce_admins` is `false`, and the only collaborator is an admin**, which is every
 session working in this repository: none of those gates will actually stop you. Treat the
 branch rule as binding anyway. It is a rule you keep because it is right, not because
@@ -455,7 +456,15 @@ it yourself on every bump**, because an upstream dependency lands there silently
 place: neither BOM manages `jspecify`, so when guava, through the GLM module, brings a
 different one than `langchain4j-core`, `DependencyConvergence` fails the build. At `1.20.0` it
 did and the parent POM pinned it; at `1.22.0` the two agree and P54 removed the pin. If the
-rule names `jspecify` again, the pin is the fix to put back. **No provider artifact, ever.**
+rule names `jspecify` again, the pin is the fix to put back. **Jackson is managed too, for a
+different reason (ADR-0065)**: `langchain4j-core` `1.22.0` names `jackson-core` and
+`jackson-databind` `2.22.1`, which has seven known advisories, so the parent POM and
+`modelrack4j-bom` move both to `jackson.version`. That reaches this build and every
+application importing the BOM, and nobody else — Maven applies only the application's own
+`dependencyManagement` — which is why core does not declare Jackson and the CHANGELOG says how
+to override it. On every bump, check whether LangChain4j now brings a fixed Jackson, and drop
+the entries when it does; the `known vulnerabilities` check (ADR-0064) says whether what is
+managed is still clean. **No provider artifact, ever.**
 Each provider lives in its own module
 (`modelrack4j-provider-openai|anthropic|gemini|glm|ollama|mistral`) implementing the
 `ProviderFactory` SPI, discovered via `java.util.ServiceLoader`

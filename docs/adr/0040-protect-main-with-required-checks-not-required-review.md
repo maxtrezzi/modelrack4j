@@ -1,6 +1,6 @@
 # ADR-0040: Protect `main` with required checks, not required review
 
-- **Status:** Accepted — the branch it protects widened by [ADR-0061](0061-work-lands-on-dev-and-main-carries-releases.md)
+- **Status:** Accepted — the branch it protects widened by [ADR-0061](0061-work-lands-on-dev-and-main-carries-releases.md), the required set widened by [ADR-0064](0064-scan-dependencies-for-known-vulnerabilities-as-a-required-check.md)
 - **Date:** 2026-08-27
 - **Supersedes:** —
 - **Amends:** —

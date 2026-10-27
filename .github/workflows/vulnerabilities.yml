@@ -1,0 +1,54 @@
+name: vulnerabilities
+
+# Known vulnerabilities in the dependencies, from the OSV database (ADR-0064). A separate
+# workflow from build.yml because the weekly run has nothing to build: it asks whether a
+# dependency that was clean last week has an advisory now, on dev and on main.
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+  schedule:
+    - cron: '17 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  # Pinned, and checked against the checksum the release publishes, because this binary
+  # decides whether a pull request may merge. Move both lines together.
+  OSV_SCANNER_VERSION: v2.7.0
+  OSV_SCANNER_SHA256: 160c6253e2922e9e0a6a9771c5c4c40a4b3c6090b34a3cdd5e80c96cc2e4218b
+
+jobs:
+  scan:
+    # A required check: keep this name stable, the branch rules refer to it.
+    name: known vulnerabilities
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Scan every pom.xml, transitive dependencies included
+        run: build/osv-scan.sh
+
+  scheduled:
+    name: known vulnerabilities on ${{ matrix.ref }}
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # main is what Maven Central holds (ADR-0061), so a red run there is an advisory
+        # against a released version.
+        ref: [dev, main]
+    steps:
+      # The script comes from the branch this workflow runs on; the tree it scans is checked
+      # out beside it. main carries a release's files only, so it may not have the script.
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.ref }}
+          path: scanned
+      - name: Scan every pom.xml, transitive dependencies included
+        run: build/osv-scan.sh scanned

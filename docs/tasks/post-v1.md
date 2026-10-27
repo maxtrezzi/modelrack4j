@@ -6683,8 +6683,9 @@ On an AMD Ryzen 7 7840HS, Temurin 25, Maven 3.8.7.
 
 ### P58 — The pre-release check of 0.4.0
 
-**Status:** In progress — everything offline is green; the live run of all six providers waits
-for `MISTRAL_API_KEY` · **Branch:** `task/p58-pre-release-check-0.4.0` ·
+**Status:** In progress — everything offline is green, Jackson moved off seven advisories, a
+vulnerability check added to CI; the live run of all six providers waits for `MISTRAL_API_KEY`
+· **Branch:** `task/p58-pre-release-check-0.4.0` · ADR-0064, ADR-0065 ·
 **Raised by:** the owner on 2026-10-26, as the check before 0.4.0 is released
 
 P54 to P57 were each checked on their own branch. This item re-runs, on the merged tree, what a
@@ -6727,4 +6728,58 @@ to *Changed*, with that warning.
 
 **Not done here, because it belongs to the release commit:** the `[Unreleased]` and `[0.4.0]`
 links at the end of the CHANGELOG, the version in every POM, and the README's status line.
+
+#### Known vulnerabilities, a check the owner added on 2026-10-27
+
+Asked by the owner during this item. Nothing in the project looked for them: Dependabot alerts
+and secret scanning were off on the repository, CI had no scanner, and no ADR mentioned it.
+
+**What a first look found.** `dependency:list` over core, the six providers and the examples
+gives 41 third-party artifacts in 42 rows (one appears in two scopes): 26 compile, 4 runtime,
+12 test. Queried on the OSV database through its batch API with `curl`, two have advisories:
+`jackson-core` `2.22.1` (GHSA-7hhh-6rmp-j9qf, GHSA-p6pp-m3f8-5c89) and `jackson-databind`
+`2.22.1` (GHSA-cxp5-3px4-pw24, GHSA-gx83-3vf8-gh7j, GHSA-q4xh-88c3-wmh7, GHSA-wjgm-6hv5-3cvf,
+GHSA-wv8q-qhhj-9h54). Five are rated high; all seven were published between 2026-09-28 and
+2026-10-01 and are fixed in `2.22.3`. Both arrive at compile scope from `langchain4j-core`,
+whose own POM names `2.22.1`; the LangChain4j BOM does not manage Jackson. `langchain4j-core`
+`1.20.0` names the same version, so **the released `0.3.0` carries it too**, published three
+days after the last advisory. OSV lists nothing against `2.22.3` or `2.22.4`.
+
+**What the owner chose, among the options put to them:** for the check, a job in CI, with
+osv-scanner, required, plus a weekly run, in this item rather than a new one; for Jackson, a
+managed version in the parent POM and in `modelrack4j-bom` with a CHANGELOG note, not a direct
+dependency in core; and to tell `0.3.0` users in the CHANGELOG, not through a GitHub advisory.
+
+**What was built.**
+
+- **Jackson** (ADR-0065): `jackson.version` = `2.22.4` in the parent, managing `jackson-core` and
+  `jackson-databind` there and in `modelrack4j-bom`. Afterwards every module resolves `2.22.4`,
+  `DependencyConvergence` passes in all ten projects, the 350 offline tests pass, and the OSV
+  query over the 41 artifacts finds nothing. A throwaway application against this build
+  resolves `2.22.4` when it imports the BOM and `2.22.1` when it does not; one on the released
+  `0.3.0` with the CHANGELOG's `jackson-bom` block resolves `2.22.4`.
+- **The check** (ADR-0064): `.github/workflows/vulnerabilities.yml` and `build/osv-scan.sh`.
+  osv-scanner `v2.7.0` is downloaded and checked against the release's SHA256
+  (`160c6253…e4218b`, verified here before it was written into the workflow). The script
+  fails on a finding, on any error and when the log reports no packages. The job
+  `known vulnerabilities` runs on every push and pull request; a weekly job scans `dev` and
+  `main`, taking the script from the workflow's own branch because `main` may not have it.
+  `AGENTS.md`, `CONTRIBUTING.md` and `build.yml`'s comment now say six required checks.
+
+**Not verified here: osv-scanner itself.** Running the downloaded binary on this machine was
+refused by the session's permission classifier, so nothing on this machine shows what it prints
+or whether it resolves this multi-module build's parent POMs. The first run of the job on this
+item's pull request is that check, and the script fails closed if the log does not report any
+packages.
+
+**Found on the way, a question for the owner:** `modelrack4j-bom` inherits from
+`modelrack4j-parent`, and an imported BOM brings its *effective* `dependencyManagement`. The
+effective POM has 225 managed entries, LangChain4j's, JUnit's, AssertJ's and Typesafe Config's
+among them, so an application importing the BOM gets this project's versions of all of them,
+not only of the modelrack4j artifacts. That has been so since the BOM existed. Whether to
+decouple the BOM from the parent is left to the owner; ADR-0065's two Jackson entries are
+explicit in the BOM so that they survive if it is.
+
+**Still to do before this item closes:** make `known vulnerabilities` a required check on `dev`
+and `main`, once it has passed on the pull request; and the live run of all six providers.
 

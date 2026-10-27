@@ -62,10 +62,14 @@ is.
 - One branch per change, never committed straight to either. This is enforced, not only
   asked: both branches require a pull request, and force-pushing and deletion are blocked
   ([ADR-0040](docs/adr/0040-protect-main-with-required-checks-not-required-review.md)).
-- The build stays green: `mvn clean verify` before you push. The five checks in
-  `.github/workflows/build.yml` — JDK 17, 21 and 25, docs consistency, and the offline
-  no-API-keys build — must pass and be current with the branch before a PR can merge. No
-  approving review is required, so a green build is the whole gate.
+- The build stays green: `mvn clean verify` before you push. Six checks must pass and be
+  current with the branch before a PR can merge: the five in `.github/workflows/build.yml` —
+  JDK 17, 21 and 25, docs consistency, and the offline no-API-keys build — and `known
+  vulnerabilities`, which looks up every dependency in the OSV database. No approving review is
+  required, so a green build is the whole gate.
+- A dependency with a known vulnerability fails that check, even when your change did not
+  touch it. Move the dependency to a fixed version; if that is not possible yet, record the
+  finding in `osv-scanner.toml` with a reason and an `ignoreUntil` date, and say why in the PR.
 - New behaviour comes with a test. A test that cannot fail is worse than no test — if it
   guards against a specific fault, break the code and confirm it catches it.
 - A test that starts threads must collect what they return. An assertion that fails inside a

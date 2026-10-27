@@ -119,6 +119,7 @@ by number, since the numbering only reflects the order of the original appendix.
 | [0018](0018-manage-langchain4j-versions-via-bom.md) | Manage LangChain4j versions by importing its BOM | Accepted — the BOM import set amended by ADR-0022 |
 | [0022](0022-glm-via-the-community-module-and-its-bom.md) | Take GLM from the community module, and import its BOM alongside the main one | Accepted |
 | [0023](0023-gemini-via-the-stable-google-ai-gemini-module.md) | Take Gemini from `langchain4j-google-ai-gemini`, the stable module | Accepted |
+| [0065](0065-manage-jackson-when-langchain4j-lags-a-security-fix.md) | Manage Jackson in the parent and the BOM while LangChain4j brings a vulnerable one | Accepted |
 | [0019](0019-target-java-17.md) | Target Java 17, build on a newer JDK | Accepted — CI matrix amended by ADR-0026 |
 | [0026](0026-ci-matrix-is-floor-dev-jdk-and-current-lts.md) | The CI matrix is the floor, the development JDK, and the current LTS | Accepted |
 
@@ -144,8 +145,9 @@ by number, since the numbering only reflects the order of the original appendix.
 | [0015](0015-track-work-items-in-docs-tasks.md) | Track work items in `docs/tasks/`, alongside the ADRs | Accepted |
 | [0016](0016-one-feature-branch-per-task.md) | One feature branch per task | Accepted — the branch a task targets amended by ADR-0061 |
 | [0039](0039-user-facing-prose-is-written-for-a-non-native-reader.md) | Write user-facing prose for a non-native reader, terse but self-explaining | Accepted |
-| [0040](0040-protect-main-with-required-checks-not-required-review.md) | Protect `main` with required checks, not required review | Accepted — the branch it protects widened by ADR-0061 |
+| [0040](0040-protect-main-with-required-checks-not-required-review.md) | Protect `main` with required checks, not required review | Accepted — the branch it protects widened by ADR-0061, the required set widened by ADR-0064 |
 | [0041](0041-mutation-testing-on-core-only.md) | Run mutation testing on core only, never on a provider module | Accepted — the deferred CI question amended by ADR-0043 |
 | [0043](0043-keep-mutation-testing-out-of-ci.md) | Keep mutation testing out of CI, in every form | Accepted |
 | [0045](0045-publish-through-the-central-portal-from-a-release-profile.md) | Publish through the Central Portal, from a `release` profile, with the last step manual | Accepted |
+| [0064](0064-scan-dependencies-for-known-vulnerabilities-as-a-required-check.md) | Scan the dependencies for known vulnerabilities, as a required check and weekly | Accepted |
 | [0061](0061-work-lands-on-dev-and-main-carries-releases.md) | Work lands on `dev`; `main` carries releases only | Accepted |
