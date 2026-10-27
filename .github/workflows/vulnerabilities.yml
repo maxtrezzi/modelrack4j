@@ -20,6 +20,8 @@ env:
   # decides whether a pull request may merge. Move both lines together.
   OSV_SCANNER_VERSION: v2.7.0
   OSV_SCANNER_SHA256: 160c6253e2922e9e0a6a9771c5c4c40a4b3c6090b34a3cdd5e80c96cc2e4218b
+  # What writes the SBOM osv-scanner reads, so that Maven resolves the graph (see the script).
+  CYCLONEDX_VERSION: 2.9.3
 
 jobs:
   scan:
@@ -29,7 +31,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Scan every pom.xml, transitive dependencies included
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+      - name: Look up every shipped dependency, as Maven resolves it
         run: build/osv-scan.sh
 
   scheduled:
@@ -50,5 +57,10 @@ jobs:
         with:
           ref: ${{ matrix.ref }}
           path: scanned
-      - name: Scan every pom.xml, transitive dependencies included
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+      - name: Look up every shipped dependency, as Maven resolves it
         run: build/osv-scan.sh scanned

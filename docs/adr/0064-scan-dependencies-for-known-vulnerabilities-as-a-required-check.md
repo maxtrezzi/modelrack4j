@@ -58,27 +58,38 @@ invisible until the next one, however long that takes. A weekly run also scans `
 is what Maven Central holds (ADR-0061), so a red run there means a released version is
 affected.
 
-**Trusting the scanner's silence.** osv-scanner resolves the graph over the network. A graph
-it fails to resolve can produce a result with no packages, which reads as clean. Its own exit
-code for "no packages" is 128, so failing on any non-zero code covers that case, and the script
-also fails when the log reports no packages at all.
+**Who resolves the graph.** Given the `pom.xml` files, osv-scanner resolves the graph itself,
+from Maven Central. Run that way on this project on 2026-10-27, by the owner, it resolved core
+and failed for the other seven modules — each depends on `modelrack4j-core:0.4.0-SNAPSHOT`,
+which Central does not have — and still reported no vulnerabilities, from direct dependencies
+only. A scanner that silently checks less than the build ships is worse than none. So Maven
+resolves the graph, from the reactor and with the parent POM's `dependencyManagement`, and
+writes it as a CycloneDX SBOM with `cyclonedx-maven-plugin`, invoked by its coordinates; the
+SBOM is what osv-scanner reads. Generated from a clean tree with no snapshot installed, it
+lists 28 third-party components, Jackson at the managed `2.22.4` among them. The cost is a Java
+setup and a Maven run in the job.
+
+**Trusting the scanner's silence anyway.** The script still fails on any non-zero exit code,
+when the output mentions a failed resolution or extraction, and when osv-scanner reports fewer
+packages than the SBOM lists.
 
 ## Decision
 
 1. **`.github/workflows/vulnerabilities.yml` runs osv-scanner** on every push and pull request
    to `dev` and `main`, as the job `known vulnerabilities`, and weekly on Monday at 06:17 UTC,
    and on demand, over both `dev` and `main`.
-2. **The work is in `build/osv-scan.sh`**, not in the workflow: it downloads osv-scanner at the
+2. **The work is in `build/osv-scan.sh`**, not in the workflow: Maven writes the SBOM, with
+   test scope left out because it does not reach users; the script downloads osv-scanner at the
    version the workflow pins, checks it against the published SHA256, runs
-   `scan source --recursive`, and fails on any finding, on any error, and when no package was
-   scanned.
+   `scan source --lockfile` on the SBOM, and fails on any finding, on any error, on a failed
+   resolution, and when fewer packages were scanned than the SBOM lists.
 3. **`known vulnerabilities` is a required check on `dev` and `main`**, beside the five
    ADR-0040 lists.
 4. **A finding is resolved by moving the dependency.** When that is not possible yet, it goes
    in `osv-scanner.toml` at the root with a reason and an `ignoreUntil` date, never as a change
    to the script or by removing the check.
 5. **The version and the checksum move together**, in the workflow, and only after the new
-   release has been read.
+   release has been read. The plugin version is pinned there too.
 
 ## Consequences
 
@@ -96,3 +107,5 @@ also fails when the log reports no packages at all.
   date, or fix it.
 - Do not replace the pinned download with an unpinned one or a floating action tag: the binary
   decides whether code may merge.
+- Do not go back to scanning the `pom.xml` files to save the Maven run. It is what produced the
+  silent, partial result above.

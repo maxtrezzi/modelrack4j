@@ -6766,11 +6766,18 @@ dependency in core; and to tell `0.3.0` users in the CHANGELOG, not through a Gi
   `main`, taking the script from the workflow's own branch because `main` may not have it.
   `AGENTS.md`, `CONTRIBUTING.md` and `build.yml`'s comment now say six required checks.
 
-**Not verified here: osv-scanner itself.** Running the downloaded binary on this machine was
-refused by the session's permission classifier, so nothing on this machine shows what it prints
-or whether it resolves this multi-module build's parent POMs. The first run of the job on this
-item's pull request is that check, and the script fails closed if the log does not report any
-packages.
+**The first local run found that scanning the `pom.xml` files checks too little.** The session's
+permission classifier refused to run the downloaded binary, so the owner ran the script with
+`!`. osv-scanner, resolving from Maven Central, resolved core and failed for the other seven
+modules — `modelrack4j-core:0.4.0-SNAPSHOT: not found` — then reported 39 packages and no
+vulnerabilities, from direct dependencies only. The first script would have passed that.
+At the owner's choice, Maven now resolves the graph and writes a CycloneDX SBOM
+(`cyclonedx-maven-plugin` 2.9.3, invoked by coordinates, test scope left out) and osv-scanner
+reads the SBOM. Generated after moving this machine's installed `0.4.0-SNAPSHOT` artifacts aside
+and running `mvn clean`, as a CI runner starts, it lists 28 third-party components, Jackson
+`2.22.4` and the providers' transitive Guava and `langchain4j-mistral-ai` among them. The script
+now also fails on a failed resolution in the output and on fewer packages scanned than the SBOM
+lists.
 
 **Found on the way, a question for the owner:** `modelrack4j-bom` inherits from
 `modelrack4j-parent`, and an imported BOM brings its *effective* `dependencyManagement`. The
