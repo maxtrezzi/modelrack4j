@@ -179,26 +179,12 @@
         <version>${jackson.version}</version>
       </dependency>
 
-      <dependency>
-        <groupId>org.junit</groupId>
-        <artifactId>junit-bom</artifactId>
-        <version>${junit.version}</version>
-        <type>pom</type>
-        <scope>import</scope>
-      </dependency>
-      <dependency>
-        <groupId>org.assertj</groupId>
-        <artifactId>assertj-core</artifactId>
-        <version>${assertj.version}</version>
-        <scope>test</scope>
-      </dependency>
-      <!-- Watch tests are inherently asynchronous: poll for the expected state, never sleep. -->
-      <dependency>
-        <groupId>org.awaitility</groupId>
-        <artifactId>awaitility</artifactId>
-        <version>${awaitility.version}</version>
-        <scope>test</scope>
-      </dependency>
+      <!--
+        No test library here, on purpose (ADR-0066). modelrack4j-bom inherits from this POM,
+        and an application that imports the BOM receives this whole section: a JUnit or AssertJ
+        version managed here becomes the application's version too. The test libraries are
+        declared with their versions in <dependencies> below, and in modelrack4j-core.
+      -->
 
       <dependency>
         <groupId>io.github.maxtrezzi</groupId>
@@ -209,14 +195,17 @@
   </dependencyManagement>
 
   <dependencies>
+    <!-- Versions here rather than in dependencyManagement: see the note there (ADR-0066). -->
     <dependency>
       <groupId>org.junit.jupiter</groupId>
       <artifactId>junit-jupiter</artifactId>
+      <version>${junit.version}</version>
       <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>org.assertj</groupId>
       <artifactId>assertj-core</artifactId>
+      <version>${assertj.version}</version>
       <scope>test</scope>
     </dependency>
   </dependencies>

@@ -464,7 +464,9 @@ application importing the BOM, and nobody else — Maven applies only the applic
 `dependencyManagement` — which is why core does not declare Jackson and the CHANGELOG says how
 to override it. On every bump, check whether LangChain4j now brings a fixed Jackson, and drop
 the entries when it does; the `known vulnerabilities` check (ADR-0064) says whether what is
-managed is still clean. **No provider artifact, ever.**
+managed is still clean. **The parent's `dependencyManagement` is exported to applications**,
+because `modelrack4j-bom` inherits it, so only what the library ships may go there (ADR-0066):
+test libraries and build tools are declared with their versions where they are used. **No provider artifact, ever.**
 Each provider lives in its own module
 (`modelrack4j-provider-openai|anthropic|gemini|glm|ollama|mistral`) implementing the
 `ProviderFactory` SPI, discovered via `java.util.ServiceLoader`

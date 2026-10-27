@@ -29,10 +29,10 @@ jobs:
         # leg whose job another one already covers.
         jdk: ['17', '21', '25']
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up JDK ${{ matrix.jdk }}
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: ${{ matrix.jdk }}
@@ -51,7 +51,7 @@ jobs:
       # rather than the filesystem, because a target that is git-ignored resolves fine on a
       # contributor's machine and 404s for everyone who clones. That exact false pass is
       # what this job exists to stop.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Check ADR status lines, the index, and every link
         run: python3 build/check-docs.py
@@ -60,9 +60,9 @@ jobs:
     name: offline, no API keys
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '17'

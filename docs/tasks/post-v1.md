@@ -6805,7 +6805,7 @@ five configured hosted model identifiers has rotted.
 
 ### P59 — The pre-release check of 0.4.0, part two
 
-**Status:** In progress — opened 2026-10-27; scope to be settled with the owner ·
+**Status:** In progress — the three candidates done, the owner asked for all three ·
 **Branch:** `task/p59-pre-release-check-0.4.0-bis` ·
 **Raised by:** the owner on 2026-10-27, after P58 merged with its checks unfinished
 
@@ -6828,4 +6828,31 @@ progress* until this item closes, and closes with it.
 - **The weekly job's name** shows unexpanded on a pull request — `known vulnerabilities on
   ${{ matrix.ref }}`, skipped — because a matrix is not expanded for a job that does not run.
   Cosmetic.
+
+#### What was done
+
+The owner asked on 2026-10-27 for all three.
+
+- **GitHub Actions moved to `actions/checkout@v7` and `actions/setup-java@v6`**, in both
+  workflows: the newest majors, read from their releases on the day. Both run on Node.js 24,
+  read from each tag's `action.yml` (`v4` declared `node20`). `checkout` v7 blocks checking out
+  a fork's pull request under `pull_request_target` and `workflow_run`, neither of which this
+  project uses; `setup-java` v6's release notes state its move to ESM is not a user-facing
+  break.
+- **The weekly jobs have fixed names.** The matrix became two jobs, `known vulnerabilities,
+  weekly, dev` and `… main`, because GitHub lists a skipped job without expanding its matrix.
+  ADR-0064's decision — weekly, over both branches — is unchanged.
+- **The BOM no longer exports test libraries** (ADR-0066). The owner chose, among three shapes,
+  to remove JUnit, AssertJ and Awaitility from the parent's `dependencyManagement` — they are now
+  declared with their versions in the parent's `<dependencies>` and in core — rather than to
+  give the BOM no parent, which would duplicate the publishing metadata and the `release`
+  profile in it. The BOM's effective `dependencyManagement` went from 225 entries to 209, none
+  of them JUnit, AssertJ, Awaitility, opentest4j or apiguardian; LangChain4j, Typesafe Config,
+  SLF4J, Jackson and the modelrack4j modules are still in it. A throwaway application importing
+  this build's BOM and declaring JUnit and AssertJ without a version now gets Maven's "version is
+  missing" for both, where `0.3.0`'s BOM gave it `6.1.3` and `3.27.7`. The CHANGELOG says so,
+  under *Changed*. `mvn clean install` stays green, 350 tests, `DependencyConvergence` in all ten
+  projects. PIT on core, run because `pitest-junit5-plugin` had worked against the JUnit BOM:
+  315 mutants, 307 killed, 1 timed out, 6 survived, 1 uncovered, line coverage 802/834 — the
+  same eight as P58.
 

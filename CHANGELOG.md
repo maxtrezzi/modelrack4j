@@ -69,6 +69,12 @@ will not be held back for a major bump until the API settles at `1.0.0`.
   LangChain4j artifacts move to the new version, and the GLM provider brings Guava
   `33.7.2-jre` instead of `33.6.0-jre`. Guava now brings the same `org.jspecify:jspecify`
   as `langchain4j-core`, `1.0.1`, so this project no longer pins it.
+- **`modelrack4j-bom` no longer manages JUnit, AssertJ or Awaitility.** The BOM inherited them
+  from this project's build, so an application that imported it had its test libraries'
+  versions chosen for it — JUnit `6.1.3` and AssertJ `3.27.7` with `0.3.0`. It still manages the
+  modelrack4j artifacts, Jackson, LangChain4j, Typesafe Config and SLF4J. If your build declares
+  JUnit or AssertJ without a version and relied on the BOM for it, Maven now reports the version
+  as missing: give the version yourself, or import `org.junit:junit-bom`.
 - **The message that refuses `moderation.enabled = true`** on a provider without a moderation
   model now names both providers that have one, `openai` and `mistral`, instead of "an
   OpenAI-family configuration". Code that matches on the old wording needs updating.
