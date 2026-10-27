@@ -30,9 +30,7 @@ will not be held back for a major bump until the API settles at `1.0.0`.
 
   The moderation model is `mistral-moderation-latest`, not the block's `model-name`, which
   names a chat model. It adds three jars to core's: `langchain4j-mistral-ai` and the two HTTP
-  client jars the OpenAI and Ollama providers already bring. The message that refuses
-  `moderation.enabled = true` on a provider without moderation now names both providers that
-  have it, `openai` and `mistral`.
+  client jars the OpenAI and Ollama providers already bring.
 
 - **Listeners on the models the registry builds.** `LlmRegistry.Builder` has
   `chatModelListeners(...)` and `moderationModelListeners(...)`, each a function from a
@@ -59,15 +57,21 @@ will not be held back for a major bump until the API settles at `1.0.0`.
   the old ones. Such a factory builds its models without the listeners, so when an application
   registers listeners, the registry sees that a model does not report them and refuses the
   configuration with a message that names the provider. To support listeners, override the
-  new methods and pass the listeners to each model's builder.
+  new methods and pass the listeners to each model's builder. Checked with the released
+  `modelrack4j-provider-openai` `0.3.0`: on this version's core it builds every model as
+  before, and is refused, with that message, only when listeners are registered.
 
 ### Changed
 
 - **Built against LangChain4j 1.22.0** (community modules at `1.22.0-beta32`), up from
-  `1.20.0`. Nothing in this library's API changes, and no new jar reaches your classpath: the
+  `1.20.0`. The upgrade itself changes nothing in this library's API, and no new jar reaches
+  your classpath: the
   LangChain4j artifacts move to the new version, and the GLM provider brings Guava
   `33.7.2-jre` instead of `33.6.0-jre`. Guava now brings the same `org.jspecify:jspecify`
   as `langchain4j-core`, `1.0.1`, so this project no longer pins it.
+- **The message that refuses `moderation.enabled = true`** on a provider without a moderation
+  model now names both providers that have one, `openai` and `mistral`, instead of "an
+  OpenAI-family configuration". Code that matches on the old wording needs updating.
 
 ### Fixed
 
@@ -75,6 +79,37 @@ will not be held back for a major bump until the API settles at `1.0.0`.
   ran after them, so a configuration the handler rejected first built models that were then
   thrown away. No model from a rejected configuration was ever used; the change only stops
   building them.
+
+### Security
+
+- **Jackson 2.22.1 has seven known advisories, and LangChain4j 1.22.0 brings it.**
+  `langchain4j-core` declares `jackson-core` and `jackson-databind` `2.22.1`, which the OSV
+  database lists under GHSA-7hhh-6rmp-j9qf, GHSA-p6pp-m3f8-5c89, GHSA-cxp5-3px4-pw24,
+  GHSA-gx83-3vf8-gh7j, GHSA-q4xh-88c3-wmh7, GHSA-wjgm-6hv5-3cvf and GHSA-wv8q-qhhj-9h54. Five
+  are rated high, and most are a denial of service while parsing JSON. All are fixed in
+  `2.22.3`. **`0.3.0` brings the same version.**
+
+  `modelrack4j-bom` now manages both at `2.22.4`, so an application that imports the BOM gets
+  the fixed version with nothing else to do. An application that adds the modelrack4j
+  artifacts without the BOM still gets `2.22.1` from LangChain4j, because Maven applies only the
+  application's own `dependencyManagement`. Import the BOM, or manage Jackson yourself:
+
+  ```xml
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>com.fasterxml.jackson</groupId>
+        <artifactId>jackson-bom</artifactId>
+        <version>2.22.4</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+  ```
+
+  On `0.3.0`, the same block fixes it. Every pull request is now checked for dependencies with a
+  known vulnerability, and `dev` and `main` are checked every week.
 
 ### Documentation and examples
 

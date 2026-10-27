@@ -6412,8 +6412,8 @@ On an AMD Ryzen 7 7840HS, Temurin 25, Maven 3.8.7.
 
 ### P56 — A Mistral provider
 
-**Status:** In progress — built, tested offline and documented; the live run waits for a
-`MISTRAL_API_KEY` · target 0.4.0 · **Branch:** `task/p56-mistral-provider` · no ADR ·
+**Status:** Done 2026-10-27 — target 0.4.0 · **Branch:** `task/p56-mistral-provider`; the live run
+on `task/p58-pre-release-check-0.4.0` · no ADR ·
 **Raised by:** the owner on 2026-10-26
 
 A sixth provider module, and the second whose provider has a moderation model.
@@ -6527,8 +6527,11 @@ and Moderation 2 is listed as **free**. The page names models, not the `-latest`
 that `mistral-small-latest` is Small 4 is an assumption. The request is about 20 tokens in and
 a few out, so **one run costs about $0.00001**.
 
-**Not run yet:** this machine has no `MISTRAL_API_KEY`. Until it runs, nothing here shows that
-the endpoint accepts `mistral-moderation-latest`, which is the one value the factory chose.
+**Run on 2026-10-27, in P58: green.** One chat request to `mistral-small-latest` and one
+moderation of a harmless sentence through `mistral-moderation-latest`, which came back not
+flagged — so the endpoint accepts the one value the factory chose. The key is on Mistral's free
+plan; its first run, minutes after the key was created, got HTTP 429 "Rate limit exceeded"
+(code 1300) on the chat call, and passed once the owner had checked the account.
 
 #### Verified
 
@@ -6680,4 +6683,123 @@ On an AMD Ryzen 7 7840HS, Temurin 25, Maven 3.8.7.
   network.
 - `mvn clean install`: green on all ten reactor projects, **350 tests** offline — the 348 of
   P56 and the 2 of `CatalogTest`. `build/check-docs.py`: clean.
+
+### P58 — The pre-release check of 0.4.0
+
+**Status:** In progress — everything offline is green, all six providers answered live,
+Jackson moved off seven advisories, a vulnerability check added to CI; the check has still to
+pass in CI and become required · **Branch:** `task/p58-pre-release-check-0.4.0` · ADR-0064, ADR-0065 ·
+**Raised by:** the owner on 2026-10-26, as the check before 0.4.0 is released
+
+P54 to P57 were each checked on their own branch. This item re-runs, on the merged tree, what a
+merge or the outside world can change, and closes P56, whose live IT has never run: the owner
+decided on 2026-10-26 to run it here rather than before P56 merged. Measured at `f2972fd`, on an
+AMD Ryzen 7 7840HS, Temurin 25, Maven 3.8.7, Pop!_OS 24.04.
+
+| | |
+|---|---|
+| `mvn clean install` | green, 10 modules — 350 offline tests: core 259, OpenAI, Anthropic and Gemini 13 each, GLM 26, Ollama 12, Mistral 12, and 2 in `modelrack4j-examples`. `DependencyConvergence` passes in all ten |
+| `build/check-docs.py` | clean, 63 ADRs and 79 tracked markdown files |
+| PIT on core | 315 mutants, 307 killed, 1 timed out, 6 survived, 1 uncovered; line coverage 802/834; 4 min 10 s. The report contains `ModelContext`. The eight are the eight P54 lists; the same counts as P55's last run |
+| `./run-atomic.sh`, `./run-database.sh`, `./run-properties.sh` | green; none contacts a provider |
+| LangChain4j on Central | `1.22.0` and `1.22.0-beta32` are still the latest releases of both BOMs, and of `langchain4j-mistral-ai` |
+
+**Core's public API changed only by addition.** `javap -public` over every class of the
+released `modelrack4j-core-0.3.0.jar` and of this build, diffed: two methods on
+`LlmRegistry.Builder` (`chatModelListeners`, `moderationModelListeners`), the class
+`spi.ModelContext`, and three `default` methods on `ProviderFactory`. Nothing removed, no
+signature changed.
+
+**A provider jar from 0.3.0 still works, which is the CHANGELOG's central claim.** The
+released `modelrack4j-provider-openai-0.3.0.jar`, loaded by `ServiceLoader` from its own file
+beside this build's core and LangChain4j `1.22.0`, built a block with streaming and moderation.
+With a chat model listener registered, the same block was refused with the message
+`requireListeners` gives — "built a chat model without the listeners this registry was given
+… probably because it was built for a modelrack4j older than 0.4.0". The CHANGELOG now says it
+was checked this way.
+
+**Javadoc prints 13 warnings: P50's twelve and one new of the same kind**, the implicit default
+constructor of `MistralProviderFactory`, which follows the other five factories. None is in a
+type added in 0.4.0.
+
+**The CHANGELOG's `[Unreleased]` section, read through as release notes, needed two
+corrections.** The LangChain4j bullet said "Nothing in this library's API changes", true of the
+bump when P54 wrote it and ambiguous in a version that adds API; it now says the upgrade itself
+changes nothing. The rewording of the moderation refusal sat inside the Mistral bullet under
+*Added*; it is a change of behaviour that code matching on the text would notice, so it moved
+to *Changed*, with that warning.
+
+**Not done here, because it belongs to the release commit:** the `[Unreleased]` and `[0.4.0]`
+links at the end of the CHANGELOG, the version in every POM, and the README's status line.
+
+#### Known vulnerabilities, a check the owner added on 2026-10-27
+
+Asked by the owner during this item. Nothing in the project looked for them: Dependabot alerts
+and secret scanning were off on the repository, CI had no scanner, and no ADR mentioned it.
+
+**What a first look found.** `dependency:list` over core, the six providers and the examples
+gives 41 third-party artifacts in 42 rows (one appears in two scopes): 26 compile, 4 runtime,
+12 test. Queried on the OSV database through its batch API with `curl`, two have advisories:
+`jackson-core` `2.22.1` (GHSA-7hhh-6rmp-j9qf, GHSA-p6pp-m3f8-5c89) and `jackson-databind`
+`2.22.1` (GHSA-cxp5-3px4-pw24, GHSA-gx83-3vf8-gh7j, GHSA-q4xh-88c3-wmh7, GHSA-wjgm-6hv5-3cvf,
+GHSA-wv8q-qhhj-9h54). Five are rated high; all seven were published between 2026-09-28 and
+2026-10-01 and are fixed in `2.22.3`. Both arrive at compile scope from `langchain4j-core`,
+whose own POM names `2.22.1`; the LangChain4j BOM does not manage Jackson. `langchain4j-core`
+`1.20.0` names the same version, so **the released `0.3.0` carries it too**, published three
+days after the last advisory. OSV lists nothing against `2.22.3` or `2.22.4`.
+
+**What the owner chose, among the options put to them:** for the check, a job in CI, with
+osv-scanner, required, plus a weekly run, in this item rather than a new one; for Jackson, a
+managed version in the parent POM and in `modelrack4j-bom` with a CHANGELOG note, not a direct
+dependency in core; and to tell `0.3.0` users in the CHANGELOG, not through a GitHub advisory.
+
+**What was built.**
+
+- **Jackson** (ADR-0065): `jackson.version` = `2.22.4` in the parent, managing `jackson-core` and
+  `jackson-databind` there and in `modelrack4j-bom`. Afterwards every module resolves `2.22.4`,
+  `DependencyConvergence` passes in all ten projects, the 350 offline tests pass, and the OSV
+  query over the 41 artifacts finds nothing. A throwaway application against this build
+  resolves `2.22.4` when it imports the BOM and `2.22.1` when it does not; one on the released
+  `0.3.0` with the CHANGELOG's `jackson-bom` block resolves `2.22.4`.
+- **The check** (ADR-0064): `.github/workflows/vulnerabilities.yml` and `build/osv-scan.sh`.
+  osv-scanner `v2.7.0` is downloaded and checked against the release's SHA256
+  (`160c6253…e4218b`, verified here before it was written into the workflow). The script
+  fails on a finding, on any error and when the log reports no packages. The job
+  `known vulnerabilities` runs on every push and pull request; a weekly job scans `dev` and
+  `main`, taking the script from the workflow's own branch because `main` may not have it.
+  `AGENTS.md`, `CONTRIBUTING.md` and `build.yml`'s comment now say six required checks.
+
+**The first local run found that scanning the `pom.xml` files checks too little.** The session's
+permission classifier refused to run the downloaded binary, so the owner ran the script with
+`!`. osv-scanner, resolving from Maven Central, resolved core and failed for the other seven
+modules — `modelrack4j-core:0.4.0-SNAPSHOT: not found` — then reported 39 packages and no
+vulnerabilities, from direct dependencies only. The first script would have passed that.
+At the owner's choice, Maven now resolves the graph and writes a CycloneDX SBOM
+(`cyclonedx-maven-plugin` 2.9.3, invoked by coordinates, test scope left out) and osv-scanner
+reads the SBOM. Generated after moving this machine's installed `0.4.0-SNAPSHOT` artifacts aside
+and running `mvn clean`, as a CI runner starts, it lists 28 third-party components, Jackson
+`2.22.4` and the providers' transitive Guava and `langchain4j-mistral-ai` among them. The script
+now also fails on a failed resolution in the output and on fewer packages scanned than the SBOM
+lists.
+
+**Found on the way, a question for the owner:** `modelrack4j-bom` inherits from
+`modelrack4j-parent`, and an imported BOM brings its *effective* `dependencyManagement`. The
+effective POM has 225 managed entries, LangChain4j's, JUnit's, AssertJ's and Typesafe Config's
+among them, so an application importing the BOM gets this project's versions of all of them,
+not only of the modelrack4j artifacts. That has been so since the BOM existed. Whether to
+decouple the BOM from the parent is left to the owner; ADR-0065's two Jackson entries are
+explicit in the BOM so that they survive if it is.
+
+**Still to do before this item closes:** make `known vulnerabilities` a required check on `dev`
+and `main`, once it has passed on the pull request; and the live run of all six providers.
+
+#### The live run of all six providers
+
+`mvn -Pintegration verify` on 2026-10-27, with Ollama 0.17.5 in its local container and
+`OLLAMA_MODEL=tinyllama`, after Jackson moved to `2.22.4`: OpenAI (`gpt-5-mini`), Anthropic
+(`claude-sonnet-4-6`), Gemini (`gemini-3.6-flash`), GLM (`glm-5.3`) and Ollama passed.
+`MistralProviderIT` failed on its chat call with HTTP 429, "Rate limit exceeded", code 1300 —
+the key was new, on Mistral's free plan. After the owner checked the account it was run alone
+and passed: one chat request and one moderation, not flagged. That closes P56. None of the
+five configured hosted model identifiers has rotted.
 

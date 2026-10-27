@@ -103,6 +103,15 @@
       version langchain4j-core brings in transitively, or dependency convergence fails.
     -->
     <slf4j.version>2.0.18</slf4j.version>
+    <!--
+      Not managed by the LangChain4j BOM: langchain4j-core's own POM names 2.22.1, which has
+      seven known advisories (GHSA-7hhh-6rmp-j9qf and six more), all fixed in 2.22.3. Managed
+      here for this build and in modelrack4j-bom for applications that import it. An
+      application that does not import the BOM still gets 2.22.1 from LangChain4j; the
+      CHANGELOG tells it how to override. Remove this when a LangChain4j release brings a
+      fixed Jackson itself, and re-check it on every LangChain4j bump.
+    -->
+    <jackson.version>2.22.4</jackson.version>
     <junit.version>6.1.3</junit.version>
     <assertj.version>3.27.7</assertj.version>
     <awaitility.version>4.3.0</awaitility.version>
@@ -158,6 +167,16 @@
         <groupId>org.slf4j</groupId>
         <artifactId>slf4j-api</artifactId>
         <version>${slf4j.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.fasterxml.jackson.core</groupId>
+        <artifactId>jackson-core</artifactId>
+        <version>${jackson.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.fasterxml.jackson.core</groupId>
+        <artifactId>jackson-databind</artifactId>
+        <version>${jackson.version}</version>
       </dependency>
 
       <dependency>
