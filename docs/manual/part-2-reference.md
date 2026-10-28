@@ -159,7 +159,7 @@ llm {
 |---|---|---|---|
 | `description` | string | *none* | Human-readable. Nothing in the library reads it. Blank is rejected; `null` in a higher layer clears a description set in a lower layer. |
 | `provider` | string | *required* | Must match a `ProviderFactory` on the classpath. An unknown value is an error that lists the providers actually available. |
-| `api-key` | string | *depends on the provider* | Use `${VAR}`. Blank is rejected. Required by `anthropic`, `gemini` and `glm`; optional on `openai`; refused by `ollama` — see [Providers](#providers). On GLM it must have the form `id.secret`. |
+| `api-key` | string | *depends on the provider* | Use `${VAR}`. Blank is rejected. Required by `anthropic`, `gemini`, `glm` and `mistral`; optional on `openai`; refused by `ollama` — see [Providers](#providers). On GLM it must have the form `id.secret`. |
 | `base-url` | string | *the provider's own address* | The server a block calls. Every model the block builds uses it. Blank is rejected. Required by `ollama`, optional on the others — see [Providers](#providers). |
 | `model-name` | string | *required* | The provider's own identifier. **Not validated** — see below. |
 | `temperature` | number | *provider's own* | 0.0–2.0. Omitted means "do not set it", which is different from setting a default. Some models reject a non-default value — see [Providers](#providers). |
@@ -931,7 +931,9 @@ So the swap guarantee covers exactly this much. **Which objects exist, who build
 credentials, model, timeout and memory — all config-shaped, all swap freely. What a failing
 call throws does not.** Catch `dev.langchain4j.exception.LangChain4jException` and your
 handling of an error the server *answers* with survives any swap; the four hosted providers
-checked in P6 throw beneath it. A server that cannot be reached at all is different: OpenAI and Ollama
+checked in P6 throw beneath it, and so does Mistral, whose rate limit arrived in
+[P58](../tasks/post-v1.md#p58--the-pre-release-check-of-040) as
+`dev.langchain4j.exception.RateLimitException`. A server that cannot be reached at all is different: OpenAI and Ollama
 both throw a plain `RuntimeException` whose cause is `java.net.ConnectException`, which is not
 a `LangChain4jException`. With a server of your own, which may simply not be running, that is
 the error you meet first, so catch it too. Catching anything more
@@ -1289,6 +1291,11 @@ context. That keeps a factory written before 0.4.0 working. Such a factory build
 without the listeners, so when an application registers some, core sees that the model does
 not report them and refuses the configuration with a message that names your provider.
 
+**Override the two-argument method whenever you write the one-argument method as a call to
+it.** Otherwise each calls the other through the default. The compiler does not see it,
+because the default has a body; the registry stops it with an `IllegalStateException` that
+names the factory and the method, instead of a `StackOverflowError`.
+
 **Report a capability; do not enforce it.** `tokenEstimation()`, `supportsModeration()`,
 `apiKeyRequirement()` and `baseUrlRequirement()` say what your provider can do and needs, and
 core turns each into the rejection and the message. So
@@ -1450,7 +1457,7 @@ Deliberate and permanent:
 | Edits change nothing, and no log line either | `watch(true)` was never set, or no SLF4J binding is on the classpath | Enable watching; add a binding. |
 | A rejected reload logs nothing, running an example with `mvn -q … exec:java` or a `run-*.sh` script | `-q` makes Maven set the SLF4J level to `error` for its own process, and `exec:java` runs the example inside it. The launchers pass `-q` too | Add `-Dorg.slf4j.simpleLogger.log.io.github.maxtrezzi.modelrack4j.LlmRegistry=warn`, or drop `-q`. Your own application is not affected. |
 | `A mandatory substitution is unresolved` | `${VAR}` with the variable unset | Export it, or override the key in a higher layer. Do not switch to `${?VAR}`. |
-| `has no api-key, but provider '…' requires one` | `api-key` left out on `anthropic`, `gemini` or `glm`, or a `${?VAR}` whose variable is unset | Set `api-key`. Use `${VAR}` rather than `${?VAR}`, so that an unset variable is reported by name. |
+| `has no api-key, but provider '…' requires one` | `api-key` left out on `anthropic`, `gemini`, `glm` or `mistral`, or a `${?VAR}` whose variable is unset | Set `api-key`. Use `${VAR}` rather than `${?VAR}`, so that an unset variable is reported by name. |
 | `sets api-key, but provider '…' does not use one` | `api-key` on `ollama`, which takes no key | Remove the key from the block. If a lower layer sets it, clear it with `api-key = null`. |
 | `has no base-url, but provider '…' requires one` | An `ollama` block without an address | Set `base-url` to your server, for example `http://localhost:11434`. |
 | `has neither api-key nor base-url` | An `openai` block with no key and no address, which would call `api.openai.com` without a key | Set `api-key`, or set `base-url` to a server that does not need one. |

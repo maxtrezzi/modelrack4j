@@ -146,10 +146,12 @@ public interface ProviderFactory {
      *     unchanged (ADR-0063). Such a factory builds a model without the listeners, and core
      *     refuses that model when the context had any. A factory that overrides this must
      *     pass {@link ModelContext#chatModelListeners()} to the builder, and the model's
-     *     {@code listeners()} must report them.
+     *     {@code listeners()} must report them. A factory that implements the one-argument
+     *     form by calling this one and does not override this one fails here with an
+     *     {@code IllegalStateException} that says so, rather than recursing.
      */
     default ChatModel createChatModel(LlmConfig config, ModelContext context) {
-        return createChatModel(config);
+        return DefaultCreate.delegate(this, "createChatModel", () -> createChatModel(config));
     }
 
     /**
@@ -176,7 +178,8 @@ public interface ProviderFactory {
      */
     default Optional<StreamingChatModel> createStreamingChatModel(
             LlmConfig config, ModelContext context) {
-        return createStreamingChatModel(config);
+        return DefaultCreate.delegate(this, "createStreamingChatModel",
+                () -> createStreamingChatModel(config));
     }
 
     /**
@@ -205,7 +208,8 @@ public interface ProviderFactory {
      */
     default Optional<ModerationModel> createModerationModel(
             LlmConfig config, ModelContext context) {
-        return createModerationModel(config);
+        return DefaultCreate.delegate(this, "createModerationModel",
+                () -> createModerationModel(config));
     }
 
     /**

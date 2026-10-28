@@ -72,8 +72,11 @@ import java.util.concurrent.TimeoutException;
  *
  * @implNote <strong>No API key, and no cost.</strong> This reads configuration only — it
  *     never sends a request, so the credentials in the generated file are literals rather
- *     than substitutions. It and {@link DatabaseSource} are the two examples that run
- *     anywhere, at no cost; the other three call a paid API.
+ *     than substitutions. It, {@link DatabaseSource} and {@link CustomProperties} run
+ *     anywhere, at no cost. {@link LocalDevelopment} is free too, and asks a local Ollama
+ *     server one question; {@link ProviderSwap} calls a paid API, and so do
+ *     {@link ConsoleChat} and {@link ThreeModelCouncil} with the bundled
+ *     {@code examples.conf}.
  */
 public final class AtomicSnapshot {
 

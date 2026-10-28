@@ -30,8 +30,8 @@ jobs:
     if: github.event_name == 'push' || github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '17'
@@ -39,25 +39,41 @@ jobs:
       - name: Look up every shipped dependency, as Maven resolves it
         run: build/osv-scan.sh
 
-  scheduled:
-    name: known vulnerabilities on ${{ matrix.ref }}
+  # Two jobs rather than a matrix, so that their names read correctly on a pull request too,
+  # where GitHub lists them as skipped without expanding a matrix. main is what Maven Central
+  # holds (ADR-0061), so a red run there is an advisory against a released version.
+  #
+  # Each takes the script from the branch this workflow runs on and checks out the tree it
+  # scans beside it: main carries a release's files only, so it may not have the script.
+  weekly-dev:
+    name: known vulnerabilities, weekly, dev
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        # main is what Maven Central holds (ADR-0061), so a red run there is an advisory
-        # against a released version.
-        ref: [dev, main]
     steps:
-      # The script comes from the branch this workflow runs on; the tree it scans is checked
-      # out beside it. main carries a release's files only, so it may not have the script.
-      - uses: actions/checkout@v4
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7
         with:
-          ref: ${{ matrix.ref }}
+          ref: dev
           path: scanned
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+      - name: Look up every shipped dependency, as Maven resolves it
+        run: build/osv-scan.sh scanned
+
+  weekly-main:
+    name: known vulnerabilities, weekly, main
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          path: scanned
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '17'

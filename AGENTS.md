@@ -464,7 +464,9 @@ application importing the BOM, and nobody else — Maven applies only the applic
 `dependencyManagement` — which is why core does not declare Jackson and the CHANGELOG says how
 to override it. On every bump, check whether LangChain4j now brings a fixed Jackson, and drop
 the entries when it does; the `known vulnerabilities` check (ADR-0064) says whether what is
-managed is still clean. **No provider artifact, ever.**
+managed is still clean. **The parent's `dependencyManagement` is exported to applications**,
+because `modelrack4j-bom` inherits it, so only what the library ships may go there (ADR-0066):
+test libraries and build tools are declared with their versions where they are used. **No provider artifact, ever.**
 Each provider lives in its own module
 (`modelrack4j-provider-openai|anthropic|gemini|glm|ollama|mistral`) implementing the
 `ProviderFactory` SPI, discovered via `java.util.ServiceLoader`
@@ -482,15 +484,24 @@ in a provider's `validate()` — that is only for a rule core cannot see. **The 
 methods have no default, and must not get one**: a default of `MANDATORY` would refuse every
 block of a keyless provider that forgot to override it, which trades a compile error for a
 wrong answer. The price of no default is that a factory compiled against `0.2.0` throws
-`AbstractMethodError`, an `Error` that `reload()` and the watcher loop do not catch — it once
-ended the watcher thread in silence. **`SnapshotLoader.requirementOf` translates it into a
-`ConfigValidationException`, and `buildBundleReportingLinkage` does the same for any
-`LinkageError` a factory raises while its bundle is built; do not remove either, and do not
-widen the catch to `Error`** — a linkage error belongs to one provider's classes, an
-`OutOfMemoryError` does not. It is a `ConfigValidationException` rather than a new type
-because that is what a rejected reload is reported as; it stretches ADR-0053's "read something
-and objected" a little, since the objection is to the provider rather than to the text. P27 emptied the three `validate()` bodies that had been restating a capability;
-P25 then gave GLM's real work, and P48 gave OpenAI's one rule, so **four of the six are empty
+`AbstractMethodError`, an `Error` that `reload()` does not catch — it once ended the watcher
+thread in silence, and it still bypasses the WARN line and the failure listeners.
+**`SnapshotLoader.requirementOf` translates it into a `ConfigValidationException`, and
+`buildBundleReportingLinkage` does the same for any `LinkageError` a factory raises while its
+bundle is built; do not remove either, and do not widen the catch to `Error`** — a linkage
+error belongs to one provider's classes, an `OutOfMemoryError` does not. It is a
+`ConfigValidationException` rather than a new type because that is what a rejected reload is
+reported as; it stretches ADR-0053's "read something and objected" a little, since the
+objection is to the provider rather than to the text. **The one deliberate exception is
+application code run by a reload or a store:** `LlmRegistry.notify` and
+`ConfigWatcher.reloadIfQuiet` catch `RuntimeException`, `LinkageError` and `AssertionError`,
+because a listener that failed an `assert` or reached a missing class otherwise ended the
+watcher thread, and with it hot reload, with nothing in the application's logs (P59).
+`VirtualMachineError` still propagates there too, and the watcher thread has an
+uncaught-exception handler that logs if it dies anyway. `storeHoldingTheLock` puts the previous
+snapshot back in a `finally`, so a `write()` that throws any `Error` cannot leave a snapshot
+live that was never stored. P27 emptied the three `validate()` bodies that had been restating a
+capability; P25 then gave GLM's real work, and P48 gave OpenAI's one rule, so **four of the six are empty
 and GLM's and OpenAI's are not**. OpenAI's refuses a block with neither `api-key` nor
 `base-url`, because only that factory knows no address means `api.openai.com`; it is the one
 key rule that stays in a provider. **`base-url` goes to every builder a factory calls for the
@@ -513,12 +524,18 @@ listeners (ADR-0063).** Core calls only the two-argument `create` methods; their
 the one-argument ones, so a factory built before `0.4.0` still works. That default drops the
 listeners, and `SnapshotLoader.requireListeners` is what turns the drop into a refusal: it
 compares each model's `listeners()` with what it was given. **Do not remove it as redundant**
-because the five factories here all pass them — it is what makes the defaults safe for
+because the six factories here all pass them — it is what makes the defaults safe for
 factories the project does not own, the same role `requireProduced` plays for
 `supportsModeration()`. The listeners come from functions on `LlmRegistry.Builder`, called per
 bundle built, and never enter `LlmConfig`, for the reason ADR-0055 keeps the parsed custom
 properties out of it. The next thing a factory needs from the registry goes on `ModelContext`,
-which is a class rather than a record so that adding to it breaks nobody.
+which is a class rather than a record so that adding to it breaks nobody. **The defaults go
+through `spi.DefaultCreate`, and that is not removable either**: a factory that writes the
+one-argument method as a call to the two-argument one, as the Javadoc advises, and forgets to
+override the latter, makes the pair call each other, and the compiler accepts it. Unguarded it
+was a `StackOverflowError` — a `VirtualMachineError`, which even the watcher loop does not
+catch; the guard turns it into an `IllegalStateException` that names the
+method (P59).
 
 **A block's custom properties are text in `LlmConfig` and an object on `LlmBundle`
 (ADR-0055).** The `custom-properties` sub-block is rendered from the merged configuration with

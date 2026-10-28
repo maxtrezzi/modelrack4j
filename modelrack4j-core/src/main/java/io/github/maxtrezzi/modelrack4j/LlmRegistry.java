@@ -601,13 +601,18 @@ public final class LlmRegistry<T> implements AutoCloseable {
             ReloadChange change = ReloadChange.between(previous, next);
 
             bundles = next;   // published, but nobody is told: this is the caller's change
+            boolean stored = false;
             try {
                 staged.commit();
-            } catch (RuntimeException notStored) {
+                stored = true;
+            } finally {
                 // Back to exactly the state before the store. Nothing was announced, so
-                // nothing has to be un-announced.
-                bundles = previous;
-                throw notStored;
+                // nothing has to be un-announced. A finally rather than a catch: an Error
+                // from an application's write() — an assert, a missing class — would
+                // otherwise leave this snapshot live with nothing stored behind it.
+                if (!stored) {
+                    bundles = previous;
+                }
             }
             return change.isEmpty() ? Optional.empty() : Optional.of(change);
         } finally {
@@ -656,7 +661,12 @@ public final class LlmRegistry<T> implements AutoCloseable {
         for (Consumer<E> listener : listeners) {
             try {
                 listener.accept(event);
-            } catch (RuntimeException e) {
+            } catch (RuntimeException | LinkageError | AssertionError e) {
+                // Not RuntimeException alone. An application's listener that fails an assert,
+                // or reaches a class missing from its classpath, throws an Error, and on the
+                // watcher thread that Error ended the thread: every later edit was ignored and
+                // only System.err said so. A VirtualMachineError still propagates — it is
+                // not this listener's to report (AGENTS.md).
                 log.error("modelrack4j {} listener threw; the reload itself is unaffected",
                         what, e);
             }

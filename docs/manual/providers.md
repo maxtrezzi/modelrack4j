@@ -37,15 +37,16 @@ yours against the vendor's list.
 | Ollama | `ollama` | `http://localhost:11434` | not allowed | Module | 2026-10-27 | no moderation, no token counting |
 | Ollama, through its OpenAI endpoint | `openai` | `http://localhost:11434/v1` | leave it out | Tested | 2026-10-26 | [both limits below](#limits-of-a-row-that-is-not-a-module); prefer `provider = ollama` |
 | LocalAI, llama.cpp's server, vLLM, LM Studio | `openai` | the server's OpenAI-compatible address | only if the server checks one | Declared | — | [both limits below](#limits-of-a-row-that-is-not-a-module) |
-| Kimi (Moonshot AI) | `openai` | `https://api.moonshot.ai/v1` | required | Declared | 2026-10-26 | [both limits below](#limits-of-a-row-that-is-not-a-module) |
-| Kimi (Moonshot AI), Anthropic protocol | `anthropic` | `https://api.moonshot.ai/anthropic/v1` | required | Declared | 2026-10-26 | see [Kimi through `anthropic`](#kimi-through-anthropic) |
+| Kimi (Moonshot AI) | `openai` | `https://api.moonshot.ai/v1` | required | Tested | 2026-10-28 | [both limits below](#limits-of-a-row-that-is-not-a-module) |
+| Kimi (Moonshot AI), Anthropic protocol | `anthropic` | `https://api.moonshot.ai/anthropic/v1` | required | Tested | 2026-10-28 | see [Kimi through `anthropic`](#kimi-through-anthropic) |
 | DeepSeek | `openai` | `https://api.deepseek.com` | required | Declared | 2026-10-26 | [both limits below](#limits-of-a-row-that-is-not-a-module) |
 | Groq | `openai` | `https://api.groq.com/openai/v1` | required | Declared | 2026-10-26 | [both limits below](#limits-of-a-row-that-is-not-a-module) |
 | OpenRouter | `openai` | `https://openrouter.ai/api/v1` | required | Declared | 2026-10-26 | [both limits below](#limits-of-a-row-that-is-not-a-module) |
 | Together AI | `openai` | `https://api.together.ai/v1` | required | Declared | 2026-10-26 | no moderation endpoint, the vendor says; [both limits below](#limits-of-a-row-that-is-not-a-module) |
 | xAI | `openai` | `https://api.x.ai/v1` | required | Declared | 2026-10-26 | [both limits below](#limits-of-a-row-that-is-not-a-module) |
 
-The Ollama row through `openai` was tested against Ollama 0.17.5 with the `tinyllama` model.
+The Ollama row through `openai` was tested against Ollama 0.17.5 with the `tinyllama` model,
+and both Kimi rows with `kimi-k3.1-pro`.
 The LocalAI row has no date: those servers run on your machine, so there is no single address
 to read, and their documentation was not read again for this page. Give the address your
 server prints when it starts, which usually ends in `/v1`.
@@ -75,10 +76,14 @@ endpoint as well; leave `token-window` off unless the vendor documents that endp
 Kimi documents an endpoint that speaks Anthropic's Messages API. Its page gives
 `https://api.moonshot.ai/anthropic` as the base address and `/anthropic/v1/messages` as the
 path. The `anthropic` provider adds only `messages` to the address it is given, so the
-`base-url` here ends in `/v1`. One thing is not settled: Kimi's documentation gives its key in
-an `Authorization: Bearer` header, and LangChain4j's Anthropic client sends an `x-api-key`
-header instead. Whether Kimi accepts that header is not documented. The `openai` row has no such
-question.
+`base-url` here ends in `/v1`. Kimi's documentation gives its key in an `Authorization: Bearer`
+header, and LangChain4j's Anthropic client sends an `x-api-key` header instead; Kimi accepts it,
+which the documentation does not say. Both calls through this route answered.
+
+A new Kimi account starts with a low rate limit — three requests a minute on the account used
+here — so the fourth of four quick calls was refused with `rate_limit_reached_error` and
+answered when repeated half a minute later. The limit grows with the amount the account has
+paid in, and it applies to the whole account, whichever route a block uses.
 
 ## Not covered
 

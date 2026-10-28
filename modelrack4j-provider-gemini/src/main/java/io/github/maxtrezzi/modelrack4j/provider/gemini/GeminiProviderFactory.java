@@ -125,8 +125,8 @@ public final class GeminiProviderFactory implements ProviderFactory {
 
     @Override
     public Optional<ModerationModel> createModerationModel(LlmConfig config) {
-        // Unreachable through the registry, which calls validate() first. Empty rather than
-        // an exception, so the SPI contract holds if it is ever called directly.
+        // Unreachable through the registry, which refuses moderation for this provider first.
+        // Empty rather than an exception, so the SPI contract holds if it is called directly.
         return Optional.empty();
     }
 

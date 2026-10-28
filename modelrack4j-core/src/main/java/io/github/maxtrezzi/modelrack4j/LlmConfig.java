@@ -331,7 +331,9 @@ public record LlmConfig(
                         && memory.bool("allow-remote-token-counting");
                 yield built(memory, () -> new MemoryConfig.TokenWindow(maxTokens, remote));
             }
-            default -> throw MemoryConfig.unknownType(type);
+            default -> throw new ConfigValidationException("llm." + name + ".memory.type is '"
+                    + type + "' (" + memory.value("type").origin().description() + ")."
+                    + " Supported values are message-window and token-window");
         };
     }
 

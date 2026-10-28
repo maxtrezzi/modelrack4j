@@ -120,6 +120,7 @@ by number, since the numbering only reflects the order of the original appendix.
 | [0022](0022-glm-via-the-community-module-and-its-bom.md) | Take GLM from the community module, and import its BOM alongside the main one | Accepted |
 | [0023](0023-gemini-via-the-stable-google-ai-gemini-module.md) | Take Gemini from `langchain4j-google-ai-gemini`, the stable module | Accepted |
 | [0065](0065-manage-jackson-when-langchain4j-lags-a-security-fix.md) | Manage Jackson in the parent and the BOM while LangChain4j brings a vulnerable one | Accepted |
+| [0066](0066-the-bom-manages-what-the-library-ships-not-its-test-tools.md) | The BOM manages what the library ships, not the tools it is tested with | Accepted |
 | [0019](0019-target-java-17.md) | Target Java 17, build on a newer JDK | Accepted — CI matrix amended by ADR-0026 |
 | [0026](0026-ci-matrix-is-floor-dev-jdk-and-current-lts.md) | The CI matrix is the floor, the development JDK, and the current LTS | Accepted |
 

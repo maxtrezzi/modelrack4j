@@ -48,11 +48,21 @@ record WritableFileConfigSource(Path file) implements WritableConfigSource, File
     private static final String STAGE_PREFIX = ".modelrack4j-staged-";
 
     /**
-     * An {@code include} directive at the start of a line. Deliberately lexical:
+     * An {@code include} directive, wherever HOCON allows one: at the start of a line, and
+     * also after an opening brace or a comma on the same line, as in
+     * {@code llm { include "a.conf" }}. Deliberately lexical:
      * {@link #requireIncludeCanBeValidated(String)} refuses the whole combination rather than
      * working out whether this particular include would find the same file both ways.
+     *
+     * @implNote The word must be followed by what an include names — a quoted file, or
+     *     {@code required(}, {@code file(}, {@code url(}, {@code classpath(} — so that a
+     *     value which merely contains the word, such as {@code description = "we include
+     *     it"}, is not taken for one. Matching only at the start of a line missed the forms
+     *     above, and a text that used them was then validated against a different sibling
+     *     than the one it is read with.
      */
-    private static final Pattern INCLUDE = Pattern.compile("(?m)^\\s*include\\s");
+    private static final Pattern INCLUDE = Pattern.compile("(?<![\\w-])include\\s+"
+            + "(?:required\\s*\\(\\s*)?(?:\"|file\\s*\\(|url\\s*\\(|classpath\\s*\\()");
 
     /**
      * A file written beside its destination and waiting to be moved onto it.

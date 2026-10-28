@@ -57,7 +57,9 @@ will not be held back for a major bump until the API settles at `1.0.0`.
   the old ones. Such a factory builds its models without the listeners, so when an application
   registers listeners, the registry sees that a model does not report them and refuses the
   configuration with a message that names the provider. To support listeners, override the
-  new methods and pass the listeners to each model's builder. Checked with the released
+  new methods and pass the listeners to each model's builder. A factory that writes the old
+  method as a call to the new one and forgets to override the new one is refused with an
+  `IllegalStateException` naming the method, rather than recursing. Checked with the released
   `modelrack4j-provider-openai` `0.3.0`: on this version's core it builds every model as
   before, and is refused, with that message, only when listeners are registered.
 
@@ -69,6 +71,12 @@ will not be held back for a major bump until the API settles at `1.0.0`.
   LangChain4j artifacts move to the new version, and the GLM provider brings Guava
   `33.7.2-jre` instead of `33.6.0-jre`. Guava now brings the same `org.jspecify:jspecify`
   as `langchain4j-core`, `1.0.1`, so this project no longer pins it.
+- **`modelrack4j-bom` no longer manages JUnit, AssertJ or Awaitility.** The BOM inherited them
+  from this project's build, so an application that imported it had its test libraries'
+  versions chosen for it — JUnit `6.1.3` and AssertJ `3.27.7` with `0.3.0`. It still manages the
+  modelrack4j artifacts, Jackson, LangChain4j, Typesafe Config and SLF4J. If your build declares
+  JUnit or AssertJ without a version and relied on the BOM for it, Maven now reports the version
+  as missing: give the version yourself, or import `org.junit:junit-bom`.
 - **The message that refuses `moderation.enabled = true`** on a provider without a moderation
   model now names both providers that have one, `openai` and `mistral`, instead of "an
   OpenAI-family configuration". Code that matches on the old wording needs updating.
@@ -79,6 +87,27 @@ will not be held back for a major bump until the API settles at `1.0.0`.
   ran after them, so a configuration the handler rejected first built models that were then
   thrown away. No model from a rejected configuration was ever used; the change only stops
   building them.
+- **A reload listener that throws an `Error` no longer stops hot reload.** A listener that
+  failed an `assert`, or reached a class missing from the classpath, threw an `AssertionError`
+  or a `LinkageError`, and on the watcher thread that ended the thread: every later change to
+  the files was ignored, and only `System.err` said so. Such an error is now logged like any
+  other exception from a listener, and the other listeners still run. The same holds for an
+  error of that kind from your own code while a reload is built — a custom-properties handler,
+  a listener function, a `ConfigSource`. If the watcher thread stops anyway, it now says so in
+  your logs.
+- **A `store()` whose `write()` throws an `Error` now puts the previous configuration back.**
+  The new configuration is applied before the layer is written, and only an exception undid
+  that. An `AssertionError` or a `LinkageError` from your own `WritableConfigSource.write()`
+  left the new configuration live although nothing was stored, so what the application ran
+  and what the layer held disagreed until the next reload.
+- **`store()` now recognises an `include` that does not start a line**, such as
+  `llm { include "a.conf" }`. For a layer reached through a symbolic link, a text using that
+  form was validated against the file next to the link's target, while it is read with the
+  one next to the link; such a store is now refused, like the one with the include on a line
+  of its own.
+- **An unknown `memory.type` now names its block and where it was set**, as every other
+  validation message does: `llm.SL.memory.type is 'sliding-window'`, followed by the file and
+  the line.
 
 ### Security
 

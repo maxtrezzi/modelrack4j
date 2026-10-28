@@ -134,6 +134,11 @@ final class ConfigWatcher implements AutoCloseable {
         }
         this.thread = new Thread(this::run, "modelrack4j-config-watcher");
         this.thread.setDaemon(true);
+        // Without it, a thread that dies anyway reports only to System.err, which an
+        // application usually does not read, and hot reload stops with nothing in its logs.
+        this.thread.setUncaughtExceptionHandler((dead, cause) -> log.error(
+                "modelrack4j config watcher stopped; configuration changes are no longer"
+                        + " reloaded", cause));
     }
 
     /**
@@ -261,9 +266,12 @@ final class ConfigWatcher implements AutoCloseable {
         directories.forEach(WatchedDirectory::refreshMode);
         try {
             onChange.run();
-        } catch (RuntimeException e) {
+        } catch (RuntimeException | LinkageError | AssertionError e) {
             // The registry reports its own failures; reaching here means a bug in the
-            // callback, and letting it out would silently stop all future reloads.
+            // callback, and letting it out would silently stop all future reloads. The two
+            // Errors are those application code raises during a reload — an assert, a class
+            // missing from the classpath — in a custom-properties handler, a listener
+            // function or a ConfigSource. A VirtualMachineError still ends the thread.
             log.error("modelrack4j reload callback threw; watching continues", e);
         }
     }
