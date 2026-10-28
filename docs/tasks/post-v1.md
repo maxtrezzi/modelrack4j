@@ -6686,9 +6686,9 @@ On an AMD Ryzen 7 7840HS, Temurin 25, Maven 3.8.7.
 
 ### P58 — The pre-release check of 0.4.0
 
-**Status:** In progress — everything offline is green, all six providers answered live,
-Jackson moved off seven advisories, a vulnerability check added to CI; the check has still to
-pass in CI and become required · **Branch:** `task/p58-pre-release-check-0.4.0` · ADR-0064, ADR-0065 ·
+**Status:** Done — everything offline is green, all six providers answered live,
+Jackson moved off seven advisories, a vulnerability check added to CI and made required; the
+rest of the check continued in P59, and 0.4.0 was released in P60 · **Branch:** `task/p58-pre-release-check-0.4.0` · ADR-0064, ADR-0065 ·
 **Raised by:** the owner on 2026-10-26, as the check before 0.4.0 is released
 
 P54 to P57 were each checked on their own branch. This item re-runs, on the merged tree, what a
@@ -6805,7 +6805,8 @@ five configured hosted model identifiers has rotted.
 
 ### P59 — The pre-release check of 0.4.0, part two
 
-**Status:** In progress — the three candidates done, the owner asked for all three ·
+**Status:** Done — the three candidates done, two Java reviews applied, every test and example
+run again; 0.4.0 was released in P60 ·
 **Branch:** `task/p59-pre-release-check-0.4.0-bis` ·
 **Raised by:** the owner on 2026-10-27, after P58 merged with its checks unfinished
 
@@ -7066,3 +7067,55 @@ Everything run again after these fixes, on AMD Ryzen 7 7840HS, Temurin 25, Maven
 
 PIT was not run again: the only code change to core is the rollback in `storeHoldingTheLock`, a
 `finally` with a flag, and `ConfigStoreTest` covers both of its branches.
+
+### P60 — 0.4.0 published
+
+**Status:** Done — on Maven Central 2026-10-28 · **Branch:** `docs/0.4.0-on-central` ·
+ADR-0067 · **Raised by:** the owner on 2026-10-28, after [P59](#p59--the-pre-release-check-of-040-part-two)
+
+The version commit landed on `dev` as `440422d` (#85): ten POMs, the CHANGELOG heading
+`[0.4.0] — 2026-10-28` and its link, and `project.build.outputTimestamp` back at
+`2026-10-28T00:00:00Z` after `versions:set` had written `2026-10-28T22:22:08Z`.
+
+**The release pull request from `dev` conflicted, and ADR-0067 is the answer.** #86, `dev` →
+`main`, came back `CONFLICTING` on 36 files. `main` held `383a83d`, the squash of `0.3.0`, which
+is not in `dev`'s history; `383a83d`'s tree equals `dev`'s `a23f455`, so nothing on `main` was
+missing from `dev`, but the merge base was still `af58c81` from `0.2.0`. `0.3.0` never met this,
+because `main` then had no commit of its own. The owner chose a branch from `dev` with
+`git merge -s ours origin/main`: `release/0.4.0-main` at `92f373f`, whose tree was checked equal
+to `dev`'s and whose merge into `main` was checked clean with `git merge-tree`. #86 was closed,
+and #87 from that branch squashed onto `main` as `088c64a` with the six checks green. `main`'s
+tree then equalled `dev`'s.
+
+**Published from `main` at `088c64a`**, with Maven 3.9.16 and
+`-Dgpg.keyname=EB71EAD0CD7AEE667D093D309EC2E218A2086E72`, without `-B`:
+
+- a dry run with both Central URLs at `127.0.0.1:1` failed at the upload, as intended, and the
+  log names no other address. `build/check-release-bundle.sh` passed: nine modules, no
+  `modelrack4j-examples`, every `.jar` and `.pom` signed. All 30 signatures verified with
+  `gpg --verify`, by the release key;
+- `mvn -Prelease clean deploy` uploaded deployment `efc6e976-061f-44d5-9258-654fb2dc0417`,
+  which reached `VALIDATED`; the owner pressed Publish.
+
+**Verified against Central rather than assumed**, within minutes of the Publish:
+
+- the POM of all nine published modules answers `200` on `repo1.maven.org`, and
+  `modelrack4j-examples` answers `404`;
+- `modelrack4j-provider-mistral` and `modelrack4j-provider-openai` resolve with
+  `dependency:get` into an empty local repository, bringing core and LangChain4j `1.22.0`;
+- the core, Mistral, OpenAI and Ollama jars from Central carry a good signature by the release
+  key, and are identical byte for byte to the ones the release build left in `~/.m2`;
+- the Mistral jar carries its `META-INF/services` entry, and every entry in it is dated
+  `2026-10-28 00:00`.
+
+**Documentation moved after the publish:** the six dependency snippets — four in the README
+including the BOM block, one in the tutorial, one in the reference — the README's status line,
+the reference's current release, and `AGENTS.md`'s Project state, which also no longer says
+Mistral is unreleased. `AGENTS.md`'s release paragraph names the `release/<version>-main` step.
+
+**After the documentation, the last three steps of the checklist.** The annotated tag `v0.4.0`
+on `main` at `088c64a`, created after the publish. The GitHub release from that tag, marked
+latest, with an upgrade note on the BOM's test libraries and the 0.3.0 provider jars. And `dev`
+on `0.5.0-SNAPSHOT` with `[Unreleased]` reopened, on `release/dev-to-0.5.0-snapshot` (#89):
+`versions:set` wrote `2026-10-28T23:00:21Z` into `project.build.outputTimestamp` once more, and
+it is back at `2026-10-28T00:00:00Z`.

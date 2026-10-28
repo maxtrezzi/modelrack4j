@@ -151,4 +151,5 @@ by number, since the numbering only reflects the order of the original appendix.
 | [0043](0043-keep-mutation-testing-out-of-ci.md) | Keep mutation testing out of CI, in every form | Accepted |
 | [0045](0045-publish-through-the-central-portal-from-a-release-profile.md) | Publish through the Central Portal, from a `release` profile, with the last step manual | Accepted |
 | [0064](0064-scan-dependencies-for-known-vulnerabilities-as-a-required-check.md) | Scan the dependencies for known vulnerabilities, as a required check and weekly | Accepted |
-| [0061](0061-work-lands-on-dev-and-main-carries-releases.md) | Work lands on `dev`; `main` carries releases only | Accepted |
+| [0061](0061-work-lands-on-dev-and-main-carries-releases.md) | Work lands on `dev`; `main` carries releases only | Accepted — the release pull request's head amended by ADR-0067 |
+| [0067](0067-a-release-pull-request-records-main-as-a-parent.md) | A release pull request records `main` as a parent | Accepted |

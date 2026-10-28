@@ -1,6 +1,6 @@
 # ADR-0061: Work lands on `dev`; `main` carries releases only
 
-- **Status:** Accepted
+- **Status:** Accepted — the release pull request's head amended by ADR-0067
 - **Date:** 2026-09-07
 - **Supersedes:** —
 - **Amends:** [ADR-0016](0016-one-feature-branch-per-task.md) and [ADR-0040](0040-protect-main-with-required-checks-not-required-review.md)
