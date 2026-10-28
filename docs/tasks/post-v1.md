@@ -6902,3 +6902,15 @@ models; and `ModelContext.of` rejects a `null` element through `List.copyOf`'s m
 `NullPointerException`, which its Javadoc states and the registry pre-empts with a message of
 its own.
 
+#### Kimi tested, 2026-10-28
+
+The owner created a key on Kimi's international platform. One chat call and one streaming call
+through each route of the catalogue, with `kimi-k3.1-pro`: through `openai`
+(`https://api.moonshot.ai/v1`) both answered; through `anthropic`
+(`https://api.moonshot.ai/anthropic/v1`) the chat answered, which settles the doubt P57 left —
+Kimi accepts the `x-api-key` header LangChain4j's Anthropic client sends — and the streaming
+call was refused with `rate_limit_reached_error` at the account's limit of three requests a
+minute, then answered when run alone 25 seconds later. Both rows are now **Tested**, dated
+2026-10-28, and the page's section on the `anthropic` route says the header works and that a new
+account's limit is low. `catalog.conf` is unchanged: the blocks were already the ones tested.
+
