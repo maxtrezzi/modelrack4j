@@ -7,18 +7,19 @@ and points here; every ADR that cites the old name still resolves.
 
 ## Project state
 
-**v1 is complete, the repository is public, and `0.3.0` is the current release.** Ten Maven
-modules and six providers on `dev` — the sixth, Mistral, arrived in P56 and is not released
-yet — hot reload, a two-part manual with a provider catalogue beside it, and seven runnable
-examples. M0–M6 are
+**v1 is complete, the repository is public, and `0.4.0` is the current release.** Ten Maven
+modules and six providers, hot reload, a two-part manual with a provider catalogue beside it,
+and seven runnable examples. M0–M6 are
 done: M6's trigger fired on 2026-09-02, when the owner tested the library and judged it
 publishable, and `io.github.maxtrezzi:modelrack4j-*:0.1.0` was signed and published to Maven
 Central the same evening. `0.2.0` followed on 2026-09-07 — custom properties, a closed schema,
 an empty configuration, `writableSources()`, and a generic registry that is a source break for
 a caller who used the raw type. `0.3.0` followed on 2026-10-04 — `base-url`, the Ollama
 provider, and `api-key` optional where a provider allows it, with `LlmConfig.apiKey()` now an
-`Optional` and two methods every `ProviderFactory` must implement. `modelrack4j-examples` is not
-published and is confirmed absent from Central for all three releases.
+`Optional` and two methods every `ProviderFactory` must implement. `0.4.0` followed on
+2026-10-28 — the Mistral provider, model listeners passed to factories in a `ModelContext`,
+LangChain4j 1.22.0, Jackson 2.22.4, and a BOM without test libraries. `modelrack4j-examples` is
+not published and is confirmed absent from Central for all four releases.
 
 **A published version can never be changed or deleted.** That is new, and it changes what a
 mistake costs: before M6 a wrong API shape was a commit, now it is a permanent artifact. The
@@ -97,9 +98,14 @@ carries the work, its status update in `docs/tasks/`, and any ADR it produces.
 **`dev` is the default branch and `main` carries releases only (ADR-0061).** Every pull
 request targets `dev`. `main` holds one commit per released version, each with its tag, so its
 tree is always what Maven Central has — which is what makes `git log main..dev` the list of
-what an unreleased version would contain. A release is a pull request from `dev` to `main`,
-squashed, whose subject is the version; the version commit itself — every POM, the
-CHANGELOG heading, `project.build.outputTimestamp` — lands on `dev` first like any other work.
+what an unreleased version would contain. A release is a pull request to `main`, squashed,
+whose subject is the version; the version commit itself — every POM, the CHANGELOG heading,
+`project.build.outputTimestamp` — lands on `dev` first like any other work. **The pull request's
+head is `release/<version>-main`, not `dev` (ADR-0067)**: `dev` plus one
+`git merge -s ours origin/main`, so the tree is exactly `dev`'s and the squash of the previous
+release is a parent. Opened from `dev` itself it conflicts, as #86 did on 36 files for `0.4.0`,
+because `main`'s last squash is not in `dev`'s history. That conflict is the sign the step was
+skipped, never a reason to merge `main` into `dev`.
 **Never merge `main` into `dev`, never branch from `main`, never rebase `dev` onto it.** After
 a release the two hold the same tree and unrelated histories, because the merge was a squash;
 `dev` simply carries on. Nothing enforces that — the protection rules cannot express it — so

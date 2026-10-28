@@ -41,7 +41,7 @@ wrong. [Part 1](part-1-tutorial.md) is the way in; this is the page you come bac
 
 **Java 17 or newer.** Built and tested on 17, 21 and 25.
 
-**On Maven Central** since `0.1.0`; the current release is `0.3.0`. Import the BOM once, then
+**On Maven Central** since `0.1.0`; the current release is `0.4.0`. Import the BOM once, then
 declare artifacts without versions:
 
 ```xml
@@ -50,7 +50,7 @@ declare artifacts without versions:
     <dependency>
       <groupId>io.github.maxtrezzi</groupId>
       <artifactId>modelrack4j-bom</artifactId>
-      <version>0.3.0</version>
+      <version>0.4.0</version>
       <type>pom</type>
       <scope>import</scope>
     </dependency>
