@@ -7113,5 +7113,9 @@ including the BOM block, one in the tutorial, one in the reference — the READM
 the reference's current release, and `AGENTS.md`'s Project state, which also no longer says
 Mistral is unreleased. `AGENTS.md`'s release paragraph names the `release/<version>-main` step.
 
-**Still to come after this branch:** the annotated tag `v0.4.0` on `main` at `088c64a`, the
-GitHub release from it, and `dev` on `0.5.0-SNAPSHOT` with `[Unreleased]` reopened.
+**After the documentation, the last three steps of the checklist.** The annotated tag `v0.4.0`
+on `main` at `088c64a`, created after the publish. The GitHub release from that tag, marked
+latest, with an upgrade note on the BOM's test libraries and the 0.3.0 provider jars. And `dev`
+on `0.5.0-SNAPSHOT` with `[Unreleased]` reopened, on `release/dev-to-0.5.0-snapshot` (#89):
+`versions:set` wrote `2026-10-28T23:00:21Z` into `project.build.outputTimestamp` once more, and
+it is back at `2026-10-28T00:00:00Z`.
