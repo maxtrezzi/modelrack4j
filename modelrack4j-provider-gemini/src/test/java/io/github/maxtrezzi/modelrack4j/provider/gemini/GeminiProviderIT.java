@@ -17,12 +17,21 @@ package io.github.maxtrezzi.modelrack4j.provider.gemini;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import dev.langchain4j.model.chat.StreamingChatModel;
+import dev.langchain4j.model.chat.listener.ChatModelErrorContext;
+import dev.langchain4j.model.chat.listener.ChatModelListener;
+import dev.langchain4j.model.chat.listener.ChatModelRequestContext;
+import dev.langchain4j.model.chat.listener.ChatModelResponseContext;
+import dev.langchain4j.model.chat.response.ChatResponse;
+import dev.langchain4j.model.chat.response.StreamingChatResponseHandler;
 import io.github.maxtrezzi.modelrack4j.LlmRegistry;
-import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
@@ -50,8 +59,8 @@ class GeminiProviderIT {
     Path dir;
 
     @Test
-    @DisplayName("a configured bundle answers a real request")
-    void answersARealRequest() throws IOException {
+    @DisplayName("a configured bundle answers and streams, and its listeners see every call")
+    void answersARealRequest() throws Exception {
         Path file = dir.resolve("it.conf");
         // The key is read by mandatory substitution, exactly as a real deployment would.
         Files.writeString(file, """
@@ -61,15 +70,72 @@ class GeminiProviderIT {
                     api-key    = ${GEMINI_API_KEY}
                     model-name = "gemini-3.6-flash"
                     timeout    = 60s
+                    streaming  = true
                   }
                 }
                 """, StandardCharsets.UTF_8);
+        // ADR-0063: a listener registered on the registry sees each call the provider answers,
+        // the request and the response, chat and streaming alike.
+        List<String> events = new CopyOnWriteArrayList<>();
+        ChatModelListener listener = new ChatModelListener() {
+            @Override
+            public void onRequest(ChatModelRequestContext context) {
+                events.add("request");
+            }
 
-        try (LlmRegistry<?> registry = LlmRegistry.builder().configFiles(List.of(file)).build()) {
-            String answer =
-                    registry.get("IT").chatModel().chat("Reply with the single word: pong");
+            @Override
+            public void onResponse(ChatModelResponseContext context) {
+                events.add("response");
+            }
 
-            assertThat(answer).isNotBlank();
+            @Override
+            public void onError(ChatModelErrorContext context) {
+                events.add("error " + context.error());
+            }
+        };
+
+        try (LlmRegistry<?> registry = LlmRegistry.builder()
+                .configFiles(List.of(file))
+                .chatModelListeners(config -> List.of(listener))
+                .build()) {
+            var bundle = registry.get("IT");
+
+            assertThat(bundle.chatModel().chat("Reply with the single word: pong")).isNotBlank();
+            assertThat(streamOnce(bundle.streamingChatModel().orElseThrow())).isNotBlank();
+            awaitEvents(events, 4);
+            assertThat(events).containsExactly("request", "response", "request", "response");
+        }
+    }
+
+    /** Streams one request and returns the whole answer, failing with the stream's error. */
+    private static String streamOnce(StreamingChatModel model) throws Exception {
+        CompletableFuture<ChatResponse> done = new CompletableFuture<>();
+        model.chat("Reply with the single word: pong", new StreamingChatResponseHandler() {
+            @Override
+            public void onPartialResponse(String partialResponse) {
+            }
+
+            @Override
+            public void onCompleteResponse(ChatResponse completeResponse) {
+                done.complete(completeResponse);
+            }
+
+            @Override
+            public void onError(Throwable error) {
+                done.completeExceptionally(error);
+            }
+        });
+        return done.get(180, TimeUnit.SECONDS).aiMessage().text();
+    }
+
+    /**
+     * Waits, briefly, for the listeners to have seen every call. LangChain4j may report a
+     * streamed response to its listeners after the handler above has completed.
+     */
+    private static void awaitEvents(List<String> events, int count) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        while (events.size() < count && System.nanoTime() < deadline) {
+            Thread.sleep(50);
         }
     }
 }

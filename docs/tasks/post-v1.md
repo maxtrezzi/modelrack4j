@@ -6939,3 +6939,22 @@ Asked by the owner. Checked mechanically, then the hits read in context:
   the seven send no request and on the keys the other three need; seven `run-*.sh` scripts for
   seven programs. `CatalogTest` passes, so the catalogue page and `catalog.conf` agree.
 
+#### The integration tests cover what 0.4.0 adds, 2026-10-28
+
+Asked by the owner. Each `*IT` made one chat call, Mistral's a moderation too; none streamed,
+none moderated on OpenAI, and none checked a listener against a real provider — the offline
+tests show a listener sees the request before it is sent, not that it sees a real response.
+They had also last run before `DefaultCreate` changed how core builds every model.
+
+Each `*IT` now builds its registry with a `ChatModelListener` from `chatModelListeners(...)`,
+makes one chat call and one streaming call, and asserts the listener saw exactly `request`,
+`response`, `request`, `response`. OpenAI's and Mistral's also moderate one sentence, not
+flagged, through a `ModerationModelListener` that must see `moderation request` and
+`moderation response`. A short bounded wait covers a streamed response reported to listeners
+after the handler completes.
+
+`mvn -Pintegration verify` on the branch, with Ollama 0.17.5 and `OLLAMA_MODEL=tinyllama`: all
+six green. OpenAI 7.4 s, Anthropic 3.7 s, Gemini 4.3 s, GLM 5.6 s, Ollama 18.7 s, Mistral 2.7 s.
+That is the first live evidence that a listener on the registry sees a real provider's responses,
+streamed ones included, and that OpenAI's moderation still answers.
+
