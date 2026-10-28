@@ -87,6 +87,22 @@ will not be held back for a major bump until the API settles at `1.0.0`.
   ran after them, so a configuration the handler rejected first built models that were then
   thrown away. No model from a rejected configuration was ever used; the change only stops
   building them.
+- **A reload listener that throws an `Error` no longer stops hot reload.** A listener that
+  failed an `assert`, or reached a class missing from the classpath, threw an `AssertionError`
+  or a `LinkageError`, and on the watcher thread that ended the thread: every later change to
+  the files was ignored, and only `System.err` said so. Such an error is now logged like any
+  other exception from a listener, and the other listeners still run. The same holds for an
+  error of that kind from your own code while a reload is built — a custom-properties handler,
+  a listener function, a `ConfigSource`. If the watcher thread stops anyway, it now says so in
+  your logs.
+- **`store()` now recognises an `include` that does not start a line**, such as
+  `llm { include "a.conf" }`. For a layer reached through a symbolic link, a text using that
+  form was validated against the file next to the link's target, while it is read with the
+  one next to the link; such a store is now refused, like the one with the include on a line
+  of its own.
+- **An unknown `memory.type` now names its block and where it was set**, as every other
+  validation message does: `llm.SL.memory.type is 'sliding-window'`, followed by the file and
+  the line.
 
 ### Security
 

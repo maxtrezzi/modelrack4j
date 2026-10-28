@@ -6958,3 +6958,53 @@ six green. OpenAI 7.4 s, Anthropic 3.7 s, Gemini 4.3 s, GLM 5.6 s, Ollama 18.7 s
 That is the first live evidence that a listener on the registry sees a real provider's responses,
 streamed ones included, and that OpenAI's moderation still answers.
 
+#### A Java review of the whole code base, 2026-10-28
+
+Asked by the owner after the review of what changed since 0.3.0. All production code read —
+core, the six providers, the seven examples, about 8 300 lines — against the Java 17 profile
+and the skill's five questions; the tests, about 10 000 lines, searched for the defects this
+project has met before: a discarded `Future`, an assertion inside `finally`, `sleep` used to
+synchronise, a registry not closed. None of those turned up. Three defects did, each confirmed
+by a probe before it was fixed, and each fix has a test that fails without it.
+
+- **An `Error` from a reload listener stopped hot reload.** `LlmRegistry.notify` and
+  `ConfigWatcher.reloadIfQuiet` caught `RuntimeException` only. A `jshell` probe with
+  `watch(true)` and an `onReload` listener that throws `AssertionError`: the first edit
+  reloaded, the watcher thread then ended — `Exception in thread "modelrack4j-config-watcher"`
+  on `System.err` and nothing in SLF4J — and the second edit was never reloaded. The README
+  promised that a listener which throws cannot break reloading. Both catches now also take
+  `LinkageError` and `AssertionError`, the errors application code raises, while a
+  `VirtualMachineError` still propagates; the watcher thread has an uncaught-exception handler
+  that logs if it dies anyway. Two tests in `ReloadTest`: a throwing listener registered before
+  the counting one, after which two edits are both reloaded and counted; and a
+  custom-properties handler that throws `AssertionError` for one value, after which the next
+  edit is reloaded. With the old catches both failed, on their two-second and ten-second
+  waits.
+- **`store()` missed an `include` that does not start a line.** The pattern was
+  `(?m)^\s*include\s`. Tested on the regex: it did not match `llm { include "a.conf" }` or
+  `x = 1, include "a.conf"`, which Typesafe Config parses. For a layer reached through a
+  symbolic link such a text skipped the refusal and was validated against a different sibling
+  than the one it is read with — the hazard the refusal exists for. The pattern now looks for
+  `include` followed by what an include names, a quoted file or `required(`, `file(`, `url(`,
+  `classpath(`, anywhere in the text. Two tests in `ConfigStoreTest`: an include after an
+  opening brace is refused, which failed with the old pattern; and a `description` containing
+  the word, which is still stored.
+- **An unknown `memory.type` did not say where it was.** Every other validation message names
+  the block and the layer with the line; this one said only "Unknown memory.type 'x'". It now
+  reads `llm.SL.memory.type is 'x' (<layer>: <line>). Supported values are …`, and
+  `MemoryConfig.unknownType`, no longer used, is gone. `LlmRegistryTest` asserts the prefix,
+  the file and the ending; the old message failed it.
+
+Read and found sound: the reload lock and the single-write swap; `FileChangeNotifier`'s state
+under one lock with the join outside it; the staged write, its cleanup on an `Error`, its
+permissions; every `ConfigException` translated with its cause; the records validating in their
+constructors and copying their collections; the examples closing every registry, shutting their
+pool down and keeping every `Future`. One minor item left as it is: the private
+`apiKey(config)` helper is the same in five provider modules, which share no code but core.
+
+
+PIT on core over the three fixes, AMD Ryzen 7 7840HS, Temurin 25: **321 mutants, 313 killed, 1
+timed out, 6 survived, 1 uncovered**, line coverage 810/844. The eight are the eight P54 lists.
+The run has one mutant fewer than the last, the one in the removed `MemoryConfig.unknownType`;
+the new message in `LlmConfig` is killed, and the two catches give PIT nothing to mutate.
+`ConfigWatcher` is excluded from mutation, so its handler is covered by `ReloadTest` only.

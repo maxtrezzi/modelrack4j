@@ -656,7 +656,12 @@ public final class LlmRegistry<T> implements AutoCloseable {
         for (Consumer<E> listener : listeners) {
             try {
                 listener.accept(event);
-            } catch (RuntimeException e) {
+            } catch (RuntimeException | LinkageError | AssertionError e) {
+                // Not RuntimeException alone. An application's listener that fails an assert,
+                // or reaches a class missing from its classpath, throws an Error, and on the
+                // watcher thread that Error ended the thread: every later edit was ignored and
+                // only System.err said so. A VirtualMachineError still propagates — it is
+                // not this listener's to report (AGENTS.md).
                 log.error("modelrack4j {} listener threw; the reload itself is unaffected",
                         what, e);
             }

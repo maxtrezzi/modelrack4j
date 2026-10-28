@@ -111,6 +111,64 @@ class ReloadTest {
     }
 
     @Test
+    @DisplayName("a listener that fails an assertion stops neither the other listeners nor"
+            + " the watcher")
+    void aListenerThrowingAnErrorDoesNotStopTheWatcher() throws IOException {
+        // The README promises that a listener which throws cannot break reloading. An Error
+        // is the case that broke it: an assert in an application's listener ended the watcher
+        // thread, so every later edit was ignored and only System.err said so.
+        Path file = write("app.conf", block("SL", "first"));
+        registry = LlmRegistry.builder()
+                .configFiles(List.of(file))
+                .watch(true)
+                .debounce(DEBOUNCE)
+                .build();
+        // Registered before the counting listener, so that it would also stop that one.
+        registry.onReload(change -> {
+            throw new AssertionError("an assert in the application's own listener");
+        });
+        listen();
+
+        write("app.conf", block("SL", "second"));
+        awaitModel("SL", "second");
+        awaitReloads(1);
+
+        write("app.conf", block("SL", "third"));
+        awaitModel("SL", "third");
+        awaitReloads(2);
+    }
+
+    @Test
+    @DisplayName("an Error raised while a reload is built leaves the watcher running")
+    void anErrorDuringAReloadDoesNotStopTheWatcher() throws IOException {
+        // A custom-properties handler, a listener function and a ConfigSource are all
+        // application code that runs inside a reload, and an assert in any of them throws an
+        // AssertionError the registry does not report. The watcher logs it and keeps going.
+        Path file = write("app.conf", block("SL", "first"));
+        try (LlmRegistry<String> watched = LlmRegistry.builder()
+                .configFiles(List.of(file))
+                .watch(true)
+                .debounce(DEBOUNCE)
+                .customPropertiesHandler(config -> {
+                    if (config.modelName().equals("broken")) {
+                        throw new AssertionError("an assert in the application's own handler");
+                    }
+                    return config.modelName();
+                })
+                .build()) {
+
+            write("app.conf", block("SL", "broken"));
+            // Nothing to wait on but time: the failed reload swaps nothing and calls nothing.
+            await().during(QUIET).atMost(QUIET.plusSeconds(2))
+                    .until(() -> watched.get("SL").config().modelName().equals("first"));
+
+            write("app.conf", block("SL", "second"));
+            await().atMost(TIMEOUT)
+                    .until(() -> watched.get("SL").config().modelName().equals("second"));
+        }
+    }
+
+    @Test
     @DisplayName("a burst of rapid writes produces exactly one reload")
     void rapidWritesCollapseIntoOneReload() throws IOException {
         Path file = write("app.conf", block("SL", "v0"));

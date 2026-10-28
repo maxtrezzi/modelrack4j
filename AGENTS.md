@@ -489,7 +489,12 @@ ended the watcher thread in silence. **`SnapshotLoader.requirementOf` translates
 `ConfigValidationException`, and `buildBundleReportingLinkage` does the same for any
 `LinkageError` a factory raises while its bundle is built; do not remove either, and do not
 widen the catch to `Error`** — a linkage error belongs to one provider's classes, an
-`OutOfMemoryError` does not. It is a `ConfigValidationException` rather than a new type
+`OutOfMemoryError` does not. **The one deliberate exception is application code run by a
+reload:** `LlmRegistry.notify` and `ConfigWatcher.reloadIfQuiet` catch `RuntimeException`,
+`LinkageError` and `AssertionError`, because a listener that failed an `assert` or reached a
+missing class otherwise ended the watcher thread, and with it hot reload, with nothing in the
+application's logs (P59). `VirtualMachineError` still propagates there too, and the watcher
+thread has an uncaught-exception handler that logs if it dies anyway. It is a `ConfigValidationException` rather than a new type
 because that is what a rejected reload is reported as; it stretches ADR-0053's "read something
 and objected" a little, since the objection is to the provider rather than to the text. P27 emptied the three `validate()` bodies that had been restating a capability;
 P25 then gave GLM's real work, and P48 gave OpenAI's one rule, so **four of the six are empty
