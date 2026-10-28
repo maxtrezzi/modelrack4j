@@ -6856,3 +6856,18 @@ The owner asked on 2026-10-27 for all three.
   315 mutants, 307 killed, 1 timed out, 6 survived, 1 uncovered, line coverage 802/834 — the
   same eight as P58.
 
+#### LangChain4j 1.23.0, released 2026-10-28
+
+Read on Central the same day: `langchain4j-bom` `1.23.0`, its beta line named `1.23.0-beta33`;
+`langchain4j-community-bom` still `1.22.0-beta32`, whose `langchain4j-community-zhipu-ai`
+depends on `langchain4j-core` `1.22.0`. The two BOMs move together (ADR-0018, ADR-0022), so
+0.4.0 stays on `1.22.0` unless the owner waits for the community release — P50's situation with
+`1.21.0`.
+
+`langchain4j-core` `1.23.0` declares `jackson-core` and `jackson-databind` `2.22.4`, the version
+ADR-0065 manages; its release notes list "Bump Jackson to 2.22.4 and 3.2.4 to fix DoS
+advisories". So the bump that follows 0.4.0 can remove the Jackson entries, as ADR-0065 point 5
+says. The notes also change `OpenAiStreamingChatModel` to fail on provider errors sent inside
+the stream, which that bump's live run should cover. The OSV query over the 41 third-party
+artifacts, repeated the same day on the current tree: nothing.
+
