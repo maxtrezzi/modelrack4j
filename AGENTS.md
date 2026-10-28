@@ -515,7 +515,7 @@ listeners (ADR-0063).** Core calls only the two-argument `create` methods; their
 the one-argument ones, so a factory built before `0.4.0` still works. That default drops the
 listeners, and `SnapshotLoader.requireListeners` is what turns the drop into a refusal: it
 compares each model's `listeners()` with what it was given. **Do not remove it as redundant**
-because the five factories here all pass them — it is what makes the defaults safe for
+because the six factories here all pass them — it is what makes the defaults safe for
 factories the project does not own, the same role `requireProduced` plays for
 `supportsModeration()`. The listeners come from functions on `LlmRegistry.Builder`, called per
 bundle built, and never enter `LlmConfig`, for the reason ADR-0055 keeps the parsed custom

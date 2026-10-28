@@ -6914,3 +6914,28 @@ minute, then answered when run alone 25 seconds later. Both rows are now **Teste
 2026-10-28, and the page's section on the `anthropic` route says the header works and that a new
 account's limit is low. `catalog.conf` is unchanged: the blocks were already the ones tested.
 
+#### A consistency pass over the documentation and the examples, 2026-10-28
+
+Asked by the owner. Checked mechanically, then the hits read in context:
+
+- **Counts.** Every "four / five / six / seven" before a noun in the README, the manual,
+  `CONTRIBUTING.md`, `AGENTS.md`, the examples and the workflows. One was stale: `AGENTS.md`
+  said the listener check matters although "the five factories here all pass them"; six now.
+- **Lists of providers that leave Mistral out.** Four, all written before P56 and missed by it:
+  the README's list of `provider =` values beside the module names, the README's sentence on
+  which providers require `api-key`, and in the reference the `api-key` row of *Every key* and
+  the `has no api-key` row of *Troubleshooting*. All four now name Mistral.
+- **The exception guarantee.** The reference said the four hosted providers of P6 throw beneath
+  `LangChain4jException`. Mistral does too — its 429 in P58 arrived as
+  `dev.langchain4j.exception.RateLimitException` — and the sentence now says so.
+- **The capability tables** of the README and the reference are identical row for row, and each
+  row matches what its factory reports in code: estimation, moderation, both key requirements.
+- **Every message the documentation quotes** — the *Troubleshooting* symptoms, and the
+  unlabelled output blocks of the tutorial, the reference, the README and the catalogue — was
+  matched against the library's string literals, joined across `+` and `append`. What did not
+  match is either built at run time (a key, a block, a provider), or not this library's: Typesafe
+  Config's, the Java compiler's, Anthropic's API. Nothing is stale.
+- **The examples.** The README's and the reference's tables of examples agree on which four of
+  the seven send no request and on the keys the other three need; seven `run-*.sh` scripts for
+  seven programs. `CatalogTest` passes, so the catalogue page and `catalog.conf` agree.
+

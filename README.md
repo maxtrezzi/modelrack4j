@@ -180,7 +180,7 @@ If neither applies, use the starter for your framework. It will be less code tha
 
 Core knows no providers. Add core **plus** each provider module you actually configure —
 each one registers itself through `ServiceLoader`. The module for `provider = x` is
-`modelrack4j-provider-x`: `openai`, `anthropic`, `gemini`, `glm` or `ollama`.
+`modelrack4j-provider-x`: `openai`, `anthropic`, `gemini`, `glm`, `mistral` or `ollama`.
 
 ```xml
 <dependency>
@@ -221,8 +221,8 @@ Requires **Java 17+**. Built against **LangChain4j 1.22.0**.
 ### 2. Write the configuration
 
 `provider` and `model-name` are always required. `api-key` is required by the Anthropic,
-Gemini and GLM providers, and by OpenAI unless you point it at a server of your own; Ollama
-does not accept one (see [Providers](#providers)). Everything else is optional, so the smallest file
+Gemini, GLM and Mistral providers, and by OpenAI unless you point it at a server of your own;
+Ollama does not accept one (see [Providers](#providers)). Everything else is optional, so the smallest file
 that works is this:
 
 ```hocon
