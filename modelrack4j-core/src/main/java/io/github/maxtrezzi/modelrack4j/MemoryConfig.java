@@ -15,7 +15,6 @@
  */
 package io.github.maxtrezzi.modelrack4j;
 
-import java.util.Objects;
 
 /**
  * How conversation memory is bounded. Exactly two variants exist, and they take different
@@ -75,19 +74,5 @@ public sealed interface MemoryConfig {
         // The ternary this replaced would have labelled a new variant "token-window",
         // which is worse than failing: it would be quietly wrong in error messages.
         throw new IllegalStateException("Unhandled memory variant: " + getClass().getName());
-    }
-
-    /**
-     * Builds the failure for a {@code memory.type} value that matches no variant. Returned
-     * rather than thrown so the caller can {@code throw} it, which keeps the compiler aware
-     * that the branch does not fall through.
-     *
-     * @param typeName the configured discriminator value
-     * @return the exception to throw
-     */
-    static ConfigValidationException unknownType(String typeName) {
-        return new ConfigValidationException("Unknown memory.type '"
-                + Objects.requireNonNull(typeName, "typeName")
-                + "'. Supported values are message-window and token-window");
     }
 }

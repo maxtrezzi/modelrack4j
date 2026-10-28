@@ -3,11 +3,6 @@
 What every key means, what every method promises, and what the library does when things go
 wrong. [Part 1](part-1-tutorial.md) is the way in; this is the page you come back to.
 
-> **This page is ahead of the release.** It describes the `dev` branch. `base-url`, the
-> Ollama provider, `api-key` being optional on some providers, and `local-models.conf` arrive
-> in `0.3.0` and are not in `0.2.0`. The pages for `0.2.0` are on the
-> [`main` branch](https://github.com/maxtrezzi/modelrack4j/tree/main).
-
 **Contents**
 
 | | |
@@ -46,7 +41,7 @@ wrong. [Part 1](part-1-tutorial.md) is the way in; this is the page you come bac
 
 **Java 17 or newer.** Built and tested on 17, 21 and 25.
 
-**On Maven Central** since `0.1.0`; the current release is `0.2.0`. Import the BOM once, then
+**On Maven Central** since `0.1.0`; the current release is `0.3.0`. Import the BOM once, then
 declare artifacts without versions:
 
 ```xml
@@ -55,7 +50,7 @@ declare artifacts without versions:
     <dependency>
       <groupId>io.github.maxtrezzi</groupId>
       <artifactId>modelrack4j-bom</artifactId>
-      <version>0.2.0</version>
+      <version>0.3.0</version>
       <type>pom</type>
       <scope>import</scope>
     </dependency>
@@ -82,6 +77,7 @@ declare artifacts without versions:
 | `modelrack4j-provider-gemini` | `provider = gemini` |
 | `modelrack4j-provider-glm` | `provider = glm` |
 | `modelrack4j-provider-ollama` | `provider = ollama` |
+| `modelrack4j-provider-mistral` | `provider = mistral` |
 | `modelrack4j-bom` | to version all of the above from one coordinate |
 
 **Core knows no providers.** It contains no provider artifact and never will: each provider
@@ -163,7 +159,7 @@ llm {
 |---|---|---|---|
 | `description` | string | *none* | Human-readable. Nothing in the library reads it. Blank is rejected; `null` in a higher layer clears a description set in a lower layer. |
 | `provider` | string | *required* | Must match a `ProviderFactory` on the classpath. An unknown value is an error that lists the providers actually available. |
-| `api-key` | string | *depends on the provider* | Use `${VAR}`. Blank is rejected. Required by `anthropic`, `gemini` and `glm`; optional on `openai`; refused by `ollama` — see [Providers](#providers). On GLM it must have the form `id.secret`. |
+| `api-key` | string | *depends on the provider* | Use `${VAR}`. Blank is rejected. Required by `anthropic`, `gemini`, `glm` and `mistral`; optional on `openai`; refused by `ollama` — see [Providers](#providers). On GLM it must have the form `id.secret`. |
 | `base-url` | string | *the provider's own address* | The server a block calls. Every model the block builds uses it. Blank is rejected. Required by `ollama`, optional on the others — see [Providers](#providers). |
 | `model-name` | string | *required* | The provider's own identifier. **Not validated** — see below. |
 | `temperature` | number | *provider's own* | 0.0–2.0. Omitted means "do not set it", which is different from setting a default. Some models reject a non-default value — see [Providers](#providers). |
@@ -214,7 +210,7 @@ different things, and the one it does not mean is the one that would be ignored.
 **Model names are not validated.** `model-name` goes straight to the provider's builder.
 LangChain4j ships model-name enums, but they are a convenience rather than a whitelist, and
 being compiled at release time they lag the providers — a model released after LangChain4j
-1.20.0 works fine here. The cost is that a typo surfaces as the provider's own error on the
+1.22.0 works fine here. The cost is that a typo surfaces as the provider's own error on the
 first request rather than at load time.
 
 ### Layering
@@ -317,7 +313,7 @@ memory { type = message-window, max-messages = 20 }
 |---|---|
 | **locally** (OpenAI, via a bundled tokenizer) | built, with no extra configuration |
 | **remotely** (Anthropic, Gemini) | **rejected unless** `allow-remote-token-counting = true` |
-| **not at all** (GLM, Ollama) | rejected outright; the flag does not apply |
+| **not at all** (GLM, Ollama, Mistral) | rejected outright; the flag does not apply |
 
 ```hocon
 memory { type = token-window, max-tokens = 2000, allow-remote-token-counting = true }
@@ -469,7 +465,9 @@ var registry = LlmRegistry.builder()
 | `notifier(ChangeNotifier)` | Something of your own that tells the registry when the configuration changed. Cannot be combined with `watch(true)`. |
 | `debounce(Duration)` | How long the files must be quiet before a reload runs. Must be positive. |
 | `customPropertiesHandler(...)` | Turns each block's `custom-properties` into an object of yours, and fixes the registry's type: see *[Values of your own](#values-of-your-own)*. Optional; without it the registry is an `LlmRegistry<Void>`. |
-| `build()` | Parses, validates and builds everything, then starts the notifier if there is one. Throws `ConfigValidationException` if no layer was given, two layers share an id, any block is invalid, a block carries a key the schema does not know, a configuration is set to `null`, or `watch(true)` was set and no layer is a file. A configuration that defines no names is **not** an error; `ConfigAccessException` if a layer cannot be read; `UncheckedIOException` if a directory cannot be watched. |
+| `chatModelListeners(...)` | Gives each configuration's chat model and streaming chat model their `ChatModelListener`s: see *[Listeners on the models](#listeners-on-the-models)*. Optional. |
+| `moderationModelListeners(...)` | The same for the moderation model, which takes a `ModerationModelListener`. Optional. |
+| `build()` | Parses, validates and builds everything, then starts the notifier if there is one. Throws `ConfigValidationException` if no layer was given, two layers share an id, any block is invalid, a block carries a key the schema does not know, a configuration is set to `null`, a listener function fails, a provider does not attach the listeners, or `watch(true)` was set and no layer is a file. A configuration that defines no names is **not** an error; `ConfigAccessException` if a layer cannot be read; `UncheckedIOException` if a directory cannot be watched. |
 
 `build()` is all-or-nothing: one bad block means no registry, not a registry missing one name.
 
@@ -489,6 +487,50 @@ var registry = LlmRegistry.builder()
 
 `get()` is a volatile read, one small wrapper object, and a map lookup. It is meant to be
 called per request — that is the primary API, and listeners are secondary.
+
+### Listeners on the models
+
+The registry builds every model, and builds it again when a reload changes its
+configuration. So a LangChain4j `ChatModelListener` — for logging, for metrics, or one of
+LangChain4j's observability modules — is registered on the builder, not on a model:
+
+```java
+var registry = LlmRegistry.builder()
+        .configFiles(List.of(path))
+        .chatModelListeners(config -> List.of(new RequestLogger(config.name())))
+        .moderationModelListeners(config -> List.of(new ModerationLogger()))
+        .build();
+```
+
+`RequestLogger` and `ModerationLogger` stand for your own classes, which implement
+`ChatModelListener` and `ModerationModelListener`.
+
+Each method takes a function from the configuration to its listeners. The registry calls it
+each time it builds a bundle: at `build()` for every configuration, and at a reload for each
+configuration that changed. A configuration that did not change keeps its bundle, and its
+listeners with it. The chat listeners go to both the chat model and the streaming chat model
+of the bundle; the moderation listeners go to the moderation model, when the block has one.
+
+**Why a function and not a list.** A listener is told the provider and the request, but not
+the configuration name, and two configurations can use the same provider and the same
+model. If the listener needs the name — for a metric per configuration, for example — the
+function gives it, as above. A listener that does not need it can be one instance returned
+for every configuration: `config -> List.of(logger)`.
+
+What is guaranteed:
+
+- **Listeners change nothing in the configuration.** They are not part of `LlmConfig`, so they
+  never make a block look changed, and a reload with the same text still reports nothing.
+- **A listener cannot break a reload.** LangChain4j calls listeners only around a model call,
+  never while a model is built, and it catches and logs what a listener throws, so the call
+  itself still succeeds. The *function* can fail a reload: if it throws, returns `null`, or
+  returns a list with `null` in it, the build or the reload is rejected with a
+  `ConfigValidationException` that names the configuration, and the previous bundles stay
+  live.
+- **A listener is never dropped without a message.** After building each model, the registry
+  checks that the model reports the listeners it was given. A provider written for a version
+  before 0.4.0 does not pass them on, and the configuration is refused with a message that
+  says so, instead of a listener that is never called.
 
 ### Configuration that is not a file
 
@@ -889,7 +931,9 @@ So the swap guarantee covers exactly this much. **Which objects exist, who build
 credentials, model, timeout and memory — all config-shaped, all swap freely. What a failing
 call throws does not.** Catch `dev.langchain4j.exception.LangChain4jException` and your
 handling of an error the server *answers* with survives any swap; the four hosted providers
-checked in P6 throw beneath it. A server that cannot be reached at all is different: OpenAI and Ollama
+checked in P6 throw beneath it, and so does Mistral, whose rate limit arrived in
+[P58](../tasks/post-v1.md#p58--the-pre-release-check-of-040) as
+`dev.langchain4j.exception.RateLimitException`. A server that cannot be reached at all is different: OpenAI and Ollama
 both throw a plain `RuntimeException` whose cause is `java.net.ConnectException`, which is not
 a `LangChain4jException`. With a server of your own, which may simply not be running, that is
 the error you meet first, so catch it too. Catching anything more
@@ -1051,7 +1095,8 @@ no-provider notice and everything below is discarded.
 | Logger | Level | Event |
 |---|---|---|
 | `io.github.maxtrezzi.modelrack4j.LlmRegistry` | `WARN` | A reload was rejected, with the cause. **Logged whether or not you registered `onReloadFailure`.** |
-| `io.github.maxtrezzi.modelrack4j.LlmRegistry` | `ERROR` | A listener threw. The reload itself is unaffected. |
+| `io.github.maxtrezzi.modelrack4j.LlmRegistry` | `ERROR` | An `onReload` or `onReloadFailure` listener threw. The reload itself is unaffected. |
+| `dev.langchain4j.model.chat.ChatModelListenerUtils` | `WARN` | A [model listener](#listeners-on-the-models) threw during a call. This is LangChain4j's own log line, not the library's; the call itself is unaffected. |
 | `io.github.maxtrezzi.modelrack4j.ConfigWatcher` | `ERROR` | A reload callback threw. Watching continues. |
 | `io.github.maxtrezzi.modelrack4j.ConfigWatcher` | `DEBUG` | A watched directory cannot be re-registered yet; the watch service did not close cleanly. |
 | `io.github.maxtrezzi.modelrack4j.WritableFileConfigSource` | `WARN` | A store ended — applied or rejected — and its temporary file could not be removed. A `.modelrack4j-staged-*.conf` file is left beside the layer, which nothing reads. Whether the layer changed is what the store itself returned or threw, not what this line says. |
@@ -1078,6 +1123,11 @@ it back and leaves `-q` in place.
 Each provider is a separate module. Core takes **no** provider artifact, so an application
 configuring only Anthropic never has OpenAI's dependencies on its classpath.
 
+**Using a service that is not in this table** — Kimi, DeepSeek, Groq, OpenRouter, and others?
+Many are reached through `openai` or `anthropic` with a `base-url`.
+[Providers and compatible services](providers.md) lists them, with the address, an example,
+and how sure each row is.
+
 | Module | `provider =` | Chat | Streaming | Moderation | Token estimation | `api-key` | `base-url` |
 |---|---|---|---|---|---|---|---|
 | `modelrack4j-provider-openai` | `openai` | ✅ | ✅ | ✅ | **local** | optional | optional |
@@ -1085,11 +1135,12 @@ configuring only Anthropic never has OpenAI's dependencies on its classpath.
 | `modelrack4j-provider-gemini` | `gemini` | ✅ | ✅ | ❌ | remote | required | optional |
 | `modelrack4j-provider-glm` | `glm` | ✅ | ✅ | ❌ | none | required | optional |
 | `modelrack4j-provider-ollama` | `ollama` | ✅ | ✅ | ❌ | none | **not allowed** | required |
+| `modelrack4j-provider-mistral` | `mistral` | ✅ | ✅ | ✅ | none | required | optional |
 
-Read out of the LangChain4j 1.20.0 artifacts rather than from documentation. Gemini is the
+Read out of the LangChain4j 1.22.0 artifacts rather than from documentation. Gemini is the
 stable `langchain4j-google-ai-gemini` module; GLM comes from `langchain4j-community-zhipu-ai`,
-which is released on the community cycle, separately from the stable modules. Ollama is the
-stable `langchain4j-ollama` module.
+which is released on the community cycle, separately from the stable modules. Ollama and
+Mistral are the stable `langchain4j-ollama` and `langchain4j-mistral-ai` modules.
 
 The last two columns are checked when the configuration loads, like the capabilities. A block
 that leaves out a required key, or sets one its provider does not use, is refused with a
@@ -1177,8 +1228,13 @@ Two things to know:
   schema's `timeout` maps to the client's single timeout directly. A local model can take
   much longer to answer than a hosted one, especially the first time it is loaded, so a
   longer `timeout` than the default `60s` is often needed.
-- **All providers except OpenAI** — moderation is unavailable, and enabling it is a
-  configuration error.
+- **Mistral** — has a moderation model, and it is called with Mistral's moderation model,
+  `mistral-moderation-latest`, never with your `model-name`: the endpoint takes a moderation
+  model, and the client has no default. The name comes from LangChain4j's own list, so it
+  changes only with a LangChain4j upgrade. There is no token counter, so `token-window` memory
+  is refused; use `message-window`.
+- **All providers except OpenAI and Mistral** — moderation is unavailable, and enabling it is
+  a configuration error.
 
 **One upstream limitation to know:** LangChain4j silently ignores moderation on the
 `AiServices` streaming path ([#2779](https://github.com/langchain4j/langchain4j/issues/2779)).
@@ -1200,11 +1256,45 @@ public interface ProviderFactory {
     default boolean supportsModeration() { return true; }             // can it build a ModerationModel?
     void validate(LlmConfig config);                                  // anything core cannot see
     ChatModel createChatModel(LlmConfig config);
+    default ChatModel createChatModel(LlmConfig config, ModelContext context) { … }
     Optional<StreamingChatModel> createStreamingChatModel(LlmConfig config);
+    default Optional<StreamingChatModel> createStreamingChatModel(LlmConfig config, ModelContext context) { … }
     Optional<ModerationModel> createModerationModel(LlmConfig config);
+    default Optional<ModerationModel> createModerationModel(LlmConfig config, ModelContext context) { … }
     Optional<TokenCountEstimator> createTokenCountEstimator(LlmConfig config);
 }
 ```
+
+**Each model has two `create` methods, and core calls the one with a `ModelContext`.** The
+context carries the [listeners](#listeners-on-the-models) the application registered for this
+block. Build the model in that method, and pass `context.chatModelListeners()` — or
+`context.moderationModelListeners()` for the moderation model — to its builder. Implement the
+one-argument method as a call to it with `ModelContext.empty()`:
+
+```java
+@Override
+public ChatModel createChatModel(LlmConfig config) {
+    return createChatModel(config, ModelContext.empty());
+}
+
+@Override
+public ChatModel createChatModel(LlmConfig config, ModelContext context) {
+    return MyChatModel.builder()
+            .modelName(config.modelName())
+            .listeners(context.chatModelListeners())
+            .build();
+}
+```
+
+The two-argument methods have a default that calls the one-argument method and ignores the
+context. That keeps a factory written before 0.4.0 working. Such a factory builds models
+without the listeners, so when an application registers some, core sees that the model does
+not report them and refuses the configuration with a message that names your provider.
+
+**Override the two-argument method whenever you write the one-argument method as a call to
+it.** Otherwise each calls the other through the default. The compiler does not see it,
+because the default has a body; the registry stops it with an `IllegalStateException` that
+names the factory and the method, instead of a `StackOverflowError`.
 
 **Report a capability; do not enforce it.** `tokenEstimation()`, `supportsModeration()`,
 `apiKeyRequirement()` and `baseUrlRequirement()` say what your provider can do and needs, and
@@ -1214,7 +1304,7 @@ new rule is written once instead of once per module. Do not repeat these checks 
 `validate()`.
 
 `tokenEstimation()` is three-valued rather than boolean on purpose. A boolean would say only
-whether an estimator exists, and three of the five providers have one. What differs between
+whether an estimator exists, and three of the six providers have one. What differs between
 those three is the *cost*: OpenAI counts on your machine, while Anthropic and Gemini send a
 billed request for every count. A boolean would treat them alike, and the opt-in for the
 billed kind could not exist.
@@ -1241,11 +1331,11 @@ present, to every builder you call, not only to the chat model.
 
 `validate()` is for what core cannot see — a rule specific to your provider. Throw
 `ConfigValidationException` with a message naming the block and the way out; those messages
-are part of the contract, and the tests assert on them. Three of the five factories in this
+are part of the contract, and the tests assert on them. Four of the six factories in this
 repository have an empty `validate()`: Anthropic and Gemini used to reject moderation here,
-and that is reported through `supportsModeration()` instead, and Ollama has nothing core does
-not already check. The other two each check one rule that
-belongs to their own code. GLM checks the *shape* of the API key, because its own code splits
+and that is reported through `supportsModeration()` instead, and Ollama and Mistral have
+nothing core does not already check. The other two each check one rule that belongs to their
+own code. GLM checks the *shape* of the API key, because its own code splits
 the key and signs a token with the halves before any call. OpenAI refuses a block with neither
 `api-key` nor `base-url`, because only the OpenAI factory knows that no address means
 `api.openai.com`. An empty body is the normal case, not a sign of an unfinished provider.
@@ -1264,21 +1354,26 @@ the key and signs a token with the halves before any call. OpenAI refuses a bloc
   earlier one away after its listeners had already announced it.
 - **`get()`, `snapshot()` and `names()` are safe from any thread**, during a reload included,
   and never take that lock. A reader either sees the whole old snapshot or the whole new one.
-- **Listeners run on the thread that caused the reload** — the watcher thread, or the caller
-  of `reload()`. Long work in a listener delays the next reload; hand it off to your own
-  executor if it is not quick. A listener must not call `reload()`, because it is already
-  running inside one.
+- **Reload listeners — `onReload` and `onReloadFailure` — run on the thread that caused the
+  reload**: the watcher thread, or the caller of `reload()`. Long work in a listener delays
+  the next reload; hand it off to your own executor if it is not quick. A listener must not
+  call `reload()`, because it is already running inside one.
 - **A [custom-properties handler](#values-of-your-own) runs on the same thread, and while the
-  lock is held** — earlier than a listener, since it is part of building the snapshot rather
-  than of announcing it. Keep it to parsing and checking: no I/O, no network, no blocking. It
-  is the contract a `ProviderFactory` already works under, for the same reason.
+  lock is held** — earlier than a reload listener, since it is part of building the snapshot
+  rather than of announcing it. Keep it to parsing and checking: no I/O, no network, no
+  blocking. It is the contract a `ProviderFactory` already works under, for the same reason.
+- **A [model listener](#listeners-on-the-models) runs on the thread that calls the model**,
+  inside the call, so a slow listener makes every call slower. The *function* that gives the
+  listeners runs while the bundle is built, on the reload thread and while the lock is held,
+  like the custom-properties handler: keep it quick.
 - **A store takes the same lock, and holds it across the layer's own write.** So
   `store()` and `storeIfUnchanged()` are serialised against reloads and against each other,
   and a slow `WritableConfigSource.write` — a database that is not answering — delays the
   next reload for as long as it runs. Readers are unaffected: they never take that lock.
-- **Listeners may be registered at any time, from any thread.** The registration lists are
-  copy-on-write, so adding one during a reload is safe and does not block it.
-- **Registering a listener does not replay anything.** It is called on the next reload, never
+- **Reload listeners may be registered at any time, from any thread.** The registration lists
+  are copy-on-write, so adding one during a reload is safe and does not block it. Model
+  listeners are different: they are fixed at `build()`.
+- **Registering a reload listener does not replay anything.** It is called on the next reload, never
   for one that already happened; the current state is `get()`, not a callback.
 - **`close()` does not wait for a reload another thread is running.** That reload finishes
   on its own and its listeners run, so a listener can still be called after `close()` has
@@ -1362,13 +1457,13 @@ Deliberate and permanent:
 | Edits change nothing, and no log line either | `watch(true)` was never set, or no SLF4J binding is on the classpath | Enable watching; add a binding. |
 | A rejected reload logs nothing, running an example with `mvn -q … exec:java` or a `run-*.sh` script | `-q` makes Maven set the SLF4J level to `error` for its own process, and `exec:java` runs the example inside it. The launchers pass `-q` too | Add `-Dorg.slf4j.simpleLogger.log.io.github.maxtrezzi.modelrack4j.LlmRegistry=warn`, or drop `-q`. Your own application is not affected. |
 | `A mandatory substitution is unresolved` | `${VAR}` with the variable unset | Export it, or override the key in a higher layer. Do not switch to `${?VAR}`. |
-| `has no api-key, but provider '…' requires one` | `api-key` left out on `anthropic`, `gemini` or `glm`, or a `${?VAR}` whose variable is unset | Set `api-key`. Use `${VAR}` rather than `${?VAR}`, so that an unset variable is reported by name. |
+| `has no api-key, but provider '…' requires one` | `api-key` left out on `anthropic`, `gemini`, `glm` or `mistral`, or a `${?VAR}` whose variable is unset | Set `api-key`. Use `${VAR}` rather than `${?VAR}`, so that an unset variable is reported by name. |
 | `sets api-key, but provider '…' does not use one` | `api-key` on `ollama`, which takes no key | Remove the key from the block. If a lower layer sets it, clear it with `api-key = null`. |
 | `has no base-url, but provider '…' requires one` | An `ollama` block without an address | Set `base-url` to your server, for example `http://localhost:11434`. |
 | `has neither api-key nor base-url` | An `openai` block with no key and no address, which would call `api.openai.com` without a key | Set `api-key`, or set `base-url` to a server that does not need one. |
-| `ships no moderation model` | `moderation.enabled = true` on Anthropic, Gemini, GLM or Ollama | Only OpenAI has one. Route moderation through an OpenAI configuration. |
+| `ships no moderation model` | `moderation.enabled = true` on Anthropic, Gemini, GLM or Ollama | Only OpenAI and Mistral have one. Route moderation through a configuration on one of them. |
 | `counts tokens by calling its API` | `token-window` on a remote counter | Add `allow-remote-token-counting = true`, or use `message-window`. |
-| `no token count estimator` | `token-window` on GLM or Ollama | Use `message-window`. No flag helps. |
+| `no token count estimator` | `token-window` on GLM, Ollama or Mistral | Use `message-window`. No flag helps. |
 | `is not shaped like a GLM key` | `api-key` on GLM is not `id.secret`, or its secret half is under 16 bytes | GLM signs a token with the two halves instead of sending the key, so a wrong shape fails before any call. Copy the key again in full. |
 | `` `temperature` is deprecated for this model `` | A non-default `temperature` on a model that rejects one, such as `claude-sonnet-5` | Remove the key. The model then uses its own sampling settings. |
 | `UnknownConfigurationException` at runtime | The name was removed from the configuration while running | Catch it and re-read `names()`, or keep the block. The exception's `configurationName()` gives the name that was asked for. |
@@ -1383,6 +1478,8 @@ Deliberate and permanent:
 | `` llm.SL.custom-properties must be a block of values `` | `custom-properties` set to a number, a string or a list | It has to be a block: `custom-properties { … }`. |
 | `` the custom-properties handler rejected this configuration `` | Your own `CustomPropertiesHandler` threw | The message continues with yours, and the cause is the exception you threw. The previous configuration is still live. |
 | `` the custom-properties handler returned null `` | Your own `CustomPropertiesHandler` returned `null` instead of an object | Return a value. `null` is refused because the registry's type parameter says the object is there, so it would reach your code much later. To mean "nothing here", return an empty record of your own, or use `Optional` as your type. |
+| `` built a chat model without the listeners this registry was given `` | Listeners are registered, and a provider module was built for a version before 0.4.0, so its factory does not pass them to the model | Use the provider versions the modelrack4j BOM manages. A provider of your own needs the two-argument `create` methods: see *[Adding a provider](#adding-a-provider)*. Or register no listeners: the provider then works as before. |
+| `` listener function failed ``, `` listener function returned null ``, `` returned a list holding null `` | Your own function given to `chatModelListeners` or `moderationModelListeners` threw, or did not return a list of listeners | Return a list, empty for none. The cause is the exception you threw. The previous configuration is still live. |
 | `` cannot find symbol: method added() `` — `` location: variable change of type Object `` | Code that mentions no generics, after upgrading. `LlmRegistry` now takes a type parameter, and a **raw** `LlmRegistry` erases every generic member of the class — including the `Optional<ReloadChange>` that `reload()` and `store()` return, which is why the error names a method of `ReloadChange` and blames `Object` | Write `LlmRegistry<Void>`, or `var` for a local. Assigning the result to a declared `Optional<ReloadChange>` also compiles, with an unchecked warning. **Build clean before you conclude anything**: Maven does not recompile a source file it thinks is unchanged, so an incremental build after the upgrade can pass while `clean compile` fails |
 | `names()` is empty and every `get(...)` throws | No layer defines a configuration — an empty file, or one whose `llm` block has no names | Not an error in itself: check for the names your application requires. See *[Missing and malformed files](#missing-and-malformed-files)*. |
 | An `include` in a layer adds nothing, and nothing is logged | The layer is not a file, so the include is looked up on the classpath, and a HOCON include that finds nothing is not an error | Includes work in file layers. For a layer from a database, assemble the text before handing it over. |
@@ -1407,7 +1504,7 @@ back for a major bump until the API settles at `1.0.0`.
 javadoc jar for each artifact. `modelrack4j-examples` is not published: it is demo code, and
 you read it in the repository rather than depending on it.
 
-**LangChain4j is pinned** at 1.20.0, imported through both its stable and community BOMs. The
+**LangChain4j is pinned** at 1.22.0, imported through both its stable and community BOMs. The
 capability matrix on this page is a fact about that version, not a permanent property — it is
 re-verified against the artifacts on every bump.
 

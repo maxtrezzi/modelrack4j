@@ -1,8 +1,8 @@
 # modelrack4j
 
 Turn layered HOCON configuration into **named, ready-to-use bundles of LangChain4j
-objects** — for OpenAI, Anthropic, GLM, a local Ollama, or any OpenAI-compatible server — with
-validated hot reload.
+objects** — for OpenAI, Anthropic, Gemini, GLM, Mistral, a local Ollama, or any
+OpenAI-compatible server — with validated hot reload.
 
 Declare `SL`, `CR`, `GL` and `LOCAL` in a config file; ask the registry for each by name and get a
 consistent `ChatModel` + `StreamingChatModel` + `ModerationModel` + `ChatMemoryProvider`
@@ -24,9 +24,10 @@ var registry = LlmRegistry.builder().configFiles(List.of(Path.of("llm.conf"))).b
 String answer = registry.get("SL").chatModel().chat("Why is the sky blue?");
 ```
 
-**Hosted and local models, side by side.** The providers are OpenAI, Anthropic, Gemini, GLM
-and **Ollama**, which runs models on your own machine with no key and no cost. Any other server
-that speaks the **OpenAI protocol** — LocalAI, llama.cpp's server, vLLM, LM Studio — is reached
+**Hosted and local models, side by side.** The providers are OpenAI, Anthropic, Gemini, GLM,
+Mistral and **Ollama**, which runs models on your own machine with no key and no cost. Any
+other server that speaks the **OpenAI protocol** — LocalAI, llama.cpp's server, vLLM, LM
+Studio — is reached
 through `provider = openai` and a `base-url`, with no key unless the server asks for one. See
 [Providers](#providers).
 
@@ -41,13 +42,8 @@ dependencies and the full schema.
 📖 **[The manual](docs/manual/README.md)** — a [tutorial](docs/manual/part-1-tutorial.md) that
 starts from nothing, and a [reference](docs/manual/part-2-reference.md) for everything else.
 
-**Status: `0.2.0`, on Maven Central.** The API is 0.x and may still
+**Status: `0.3.0`, on Maven Central.** The API is 0.x and may still
 change in a minor release; see [CHANGELOG.md](CHANGELOG.md).
-
-> **This page is ahead of the release.** It describes the `dev` branch. `base-url`, the
-> Ollama provider, `api-key` being optional on some providers, and `local-models.conf` arrive
-> in `0.3.0` and are not in `0.2.0`. The pages for `0.2.0` are on the
-> [`main` branch](https://github.com/maxtrezzi/modelrack4j/tree/main).
 
 ---
 
@@ -124,8 +120,8 @@ Four things follow, and they are the whole library:
    [Values of your own](#values-of-your-own).
 
 One more thing makes all four safe to rely on: **mistakes fail when the file loads, not at
-the first request.** Providers differ in what they can actually do — moderation
-is OpenAI-only among the five here, and token counting is local, remote or absent depending
+the first request.** Providers differ in what they can actually do — of the six here, only
+OpenAI and Mistral moderate, and token counting is local, remote or absent depending
 on the provider — so the configuration is validated against the provider's real capabilities.
 Enabling moderation on Anthropic is a startup error naming the block, not an empty `Optional`
 you discover in production. A handler of your own runs in the same step, so a block your
@@ -184,23 +180,23 @@ If neither applies, use the starter for your framework. It will be less code tha
 
 Core knows no providers. Add core **plus** each provider module you actually configure —
 each one registers itself through `ServiceLoader`. The module for `provider = x` is
-`modelrack4j-provider-x`: `openai`, `anthropic`, `gemini`, `glm` or `ollama`.
+`modelrack4j-provider-x`: `openai`, `anthropic`, `gemini`, `glm`, `mistral` or `ollama`.
 
 ```xml
 <dependency>
   <groupId>io.github.maxtrezzi</groupId>
   <artifactId>modelrack4j-core</artifactId>
-  <version>0.2.0</version>
+  <version>0.3.0</version>
 </dependency>
 <dependency>
   <groupId>io.github.maxtrezzi</groupId>
   <artifactId>modelrack4j-provider-anthropic</artifactId>
-  <version>0.2.0</version>
+  <version>0.3.0</version>
 </dependency>
 <dependency>
   <groupId>io.github.maxtrezzi</groupId>
   <artifactId>modelrack4j-provider-openai</artifactId>
-  <version>0.2.0</version>
+  <version>0.3.0</version>
 </dependency>
 ```
 
@@ -212,7 +208,7 @@ Or import the BOM once and drop the versions:
     <dependency>
       <groupId>io.github.maxtrezzi</groupId>
       <artifactId>modelrack4j-bom</artifactId>
-      <version>0.2.0</version>
+      <version>0.3.0</version>
       <type>pom</type>
       <scope>import</scope>
     </dependency>
@@ -220,13 +216,13 @@ Or import the BOM once and drop the versions:
 </dependencyManagement>
 ```
 
-Requires **Java 17+**. Built against **LangChain4j 1.20.0**.
+Requires **Java 17+**. Built against **LangChain4j 1.22.0**.
 
 ### 2. Write the configuration
 
 `provider` and `model-name` are always required. `api-key` is required by the Anthropic,
-Gemini and GLM providers, and by OpenAI unless you point it at a server of your own; Ollama
-does not accept one (see [Providers](#providers)). Everything else is optional, so the smallest file
+Gemini, GLM and Mistral providers, and by OpenAI unless you point it at a server of your own;
+Ollama does not accept one (see [Providers](#providers)). Everything else is optional, so the smallest file
 that works is this:
 
 ```hocon
@@ -470,7 +466,7 @@ rebuilds that one bundle on reload. That is deliberate — see
 **Model names are strings, and nothing here validates them.** `model-name` is passed
 straight to the provider's builder. LangChain4j ships model-name *enums*, but they are a
 convenience rather than a whitelist, and being compiled at release time they lag the
-providers — a model released after LangChain4j 1.20.0 works perfectly well through this
+providers — a model released after LangChain4j 1.22.0 works perfectly well through this
 library. The examples above use `claude-sonnet-5`, which no enum in the pinned jar lists,
 alongside `gpt-5.1`, which one does. The trade is that a typo surfaces as the provider's own
 error on the first request rather than at load time.
@@ -688,8 +684,9 @@ These are logged on whichever thread caused them — the watcher's, or your own 
   either of those applies, which matters more than it sounds: a typo in a config file does
   not delay one reload, it makes *every* later edit to that file fail the same way, and when
   the watcher thread is the one that found it, the log is the only place it appears.
-- **A listener that threw**, at `ERROR`. The reload itself is unaffected. Nothing else
-  reports this: the exception is caught so that one bad listener cannot stop the others.
+- **An `onReload` or `onReloadFailure` listener that threw**, at `ERROR`. The reload itself is
+  unaffected. Nothing else reports this: the exception is caught so that one bad listener
+  cannot stop the others.
 
 The reference has [the full table](docs/manual/part-2-reference.md#logging), including what
 writing a layer back logs.
@@ -739,6 +736,11 @@ applied.
 Each provider is its own module. Core takes **no** provider artifact, ever, so an
 application configuring only Anthropic never has OpenAI's dependencies on its classpath.
 
+**Another service** — Kimi, DeepSeek, Groq, OpenRouter, Together, xAI — is often reached
+through `openai` or `anthropic` with a `base-url`. The
+[catalogue of providers and compatible services](docs/manual/providers.md) gives the address
+and an example for each, and says whether a row was tested or only declared by the vendor.
+
 | Module | `provider =` | Chat | Streaming | Moderation | Token estimation | `api-key` | `base-url` |
 |---|---|---|---|---|---|---|---|
 | `modelrack4j-provider-openai` | `openai` | ✅ | ✅ | ✅ | **local** | optional | optional |
@@ -746,11 +748,12 @@ application configuring only Anthropic never has OpenAI's dependencies on its cl
 | `modelrack4j-provider-gemini` | `gemini` | ✅ | ✅ | ❌ | remote | required | optional |
 | `modelrack4j-provider-glm` | `glm` | ✅ | ✅ | ❌ | none | required | optional |
 | `modelrack4j-provider-ollama` | `ollama` | ✅ | ✅ | ❌ | none | **not allowed** | required |
+| `modelrack4j-provider-mistral` | `mistral` | ✅ | ✅ | ✅ | none | required | optional |
 
-Read out of the LangChain4j 1.20.0 artifacts, not from documentation. Gemini is the stable
+Read out of the LangChain4j 1.22.0 artifacts, not from documentation. Gemini is the stable
 `langchain4j-google-ai-gemini` module; GLM comes from `langchain4j-community-zhipu-ai`,
-which is released on the community cycle, separately from the stable modules. Ollama is the
-stable `langchain4j-ollama` module.
+which is released on the community cycle, separately from the stable modules. Ollama and
+Mistral are the stable `langchain4j-ollama` and `langchain4j-mistral-ai` modules.
 
 Capabilities are enforced at load time. `moderation { enabled = true }` on Anthropic,
 Gemini, GLM or Ollama is a configuration error naming the block, not an empty `Optional` you
@@ -816,13 +819,14 @@ Three provider notes worth knowing before you hit them:
 ### Adding a provider
 
 Implement `io.github.maxtrezzi.modelrack4j.spi.ProviderFactory` and register it in
-`META-INF/services/io.github.maxtrezzi.modelrack4j.spi.ProviderFactory`. The interface is
-ten methods, three of which return `Optional.empty()` when the capability does not exist.
-The one that is not obvious is `tokenEstimation()`: it reports `ABSENT`, `LOCAL` or
-`REMOTE`, not a boolean, because availability is not what varies — cost is.
-`apiKeyRequirement()` and `baseUrlRequirement()` say whether a block may set each key and
-whether it must: `FORBIDDEN`, `OPTIONAL` or `MANDATORY`. Neither has a default, so you
-decide both.
+`META-INF/services/io.github.maxtrezzi.modelrack4j.spi.ProviderFactory`. The one method that
+is not obvious is `tokenEstimation()`: it reports `ABSENT`, `LOCAL` or `REMOTE`, not a
+boolean, because availability is not what varies — cost is. `apiKeyRequirement()` and
+`baseUrlRequirement()` say whether a block may set each key and whether it must:
+`FORBIDDEN`, `OPTIONAL` or `MANDATORY`. Neither has a default, so you decide both. Each model
+has two `create` methods, and the registry calls the one that also takes a `ModelContext`:
+build the model there, and pass the listeners it carries to the model's builder. The
+reference shows [the whole interface](docs/manual/part-2-reference.md#adding-a-provider).
 
 ---
 
@@ -837,13 +841,40 @@ depends entirely on the provider:
 |---|---|
 | **locally** (OpenAI) | built, with no extra configuration |
 | **remotely** (Anthropic, Gemini) | **rejected unless you opt in** with `allow-remote-token-counting = true` |
-| **not at all** (GLM, Ollama) | rejected outright; the opt-in flag does not apply |
+| **not at all** (GLM, Ollama, Mistral) | rejected outright; the opt-in flag does not apply |
 
 The middle row is the point. On a remote counter, ordinary conversation turns make a billed,
 rate-limited, network-dependent HTTP call inside what the application reasonably assumes is
 in-memory bookkeeping. That is a decision, so it is opted into explicitly, and the rejection
 message names the flag that permits it. On a local counter the flag has no effect rather
 than being an error — one config layer commonly spans several providers.
+
+---
+
+## Listeners on the models
+
+The registry builds every model, and builds it again on a reload, so a LangChain4j
+`ChatModelListener` — for logging, for metrics, or one of LangChain4j's observability
+modules — is registered on the builder rather than on a model:
+
+```java
+var registry = LlmRegistry.builder()
+        .configFiles(List.of(Path.of("llm.conf")))
+        .chatModelListeners(config -> List.of(new RequestLogger(config.name())))  // your class
+        .build();
+```
+
+The function is called for each bundle the registry builds, and gets that configuration. A
+listener is not told which configuration it observes, so pass it the name if it needs one;
+otherwise return the same listener for every configuration. The chat listeners go to the
+chat model and to the streaming chat model. `moderationModelListeners(...)` does the same for
+the moderation model.
+
+Listeners are not part of the configuration, so they never make a block look changed. A
+listener that throws does not fail the call, because LangChain4j catches what it throws, and
+no listener is called while the registry builds or reloads. See
+[Listeners on the models](docs/manual/part-2-reference.md#listeners-on-the-models) in the
+reference for the details.
 
 ---
 
@@ -912,7 +943,7 @@ runs with the credential environment scrubbed. Integration tests are doubly guar
 only run under `-Pintegration`, and each one skips itself when its own key is absent, so
 running the profile with one provider configured skips the rest instead of failing. They
 cost real money. The keys they look for are `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`,
-`GEMINI_API_KEY` and `ZHIPU_API_KEY`.
+`GEMINI_API_KEY`, `ZHIPU_API_KEY` and `MISTRAL_API_KEY`.
 
 CI runs JDK 17 (the floor), 21 and 25.
 

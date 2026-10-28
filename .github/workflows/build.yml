@@ -3,7 +3,7 @@ name: build
 on:
   # Both protected branches, and the same five checks on each: work merges into dev and a
   # release merges dev into main, so a gate on one of them is a gate on half the traffic
-  # (ADR-0061).
+  # (ADR-0061). The sixth required check is in vulnerabilities.yml (ADR-0064).
   push:
     branches: [main, dev]
   pull_request:
@@ -29,10 +29,10 @@ jobs:
         # leg whose job another one already covers.
         jdk: ['17', '21', '25']
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up JDK ${{ matrix.jdk }}
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: ${{ matrix.jdk }}
@@ -51,7 +51,7 @@ jobs:
       # rather than the filesystem, because a target that is git-ignored resolves fine on a
       # contributor's machine and 404s for everyone who clones. That exact false pass is
       # what this job exists to stop.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Check ADR status lines, the index, and every link
         run: python3 build/check-docs.py
@@ -60,9 +60,9 @@ jobs:
     name: offline, no API keys
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '17'
@@ -77,6 +77,7 @@ jobs:
           ANTHROPIC_API_KEY: ''
           GEMINI_API_KEY: ''
           ZHIPU_API_KEY: ''
+          MISTRAL_API_KEY: ''
           # Not a credential, but the same kind of dependency: the address of a server that
           # enables OllamaProviderIT.
           OLLAMA_BASE_URL: ''

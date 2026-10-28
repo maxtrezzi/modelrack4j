@@ -1,12 +1,13 @@
 # The modelrack4j manual
 
 Two parts, with different jobs. Read the first one at a keyboard; come back to the second
-when you need an answer.
+when you need an answer. A third page lists the services the library can reach.
 
 | | For | Read it |
 |---|---|---|
 | **[Part 1 — Tutorial](part-1-tutorial.md)** | Someone who has not used the library | Start to finish, running the commands. About forty minutes. Six of its ten steps run offline; four send real requests — a dozen short prompts in total, or none at all with a model on your own machine. |
 | **[Part 2 — Reference](part-2-reference.md)** | Someone using it | By section. Every configuration key, every method, exactly what a reload guarantees, and a troubleshooting table. |
+| **[Providers and compatible services](providers.md)** | Someone choosing a service | When you ask "does it work with Kimi, DeepSeek, Groq…?". One row per service, with its address, an example, and whether it was tested or only declared by the vendor. |
 
 The tutorial builds on the runnable examples in
 [`modelrack4j-examples`](../../modelrack4j-examples). Nothing in it is pseudo-code — every

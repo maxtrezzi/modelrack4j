@@ -78,6 +78,10 @@ silently.
 > available on purpose. Nothing about ADR-0020's argument changes; the number it rests on
 > does.
 
+> **Re-measured 2026-10-26 by [P54](post-v1.md#p54--langchain4j-1220), and nothing landed.**
+> At `1.22.0` the aggregate still declares the same seven dependencies and core's compile
+> scope is the same nine artifacts. The aggregate's own jar grew from 389 KB to 456 KB.
+
 One wording note while re-reading the row: "and nothing else" was accurate at M0 and reads
 as of M0. `slf4j-api` became a *declared* dependency at M1
 ([ADR-0028](../adr/0028-core-logs-through-slf4j-api.md)) — it was already present

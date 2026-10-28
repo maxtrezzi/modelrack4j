@@ -9,6 +9,147 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 release. Breaking changes will be called out under **Changed** with the migration, but they
 will not be held back for a major bump until the API settles at `1.0.0`.
 
+## [0.4.0] — 2026-10-28
+
+### Added
+
+- **`modelrack4j-provider-mistral`, a sixth provider**, on the stable `langchain4j-mistral-ai`
+  module. It builds a chat model, a streaming chat model and a moderation model, so it is the
+  second provider that can moderate. It has no token counter, so `token-window` memory is
+  refused and `message-window` is the way to bound a conversation. `api-key` is required, and
+  `base-url` is optional:
+
+  ```hocon
+  llm.MI {
+    provider   = mistral
+    api-key    = ${MISTRAL_API_KEY}
+    model-name = "mistral-small-latest"
+    moderation { enabled = true }
+  }
+  ```
+
+  The moderation model is `mistral-moderation-latest`, not the block's `model-name`, which
+  names a chat model. It adds three jars to core's: `langchain4j-mistral-ai` and the two HTTP
+  client jars the OpenAI and Ollama providers already bring.
+
+- **Listeners on the models the registry builds.** `LlmRegistry.Builder` has
+  `chatModelListeners(...)` and `moderationModelListeners(...)`, each a function from a
+  configuration to its LangChain4j listeners. The registry calls it for each bundle it builds,
+  at `build()` and at every reload that changes that configuration, so the listeners survive
+  reloads. The chat listeners go to the chat model and to the streaming chat model:
+
+  ```java
+  var registry = LlmRegistry.builder()
+          .configFiles(List.of(path))
+          .chatModelListeners(config -> List.of(new RequestLogger(config.name())))
+          .build();
+  ```
+
+  A listener is not told which configuration it observes, which is why the function receives
+  the configuration. Listeners are not part of `LlmConfig`, so they never make a block look
+  changed. A function that throws or returns `null` is reported as a
+  `ConfigValidationException` naming the configuration.
+
+- **`ModelContext` and three methods on `ProviderFactory`** for a provider of your own:
+  `createChatModel`, `createStreamingChatModel` and `createModerationModel` each have a second
+  form that also takes a `ModelContext`, which carries the listeners. The registry calls that
+  form. **This does not break an existing factory:** the new methods have defaults that call
+  the old ones. Such a factory builds its models without the listeners, so when an application
+  registers listeners, the registry sees that a model does not report them and refuses the
+  configuration with a message that names the provider. To support listeners, override the
+  new methods and pass the listeners to each model's builder. A factory that writes the old
+  method as a call to the new one and forgets to override the new one is refused with an
+  `IllegalStateException` naming the method, rather than recursing. Checked with the released
+  `modelrack4j-provider-openai` `0.3.0`: on this version's core it builds every model as
+  before, and is refused, with that message, only when listeners are registered.
+
+### Changed
+
+- **Built against LangChain4j 1.22.0** (community modules at `1.22.0-beta32`), up from
+  `1.20.0`. The upgrade itself changes nothing in this library's API, and no new jar reaches
+  your classpath: the
+  LangChain4j artifacts move to the new version, and the GLM provider brings Guava
+  `33.7.2-jre` instead of `33.6.0-jre`. Guava now brings the same `org.jspecify:jspecify`
+  as `langchain4j-core`, `1.0.1`, so this project no longer pins it.
+- **`modelrack4j-bom` no longer manages JUnit, AssertJ or Awaitility.** The BOM inherited them
+  from this project's build, so an application that imported it had its test libraries'
+  versions chosen for it — JUnit `6.1.3` and AssertJ `3.27.7` with `0.3.0`. It still manages the
+  modelrack4j artifacts, Jackson, LangChain4j, Typesafe Config and SLF4J. If your build declares
+  JUnit or AssertJ without a version and relied on the BOM for it, Maven now reports the version
+  as missing: give the version yourself, or import `org.junit:junit-bom`.
+- **The message that refuses `moderation.enabled = true`** on a provider without a moderation
+  model now names both providers that have one, `openai` and `mistral`, instead of "an
+  OpenAI-family configuration". Code that matches on the old wording needs updating.
+
+### Fixed
+
+- **A custom-properties handler now runs before any model of its configuration is built.** It
+  ran after them, so a configuration the handler rejected first built models that were then
+  thrown away. No model from a rejected configuration was ever used; the change only stops
+  building them.
+- **A reload listener that throws an `Error` no longer stops hot reload.** A listener that
+  failed an `assert`, or reached a class missing from the classpath, threw an `AssertionError`
+  or a `LinkageError`, and on the watcher thread that ended the thread: every later change to
+  the files was ignored, and only `System.err` said so. Such an error is now logged like any
+  other exception from a listener, and the other listeners still run. The same holds for an
+  error of that kind from your own code while a reload is built — a custom-properties handler,
+  a listener function, a `ConfigSource`. If the watcher thread stops anyway, it now says so in
+  your logs.
+- **A `store()` whose `write()` throws an `Error` now puts the previous configuration back.**
+  The new configuration is applied before the layer is written, and only an exception undid
+  that. An `AssertionError` or a `LinkageError` from your own `WritableConfigSource.write()`
+  left the new configuration live although nothing was stored, so what the application ran
+  and what the layer held disagreed until the next reload.
+- **`store()` now recognises an `include` that does not start a line**, such as
+  `llm { include "a.conf" }`. For a layer reached through a symbolic link, a text using that
+  form was validated against the file next to the link's target, while it is read with the
+  one next to the link; such a store is now refused, like the one with the include on a line
+  of its own.
+- **An unknown `memory.type` now names its block and where it was set**, as every other
+  validation message does: `llm.SL.memory.type is 'sliding-window'`, followed by the file and
+  the line.
+
+### Security
+
+- **Jackson 2.22.1 has seven known advisories, and LangChain4j 1.22.0 brings it.**
+  `langchain4j-core` declares `jackson-core` and `jackson-databind` `2.22.1`, which the OSV
+  database lists under GHSA-7hhh-6rmp-j9qf, GHSA-p6pp-m3f8-5c89, GHSA-cxp5-3px4-pw24,
+  GHSA-gx83-3vf8-gh7j, GHSA-q4xh-88c3-wmh7, GHSA-wjgm-6hv5-3cvf and GHSA-wv8q-qhhj-9h54. Five
+  are rated high, and most are a denial of service while parsing JSON. All are fixed in
+  `2.22.3`. **`0.3.0` brings the same version.**
+
+  `modelrack4j-bom` now manages both at `2.22.4`, so an application that imports the BOM gets
+  the fixed version with nothing else to do. An application that adds the modelrack4j
+  artifacts without the BOM still gets `2.22.1` from LangChain4j, because Maven applies only the
+  application's own `dependencyManagement`. Import the BOM, or manage Jackson yourself:
+
+  ```xml
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>com.fasterxml.jackson</groupId>
+        <artifactId>jackson-bom</artifactId>
+        <version>2.22.4</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+  ```
+
+  On `0.3.0`, the same block fixes it. Every pull request is now checked for dependencies with a
+  known vulnerability, and `dev` and `main` are checked every week.
+
+### Documentation and examples
+
+- **A catalogue of providers and compatible services**, `docs/manual/providers.md`. It answers
+  "does it work with Kimi, DeepSeek, Groq…?": one row per service, with `provider =`, the
+  `base-url`, an example, and how sure the row is — a module of its own, tested by hand on a
+  date, or only declared compatible by the vendor. It also says what a service reached through
+  `openai` cannot do, and which services have no row. Every block on the page is also in
+  `modelrack4j-examples/src/main/resources/catalog.conf`, and a test loads both, with
+  placeholder keys, and checks that they agree.
+
 ## [0.3.0] — 2026-10-04
 
 ### Added
@@ -513,6 +654,7 @@ than listed as one long **Added** block.
   version once and forever, so a tag written first would be a promise the publish might not
   keep (ADR-0045).
 -->
+[0.4.0]: https://github.com/maxtrezzi/modelrack4j/releases/tag/v0.4.0
 [0.3.0]: https://github.com/maxtrezzi/modelrack4j/releases/tag/v0.3.0
 [0.2.0]: https://github.com/maxtrezzi/modelrack4j/releases/tag/v0.2.0
 [0.1.0]: https://github.com/maxtrezzi/modelrack4j/releases/tag/v0.1.0

@@ -7,7 +7,7 @@
   <parent>
     <groupId>io.github.maxtrezzi</groupId>
     <artifactId>modelrack4j-parent</artifactId>
-    <version>0.3.0</version>
+    <version>0.4.0</version>
   </parent>
 
   <artifactId>modelrack4j-bom</artifactId>
@@ -46,6 +46,26 @@
         <groupId>io.github.maxtrezzi</groupId>
         <artifactId>modelrack4j-provider-ollama</artifactId>
         <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.github.maxtrezzi</groupId>
+        <artifactId>modelrack4j-provider-mistral</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <!--
+        Not a modelrack4j artifact. LangChain4j brings jackson-core and jackson-databind 2.22.1,
+        which have known advisories; importing this BOM moves both to the fixed version the
+        parent POM names, so an application gets them without overriding Jackson itself.
+      -->
+      <dependency>
+        <groupId>com.fasterxml.jackson.core</groupId>
+        <artifactId>jackson-core</artifactId>
+        <version>${jackson.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.fasterxml.jackson.core</groupId>
+        <artifactId>jackson-databind</artifactId>
+        <version>${jackson.version}</version>
       </dependency>
     </dependencies>
   </dependencyManagement>

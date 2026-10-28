@@ -173,8 +173,11 @@ class LlmRegistryTest {
                            moderation { enabled = true } } }
                 """))
                 .isInstanceOf(ConfigValidationException.class)
-                .hasMessageContaining("fake-remote")
-                .hasMessageContaining("ships no moderation model");
+                // The whole message, because part-1-tutorial.md step 6 prints it word for word.
+                .hasMessage("llm.SL sets moderation.enabled = true, but provider 'fake-remote'"
+                        + " ships no moderation model. Remove the moderation block, or route"
+                        + " moderation through a configuration on a provider that has one,"
+                        + " such as openai or mistral.");
     }
 
     @Test
@@ -392,16 +395,18 @@ class LlmRegistryTest {
     }
 
     @Test
-    @DisplayName("an unknown memory type lists the supported ones")
+    @DisplayName("an unknown memory type names its block and file, and lists the supported ones")
     void unknownMemoryTypeIsRejected() {
+        // Every other validation message names the block and where the value was set; this
+        // one used to say only "Unknown memory.type".
         assertThatThrownBy(() -> registryOf("""
                 llm { SL { provider = fake-local, api-key = "k", model-name = "m"
                            memory { type = sliding-window, max-messages = 10 } } }
                 """))
                 .isInstanceOf(ConfigValidationException.class)
-                .hasMessageContaining("sliding-window")
-                .hasMessageContaining("message-window")
-                .hasMessageContaining("token-window");
+                .hasMessageStartingWith("llm.SL.memory.type is 'sliding-window' (")
+                .hasMessageContaining(lastFile.getFileName().toString())
+                .hasMessageEndingWith("Supported values are message-window and token-window");
     }
 
     /**

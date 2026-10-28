@@ -20,10 +20,18 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.catchThrowable;
 
 import dev.langchain4j.model.ModelProvider;
+import dev.langchain4j.model.chat.ChatModel;
+import dev.langchain4j.model.chat.StreamingChatModel;
+import dev.langchain4j.model.chat.listener.ChatModelListener;
+import dev.langchain4j.model.chat.listener.ChatModelRequestContext;
+import dev.langchain4j.model.moderation.ModerationModel;
+import dev.langchain4j.model.moderation.listener.ModerationModelListener;
+import dev.langchain4j.model.moderation.listener.ModerationModelRequestContext;
 import io.github.maxtrezzi.modelrack4j.ConfigValidationException;
 import io.github.maxtrezzi.modelrack4j.LlmConfig;
 import io.github.maxtrezzi.modelrack4j.LlmRegistry;
 import io.github.maxtrezzi.modelrack4j.spi.KeyRequirement;
+import io.github.maxtrezzi.modelrack4j.spi.ModelContext;
 import io.github.maxtrezzi.modelrack4j.spi.ProviderFactory;
 import io.github.maxtrezzi.modelrack4j.spi.TokenEstimation;
 import java.io.IOException;
@@ -41,6 +49,7 @@ import java.util.Locale;
 import java.util.Optional;
 import java.util.ServiceLoader;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -96,6 +105,48 @@ class OpenAiProviderFactoryTest {
             port.assertReachedBy("the moderation model",
                     () -> factory.createModerationModel(config).orElseThrow().moderate("hi"));
         }
+    }
+
+    @Test
+    @DisplayName("listeners from the context reach every model this factory builds")
+    void listenersReachEveryModel() throws Exception {
+        // ADR-0063. Against the local port, so each call is real and fails there: a listener
+        // sees the request before it is sent, whatever happens to it afterwards.
+        List<String> seen = new CopyOnWriteArrayList<>();
+        ChatModelListener listener = new ChatModelListener() {
+            @Override
+            public void onRequest(ChatModelRequestContext context) {
+                seen.add("request");
+            }
+        };
+        ModerationModelListener moderationListener = new ModerationModelListener() {
+            @Override
+            public void onRequest(ModerationModelRequestContext context) {
+                seen.add("moderation request");
+            }
+        };
+        ModelContext context = ModelContext.of(List.of(listener), List.of(moderationListener));
+
+        try (CountingPort port = new CountingPort()) {
+            LlmConfig config = config("gpt-4o-mini", Optional.empty(),
+                    Optional.of("test-key-not-used"), Optional.of(port.url()));
+            ChatModel chat = factory.createChatModel(config, context);
+            StreamingChatModel streaming =
+                    factory.createStreamingChatModel(config, context).orElseThrow();
+
+            assertThat(chat.listeners()).containsExactly(listener);
+            assertThat(streaming.listeners()).containsExactly(listener);
+            assertThat(factory.createChatModel(config).listeners()).isEmpty();
+            port.assertReachedBy("the chat model", () -> chat.chat("hi"));
+            port.assertReachedBy("the streaming chat model",
+                    () -> CountingPort.streamOnce(streaming));
+            ModerationModel moderation =
+                    factory.createModerationModel(config, context).orElseThrow();
+            assertThat(moderation.listeners()).containsExactly(moderationListener);
+            port.assertReachedBy("the moderation model", () -> moderation.moderate("hi"));
+        }
+
+        assertThat(seen).containsExactly("request", "request", "moderation request");
     }
 
     @Test

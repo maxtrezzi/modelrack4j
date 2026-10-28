@@ -65,9 +65,9 @@ export ANTHROPIC_API_KEY=sk-ant-...
 export OPENAI_API_KEY=sk-...
 ```
 
-Gemini uses `GEMINI_API_KEY` and GLM uses `ZHIPU_API_KEY`. Any one of these four keys is
-enough for steps 1 to 8 — swap the `provider` and `model-name` in the configuration for the
-ones from [Part 2](part-2-reference.md#providers).
+Gemini uses `GEMINI_API_KEY`, GLM uses `ZHIPU_API_KEY` and Mistral uses `MISTRAL_API_KEY`.
+Any one of these five keys is enough for steps 1 to 8 — swap the `provider` and `model-name` in
+the configuration for the ones from [Part 2](part-2-reference.md#providers).
 
 ### A model on your own machine instead
 
@@ -269,8 +269,9 @@ either all of it applies or none of it does.
 ## 5. Memory and streaming
 
 Three of the four parts of a bundle are optional and driven entirely by configuration:
-streaming, memory and moderation. This step adds the first two. Moderation is OpenAI-only —
-step 6 shows what happens if you ask another provider for it. Edit `SL` to give it memory:
+streaming, memory and moderation. This step adds the first two. Only OpenAI and Mistral can
+moderate — step 6 shows what happens if you ask another provider for it. Edit `SL` to give it
+memory:
 
 ```hocon
   SL {
@@ -320,12 +321,12 @@ llm.SL { provider = anthropic, api-key = ${ANTHROPIC_API_KEY}
 
 ```
 ConfigValidationException: llm.SL sets moderation.enabled = true, but provider 'anthropic'
-ships no moderation model. Remove the moderation block, or route moderation through an
-OpenAI-family configuration.
+ships no moderation model. Remove the moderation block, or route moderation through a
+configuration on a provider that has one, such as openai or mistral.
 ```
 
-Of the five providers, only OpenAI ships a `ModerationModel`. That is a fact about the
-LangChain4j artifacts, checked by reading them.
+Of the six providers, only OpenAI and Mistral ship a `ModerationModel`. That is a fact about
+the LangChain4j artifacts, checked by reading them.
 
 **Token-window memory on a provider that counts remotely:**
 
@@ -343,8 +344,8 @@ network request. Set memory.allow-remote-token-counting = true to accept that co
 
 This one is not a refusal, it is a question. Anthropic *can* count tokens — by making an HTTP
 call, inside what your code assumes is in-memory bookkeeping. Add the flag if that is what
-you want. On OpenAI, which counts locally, no flag is needed. On GLM or Ollama, which cannot
-count at all, the flag makes no difference and the answer stays no.
+you want. On OpenAI, which counts locally, no flag is needed. On GLM, Ollama or Mistral, which
+cannot count at all, the flag makes no difference and the answer stays no.
 
 **A misspelled key** — the one you are most likely to meet first:
 
@@ -553,7 +554,7 @@ belongs to the same one. Part 2 explains
     <dependency>
       <groupId>io.github.maxtrezzi</groupId>
       <artifactId>modelrack4j-bom</artifactId>
-      <version>0.2.0</version>
+      <version>0.3.0</version>
       <type>pom</type>
       <scope>import</scope>
     </dependency>

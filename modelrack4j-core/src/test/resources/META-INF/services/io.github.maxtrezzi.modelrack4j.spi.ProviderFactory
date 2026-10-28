@@ -11,3 +11,7 @@ io.github.maxtrezzi.modelrack4j.testing.FakeFixedAddressProviderFactory
 io.github.maxtrezzi.modelrack4j.testing.FakeNullRequirementProviderFactory
 io.github.maxtrezzi.modelrack4j.testing.FakeOutdatedProviderFactory
 io.github.maxtrezzi.modelrack4j.testing.FakeMismatchedProviderFactory
+io.github.maxtrezzi.modelrack4j.testing.FakeCountingProviderFactory
+io.github.maxtrezzi.modelrack4j.testing.FakePartialListenerProviderFactory
+io.github.maxtrezzi.modelrack4j.testing.FakePreContextProviderFactory
+io.github.maxtrezzi.modelrack4j.testing.FakeRecursiveProviderFactory

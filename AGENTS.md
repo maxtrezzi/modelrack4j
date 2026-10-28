@@ -7,14 +7,18 @@ and points here; every ADR that cites the old name still resolves.
 
 ## Project state
 
-**v1 is complete, the repository is public, and `0.2.0` is the current release.** Nine Maven
-modules, five providers, hot reload, a two-part manual and seven runnable examples. M0–M6 are
+**v1 is complete, the repository is public, and `0.3.0` is the current release.** Ten Maven
+modules and six providers on `dev` — the sixth, Mistral, arrived in P56 and is not released
+yet — hot reload, a two-part manual with a provider catalogue beside it, and seven runnable
+examples. M0–M6 are
 done: M6's trigger fired on 2026-09-02, when the owner tested the library and judged it
 publishable, and `io.github.maxtrezzi:modelrack4j-*:0.1.0` was signed and published to Maven
 Central the same evening. `0.2.0` followed on 2026-09-07 — custom properties, a closed schema,
 an empty configuration, `writableSources()`, and a generic registry that is a source break for
-a caller who used the raw type. `modelrack4j-examples` is not published and is confirmed absent
-from Central for both releases.
+a caller who used the raw type. `0.3.0` followed on 2026-10-04 — `base-url`, the Ollama
+provider, and `api-key` optional where a provider allows it, with `LlmConfig.apiKey()` now an
+`Optional` and two methods every `ProviderFactory` must implement. `modelrack4j-examples` is not
+published and is confirmed absent from Central for all three releases.
 
 **A published version can never be changed or deleted.** That is new, and it changes what a
 mistake costs: before M6 a wrong API shape was a commit, now it is a permanent artifact. The
@@ -120,22 +124,24 @@ force-pushing is blocked anyway.
 
 **`main`'s documentation is frozen at release time, and that is the design rather than drift.**
 `main` holds what Maven Central holds, so everything on it — `CONTRIBUTING.md`, this file, the
-ADR index — describes the project as it was on the day of that release. Right now `main`'s
-`CONTRIBUTING.md` still says to branch from `main` and its `build.yml` still triggers on `main`
-alone, because both were true when `0.2.0` shipped. **Do not "fix" them there**: a commit on
-`main` that is not a release is what ADR-0061 point 2 forbids, and the next release carries the
-correction across with everything else. The exposure is small because GitHub reads the
-community files, the repository home and a new pull request's base from the *default* branch,
+ADR index — describes the project as it was on the day of that release. Between `0.2.0` and
+`0.3.0`, `main`'s `CONTRIBUTING.md` said to branch from `main` and its `build.yml` triggered on
+`main` alone, because both were true when `0.2.0` shipped; `0.3.0` carried the correction
+across, which is the mechanism working as intended. **Do not "fix" such a file on `main`**: a
+commit on `main` that is not a release is what ADR-0061 point 2 forbids, and the next release
+carries the correction across with everything else. The exposure is small because GitHub reads
+the community files, the repository home and a new pull request's base from the *default* branch,
 which is `dev` — checked on 2026-09-08, `CONTRIBUTING.md` served by the API matched `dev`'s
 blob and not `main`'s. The one thing to confirm rather than assume at each release is that the
-release pull request still runs the five checks: it does, because a `pull_request` event uses
-the workflow from the merge result, and `dev`'s lists both branches.
+release pull request still runs the six checks: it does, because a `pull_request` event uses
+the workflow from the merge result, and both of `dev`'s workflows list both branches.
 
 **Both `dev` and `main` are protected on the remote (ADR-0040, widened by ADR-0061), but
 not against you.** A pull request is
-required, force-pushing and deleting are blocked, and the five checks in
-`.github/workflows/build.yml` must pass and be current with the branch before a merge, with
-no approving review needed — so for an outside contributor a green build is the whole gate.
+required, force-pushing and deleting are blocked, and six checks must pass and be current with
+the branch before a merge — the five in `.github/workflows/build.yml` and `known
+vulnerabilities` in `.github/workflows/vulnerabilities.yml` (ADR-0064) — with no approving
+review needed — so for an outside contributor a green build is the whole gate.
 **`enforce_admins` is `false`, and the only collaborator is an admin**, which is every
 session working in this repository: none of those gates will actually stop you. Treat the
 branch rule as binding anyway. It is a rule you keep because it is right, not because
@@ -212,7 +218,13 @@ passphrase, which is not cached. The passphrase does not require an interactive 
 default pinentry here is `pinentry-gnome3` and `DISPLAY` is set, so a signing step started
 from any shell opens a dialog on the desktop for a human to type into. **Do not conclude
 otherwise from `gpg --pinentry-mode error`** — that flag orders gpg to fail rather than ask,
-so its `No pinentry` says nothing about what is available.
+so its `No pinentry` says nothing about what is available. **Never run the signing step with
+`-B`**: in batch mode `maven-gpg-plugin` passes that same flag itself, so the dialog never opens
+and the build fails with `No pinentry`. The dialog gives up after about a minute if nobody
+types. **From `0.3.0` the artifacts are signed with a second key**,
+`EB71EAD0CD7AEE667D093D309EC2E218A2086E72`, because the passphrase of the key that signed
+`0.1.0` and `0.2.0` was lost; with both in the keyring, gpg picks the old one unless the
+release names the new one with `-Dgpg.keyname=<fingerprint>`.
 `build/check-release-bundle.sh` checks a built bundle before it is uploaded.
 
 ```bash
@@ -283,8 +295,9 @@ pointing at the wrong method. `docs/tasks/post-v1.md` carries the per-run tables
 deterministic syntactic edits, so none of this bears on the concurrency guarantee in ADR-0038;
 do not read a high score as evidence for it.
 
-**Model identifiers rot, and only a live run catches it.** Two of the four are now outside
-upstream's enums, so `mvn -Pintegration verify` is the only check that a configured model
+**Model identifiers rot, and only a live run catches it.** Two of the five hosted ones the ITs
+use — `gemini-3.6-flash` and `glm-5.3` — are outside upstream's enums at `1.22.0`, so
+`mvn -Pintegration verify` is the only check that a configured model
 still exists. It cost two stale IDs the first time it ran (P6).
 
 ## Architecture: the load-bearing constraints
@@ -437,17 +450,30 @@ it also brings `io.smallrye.reactive:mutiny-zero` (58 KB), which the reactive `A
 path added in that release needs. **Do not exclude that one.** The opennlp exclusion is safe
 because `DocumentBySentenceSplitter` is out-of-scope RAG splitting (ADR-0003), while
 mutiny-zero backs a way of *using* `AiServices`, which was never out of scope and which P21
-said out loud. The measurement is in M0's verification block, re-run in P34 — **re-run it
-yourself on every bump**, because an upstream dependency lands there silently — one did at
+said out loud. The measurement is in M0's verification block, re-run in P34 and P54 — **re-run
+it yourself on every bump**, because an upstream dependency lands there silently — one did at
 `1.20.0`, and the release notes did not mention it. A bump has a second trap in the same
-place: neither BOM manages `jspecify`, guava brings an older one through the GLM module, and
-the parent POM pins it to keep `DependencyConvergence` green. **No provider artifact, ever.**
+place: neither BOM manages `jspecify`, so when guava, through the GLM module, brings a
+different one than `langchain4j-core`, `DependencyConvergence` fails the build. At `1.20.0` it
+did and the parent POM pinned it; at `1.22.0` the two agree and P54 removed the pin. If the
+rule names `jspecify` again, the pin is the fix to put back. **Jackson is managed too, for a
+different reason (ADR-0065)**: `langchain4j-core` `1.22.0` names `jackson-core` and
+`jackson-databind` `2.22.1`, which has seven known advisories, so the parent POM and
+`modelrack4j-bom` move both to `jackson.version`. That reaches this build and every
+application importing the BOM, and nobody else — Maven applies only the application's own
+`dependencyManagement` — which is why core does not declare Jackson and the CHANGELOG says how
+to override it. On every bump, check whether LangChain4j now brings a fixed Jackson, and drop
+the entries when it does; the `known vulnerabilities` check (ADR-0064) says whether what is
+managed is still clean. **The parent's `dependencyManagement` is exported to applications**,
+because `modelrack4j-bom` inherits it, so only what the library ships may go there (ADR-0066):
+test libraries and build tools are declared with their versions where they are used. **No provider artifact, ever.**
 Each provider lives in its own module
-(`modelrack4j-provider-openai|anthropic|gemini|glm|ollama`) implementing the `ProviderFactory`
-SPI, discovered via `java.util.ServiceLoader` (`META-INF/services/...spi.ProviderFactory`).
-Providers differ in *capabilities* — moderation is OpenAI-only, and token estimation is
-three-valued rather than a boolean: `ABSENT` (GLM), `LOCAL` (OpenAI), `REMOTE` (Anthropic,
-Gemini), because a remote estimator puts a billed network call inside memory eviction
+(`modelrack4j-provider-openai|anthropic|gemini|glm|ollama|mistral`) implementing the
+`ProviderFactory` SPI, discovered via `java.util.ServiceLoader`
+(`META-INF/services/...spi.ProviderFactory`). Providers differ in *capabilities* — only OpenAI
+and Mistral moderate, and token estimation is three-valued rather than a boolean: `ABSENT`
+(GLM, Ollama, Mistral), `LOCAL` (OpenAI), `REMOTE` (Anthropic, Gemini), because a remote
+estimator puts a billed network call inside memory eviction
 (ADR-0021, opt-in per ADR-0027). **A factory *reports* a capability; core enforces it
 (ADR-0048).** A factory reports four things: `tokenEstimation()` and `supportsModeration()`
 say what the provider can do, and `apiKeyRequirement()` and `baseUrlRequirement()` say whether
@@ -458,15 +484,24 @@ in a provider's `validate()` — that is only for a rule core cannot see. **The 
 methods have no default, and must not get one**: a default of `MANDATORY` would refuse every
 block of a keyless provider that forgot to override it, which trades a compile error for a
 wrong answer. The price of no default is that a factory compiled against `0.2.0` throws
-`AbstractMethodError`, an `Error` that `reload()` and the watcher loop do not catch — it once
-ended the watcher thread in silence. **`SnapshotLoader.requirementOf` translates it into a
-`ConfigValidationException`, and `buildBundleReportingLinkage` does the same for any
-`LinkageError` a factory raises while its bundle is built; do not remove either, and do not
-widen the catch to `Error`** — a linkage error belongs to one provider's classes, an
-`OutOfMemoryError` does not. It is a `ConfigValidationException` rather than a new type
-because that is what a rejected reload is reported as; it stretches ADR-0053's "read something
-and objected" a little, since the objection is to the provider rather than to the text. P27 emptied the three `validate()` bodies that had been restating a capability;
-P25 then gave GLM's real work, and P48 gave OpenAI's one rule, so **two of the four are empty
+`AbstractMethodError`, an `Error` that `reload()` does not catch — it once ended the watcher
+thread in silence, and it still bypasses the WARN line and the failure listeners.
+**`SnapshotLoader.requirementOf` translates it into a `ConfigValidationException`, and
+`buildBundleReportingLinkage` does the same for any `LinkageError` a factory raises while its
+bundle is built; do not remove either, and do not widen the catch to `Error`** — a linkage
+error belongs to one provider's classes, an `OutOfMemoryError` does not. It is a
+`ConfigValidationException` rather than a new type because that is what a rejected reload is
+reported as; it stretches ADR-0053's "read something and objected" a little, since the
+objection is to the provider rather than to the text. **The one deliberate exception is
+application code run by a reload or a store:** `LlmRegistry.notify` and
+`ConfigWatcher.reloadIfQuiet` catch `RuntimeException`, `LinkageError` and `AssertionError`,
+because a listener that failed an `assert` or reached a missing class otherwise ended the
+watcher thread, and with it hot reload, with nothing in the application's logs (P59).
+`VirtualMachineError` still propagates there too, and the watcher thread has an
+uncaught-exception handler that logs if it dies anyway. `storeHoldingTheLock` puts the previous
+snapshot back in a `finally`, so a `write()` that throws any `Error` cannot leave a snapshot
+live that was never stored. P27 emptied the three `validate()` bodies that had been restating a
+capability; P25 then gave GLM's real work, and P48 gave OpenAI's one rule, so **four of the six are empty
 and GLM's and OpenAI's are not**. OpenAI's refuses a block with neither `api-key` nor
 `base-url`, because only that factory knows no address means `api.openai.com`; it is the one
 key rule that stays in a provider. **`base-url` goes to every builder a factory calls for the
@@ -483,6 +518,24 @@ catches a missing model afterwards: that fallback is what makes the permissive d
 and it is not redundant.
 `ChatMemoryProvider` is built in core (provider-independent), except the
 `TokenCountEstimator` needed by token-window memory, which comes from the factory.
+
+**A factory now also receives something: a `ModelContext` carrying the application's model
+listeners (ADR-0063).** Core calls only the two-argument `create` methods; their defaults call
+the one-argument ones, so a factory built before `0.4.0` still works. That default drops the
+listeners, and `SnapshotLoader.requireListeners` is what turns the drop into a refusal: it
+compares each model's `listeners()` with what it was given. **Do not remove it as redundant**
+because the six factories here all pass them — it is what makes the defaults safe for
+factories the project does not own, the same role `requireProduced` plays for
+`supportsModeration()`. The listeners come from functions on `LlmRegistry.Builder`, called per
+bundle built, and never enter `LlmConfig`, for the reason ADR-0055 keeps the parsed custom
+properties out of it. The next thing a factory needs from the registry goes on `ModelContext`,
+which is a class rather than a record so that adding to it breaks nobody. **The defaults go
+through `spi.DefaultCreate`, and that is not removable either**: a factory that writes the
+one-argument method as a call to the two-argument one, as the Javadoc advises, and forgets to
+override the latter, makes the pair call each other, and the compiler accepts it. Unguarded it
+was a `StackOverflowError` — a `VirtualMachineError`, which even the watcher loop does not
+catch; the guard turns it into an `IllegalStateException` that names the
+method (P59).
 
 **A block's custom properties are text in `LlmConfig` and an object on `LlmBundle`
 (ADR-0055).** The `custom-properties` sub-block is rendered from the merged configuration with

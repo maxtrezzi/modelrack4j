@@ -5987,3 +5987,1082 @@ community train, which the GLM module needs, is still at `1.20.0-beta30` (2026-0
 parent POM requires the two BOMs to move together (ADR-0018, ADR-0022). So 0.3.0 ships on
 `1.20.0` unless the owner chooses to wait for the community release; the bump then needs
 P34's re-measurement of core's dependencies and the `jspecify` pin re-checked.
+
+### P51 — 0.3.0 published
+
+**Status:** Done — on Maven Central 2026-10-04 ·
+**Branch:** `docs/0.3.0-on-central` ·
+**Raised by:** the owner on 2026-10-04, after [P50](#p50--the-pre-release-check-of-030)
+
+The version commit landed on `dev` as `a23f455` (#72), and the release pull request squashed it
+onto `main` as `383a83d` (#73) with the five checks green on both the push and the pull request.
+`mvn -Prelease clean deploy` from `main` uploaded deployment
+`a57798d0-36a5-4702-884e-a4823e0ddcae`, which reached `VALIDATED`; the owner pressed Publish.
+
+**What was verified against Central rather than assumed:**
+
+- the POM and its `.asc` for all eight published modules — parent, BOM, core and five
+  providers — answer `200` on `repo1.maven.org`, and `modelrack4j-examples` answers `404`;
+- `modelrack4j-provider-ollama` and `modelrack4j-provider-glm` resolve with `dependency:get`
+  into an empty local repository, bringing core and LangChain4j `1.20.0`;
+- the Ollama jar downloaded from Central carries its `META-INF/services` entry, and every entry
+  in it is dated `2026-10-04 00:00` — `versions:set` had written `2026-10-04T20:01:37Z`;
+- its signature, downloaded from Central, is good for the key below. Before the upload, all 26
+  signatures in the bundle verified with `gpg --verify`;
+- the core, OpenAI and Ollama jars that `mvn install` on `release/0.3.0` left in `~/.m2` are
+  identical byte for byte to the ones Central serves, so the build reproduces.
+
+**The signing key changed.** `0.1.0` and `0.2.0` were signed with
+`B9602C495E92406FF5DF24A9336FF7186A35E877`, whose passphrase is lost. `0.3.0` is signed with
+`EB71EAD0CD7AEE667D093D309EC2E218A2086E72`, created 2026-09-28 and already on
+`keyserver.ubuntu.com` and `keys.openpgp.org`, which is all Central checks. The new key could
+not be certified by the old one, for the same reason. With two secret keys in the keyring,
+`maven-gpg-plugin` signs with the first unless the release passes `-Dgpg.keyname`. Whether to
+revoke the old key is left to the owner; the signatures of the two earlier releases verify
+either way.
+
+**`-B` makes signing impossible.** In batch mode `maven-gpg-plugin` passes
+`--pinentry-mode error` to gpg, so no dialog opens and the build fails with `No pinentry`. The
+signing step runs without `-B`. `AGENTS.md` now says both of these next to the passphrase.
+
+**`build/check-release-bundle.sh` reported signatures as missing that were present.** Its loop
+ran `echo "$entries" | grep -qxF` under `set -o pipefail`: `grep -q` exits at the first match,
+the `echo` then dies of `SIGPIPE`, and the pipeline fails. Measured on the 0.3.0 bundle, 156
+entries: the old script failed 5 runs in 30, while `gpg --verify` found all 26 signatures
+present and good. It now reads a here-string, and failed 0 runs in 30; with one `.asc` deleted
+from a copy of the bundle, it still names that artifact and fails.
+
+**Documentation moved after the publish:** the six dependency snippets — four in the README
+including the BOM block, one in the tutorial, one in the reference — the README's status line,
+the reference's current release, and `AGENTS.md`'s Project state. The two "ahead of the
+release" notes P49 added to the README and the reference are gone, since `dev` and the release
+are the same tree. `AGENTS.md`'s paragraph on `main`'s frozen documentation said `main`'s
+`CONTRIBUTING.md` still told a contributor to branch from `main`; `0.3.0` carried `dev`'s copy
+across, as ADR-0061 intended, and the paragraph now says so in the past tense.
+
+**After the documentation, the last three steps of the checklist.** The annotated tag `v0.3.0`
+on `main` at `383a83d`, created after the publish. The GitHub release from that tag, marked
+latest, whose notes name both keys and say to add the new one. And `dev` on `0.4.0-SNAPSHOT`
+with `[Unreleased]` reopened, on `release/dev-to-0.4.0-snapshot`: `versions:set` wrote
+`2026-10-04T20:52:54Z` into `project.build.outputTimestamp` once more, and it is back at
+`2026-10-04T00:00:00Z`. `0.4.0` is a placeholder, as P46 said of `0.3.0`; the release commit
+sets the real number.
+
+### P52 — `rapidWritesCollapseIntoOneReload` fails on CI about one run in fourteen
+
+**Status:** Done — this test now has a 1 s debounce of its own; the assertion is unchanged ·
+**Branch:** `task/p52-rapid-writes-test-flakes` ·
+**Raised by:** the owner on 2026-10-04, after the test failed on #75, the snapshot bump that
+followed 0.3.0, and a re-run of the job passed
+
+**Every failed CI run in the repository's history is this one test.** 136 runs of `build`
+between 2026-08-20 and 2026-10-04; ten had a failed first attempt, and in all ten the failure is
+`ReloadTest.rapidWritesCollapseIntoOneReload`, counting 2 reloads (seven times) or 3 (three
+times) where it expects 1. It fails on JDK 17, 21 and 25 and in the offline job alike. Six of
+the ten were re-run to green and now show as successes; none was recorded anywhere until now.
+Read from the GitHub API's per-attempt job logs, since `gh run view --log-failed` shows only the
+latest attempt.
+
+**The library does what it promises; the test asserts more than that.** `ConfigWatcher`'s
+debounce is trailing-edge, and `markPending()` stamps the moment the watcher *consumes* an event,
+not the moment of the write. A pause of more than the debounce anywhere between two of the five
+writes — the test thread descheduled, the JDK's inotify reader thread late — is a real quiet
+period, and the reload that follows it is correct behaviour. `ReloadTest` uses a 60 ms debounce,
+so a 60 ms stall on a shared runner is enough.
+
+**P9 saw this once and the fix did not hold.** `b60fdaf` (2026-08-26) cut the iteration count of
+`snapshotIsInternallyConsistent`, whose comment says its CPU load "made a neighbouring
+debounce-timing test flaky". Eight of the ten failures came after it.
+
+**Not reproduced on this machine.** Ten runs of the single test idle, and fifteen pinned to two
+cores shared with six busy loops (AMD Ryzen 7 7840HS, Temurin 25, Pop!_OS 24.04): all passed.
+CPU load alone does not make the stall; on the runner it may come from the VM or from GC.
+
+**Ways to fix it, for the owner to choose:**
+
+1. **Give this test its own, much longer debounce** — 1 s instead of 60 ms. The assertion stays
+   exact; a failure then needs a stall of a second, which none of the ten failures measured
+   came close to (the slowest failing run took 0.894 s *in total*). Costs about a second of
+   suite time. Recommended.
+2. **Assert what scheduling cannot break**: at least one reload, at most five, and the last
+   model is `v5`. It never flakes, but it no longer tests the debounce at all — a debounce
+   that did nothing would pass it.
+3. **Keep the assertion and re-run on failure** (Surefire's `rerunFailingTestsCount`). Hides the
+   next real regression in the same place.
+
+**The owner chose 1.** `ReloadTest` gains `BURST_DEBOUNCE` (1 s) and a `watch(Duration, Path...)`
+overload; `rapidWritesCollapseIntoOneReload` is the only caller, and every other test keeps 60 ms.
+The assertion is still exactly one reload. A throwaway probe that slept 1.2 s after the third of
+the five writes made the test fail with 2 reloads, so it still detects a burst the debounce did
+not collapse. `ReloadTest` takes 7.7 s instead of 6.6 s on this machine, and core's 243 tests
+pass. Whether the fix holds on CI can only be seen over the next runs, since the failure was
+never reproduced here.
+
+### P53 — The README's opening sentence leaves out Gemini
+
+**Status:** Done — the sentence names all five providers ·
+**Branch:** `task/p53-readme-opening-names-gemini` ·
+**Raised by:** the owner on 2026-10-04, after 0.3.0 was published
+
+The README's first sentence, on `dev` at `d3c5118`, says the library builds bundles "for OpenAI,
+Anthropic, GLM, a local Ollama, or any OpenAI-compatible server". Gemini is not in it. P49
+(`8fd4089`) wrote that list; before it, the sentence named no provider. At line 27, still before
+the first section heading, the paragraph that opens with "Hosted and local models, side by
+side" names all five, so the page contradicts itself on its first screen. The four names match the four blocks of the
+example directly under the sentence — `SL` on Anthropic, `CR` on OpenAI, `GL` on GLM, `LOCAL`
+on Ollama — and that example has no Gemini block.
+
+**What to do:** name Gemini in that sentence. A `git grep` of the tracked Markdown outside
+`CHANGELOG.md`, `docs/tasks/` and `docs/adr/`, run on 2026-10-04 for `OpenAI, Anthropic, GLM`
+and for `four providers`, finds this line and one sentence in `AGENTS.md` that quotes a
+miscount as its example. That search finds only these two wordings, so read the opening of each
+manual page as well before calling the item done.
+
+**Not on `main`.** `main`'s README is frozen at the `0.3.0` release (ADR-0061, and `AGENTS.md`
+on `main`'s documentation); the correction reaches it with the next release.
+
+**What was done.** The sentence now reads "for OpenAI, Anthropic, Gemini, GLM, a local Ollama, or
+any OpenAI-compatible server", in the order of the paragraph at line 27. The opening of each
+manual page was read as well: `docs/manual/README.md`, `part-1-tutorial.md` and
+`part-2-reference.md` name no list of providers there. A wider `grep -i` over the README, the
+three manual pages and `CONTRIBUTING.md`, for a provider count and for `OpenAI, Anthropic`,
+finds the corrected line, the paragraph at line 27, and three sentences that say *five*:
+`part-1-tutorial.md:327`, `part-2-reference.md:1212` and `CONTRIBUTING.md:41`. No `CHANGELOG.md`
+entry: the change is to the README's wording, and the released artifacts are unchanged.
+
+### P54 — LangChain4j 1.22.0
+
+**Status:** Done 2026-10-26 — target 0.4.0 · **Branch:** `task/p54-langchain4j-1.22.0` · no ADR ·
+**Raised by:** the owner on 2026-10-26, once the community train had caught up
+
+[P50](#p50--the-pre-release-check-of-030) left 0.3.0 on `1.20.0` because the community BOM,
+which the GLM module needs, had not reached `1.21.0`. It has now passed it. Read on Maven
+Central on 2026-10-26: `langchain4j-bom` has `1.22.0` as `release` (metadata last updated
+2026-10-07), `langchain4j-community-bom` has `1.22.0-beta32` (2026-10-10), and
+`langchain4j-community-zhipu-ai` `1.22.0-beta32` depends on `langchain4j-core` `1.22.0`. The two
+lines are aligned again. Skip `1.21.0`: nothing in this version needs a stop there.
+
+#### What to do
+
+The work of [P34](#p34--langchain4j-1200-and-the-jar-the-aggregate-started-bringing), with the
+list P50 left:
+
+- **Both BOMs together** (ADR-0018, ADR-0022): `langchain4j.version` `1.22.0` and
+  `langchain4j.community.version` `1.22.0-beta32` in the parent POM.
+- **Re-measure core's `compile` scope**, as M0 and P34 did, and record the list here. An
+  upstream dependency arrived silently at `1.20.0`; check whether one arrived again.
+- **Re-check the `jspecify` pin.** P34 needed it to keep `DependencyConvergence` green, and its
+  comment in the parent POM names the versions on both sides. Update the comment or remove the
+  pin, whichever the new tree requires.
+- **Re-read the capability matrix from the jars, with `javap`.** The reference says it is
+  *"read out of the LangChain4j 1.20.0 artifacts"*; it is only true again once someone does it.
+- **Re-read the builders the five factories call** — 13 of them, chat, streaming, moderation
+  and the two remote estimators — for `baseUrl`, `timeout` and anything renamed or deprecated.
+  ADR-0062 passes `base-url` to every builder that talks to a server.
+- **Run `mvn -Pintegration verify`.** Model identifiers rot (P6), and a minor bump is when an
+  enum moves. It costs money; state the run in the entry.
+
+#### Documentation
+
+`1.20.0` appears outside `docs/tasks/`, `docs/adr/` and the CHANGELOG in these places, found
+with `git grep` on 2026-10-26: `README.md` lines 218, 468 and 745,
+`docs/manual/part-2-reference.md` lines 212, 1084 and 1405, `examples.conf` line 9, and two
+sentences in `AGENTS.md` that tell P34's story and stay as they are. Read each one: some
+describe the pin and change, some describe what happened at `1.20.0` and do not. The
+CHANGELOG gets an entry under *Changed*, because a new LangChain4j minor changes the
+transitive dependencies of every user.
+
+#### What was found
+
+Everything below was read from the `1.22.0` and `1.22.0-beta32` artifacts in the local
+repository on 2026-10-26, and compared with `1.20.0` / `1.20.0-beta30` where a comparison
+says something.
+
+**Nothing landed in core's compile scope.** `dependency:list -DincludeScope=compile` on core
+gives the same nine artifacts as at `1.20.0`, now at `1.22.0` where they are LangChain4j's:
+`langchain4j-core`, three Jackson jars, `jspecify` 1.0.1, the aggregate, `mutiny-zero` 1.3.1,
+`com.typesafe:config` 1.4.9 and `slf4j-api` 2.0.18. The aggregate's POM declares the same
+seven dependencies, `opennlp-tools` among them, still at `2.5.11`, so the ADR-0020 exclusion
+is still required. The aggregate's jar grew from 389 KB to 456 KB. M0's verification block
+carries the new figure.
+
+**The `jspecify` pin is gone, because the tree no longer needs it.** Guava moved from
+`33.6.0-jre` to `33.7.2-jre` in `langchain4j-community-zhipu-ai` `1.22.0-beta32`, and the new
+Guava brings `jspecify` 1.0.1 — the version `langchain4j-core` brings. With the pin removed,
+`mvn clean install` passes `DependencyConvergence` in all nine reactor projects. JUnit 6.1.3
+still brings `jspecify` 1.0.0, five times in every module's tree, but in `test` scope, and
+`DependencyConvergence` in `enforcer-rules` 3.6.3 excludes `test` and `provided` by default —
+read with `javap -c` from the rule class, where its constructor sets `excludedScopes` to those
+two strings. Keeping a pin the tree does not need would also hide the next divergence, since a
+managed version always converges. `AGENTS.md` now says the pin is the fix to put back if the
+rule names `jspecify` again.
+
+**Every provider artifact only moves its version.** The compile and runtime dependencies
+declared by `langchain4j-open-ai`, `-anthropic`, `-google-ai-gemini`, `-ollama`,
+`-http-client`, `-http-client-jdk` and `-community-zhipu-ai` are the same artifacts at both
+versions. The one change outside LangChain4j is the Guava version above.
+
+| Gated by the pin | Re-checked against | Result |
+|---|---|---|
+| [Task 0.2](phase-0-verification.md#task-02--verify-the-java-baseline) — Java baseline | bytecode of `langchain4j-core-1.22.0` and `langchain4j-1.22.0` | major **61** on all **847** classes, no `META-INF/versions` overlays — `release` 17 stands |
+| [Task 0.5](phase-0-verification.md#task-05--confirm-interface-names) — interface names | both jars' entry listings | all nine types unmoved: six in `langchain4j-core`, `ChatMemoryProvider` and the two window memories in the aggregate; `ChatLanguageModel` still absent |
+| [Task 0.6](phase-0-verification.md#task-06--provider-capability-matrix) — capability matrix | `javap` over every class of the five provider jars, for an `implements ModerationModel` or `TokenCountEstimator` | unchanged: `OpenAiModerationModel` and `OpenAiTokenCountEstimator` in `-open-ai`, an estimator and no moderation model in `-anthropic` and `-google-ai-gemini`, neither in `-community-zhipu-ai` nor in `-ollama`. `jtokkit` 1.1.0 is still a compile dependency of `-open-ai`, so its estimator is still local |
+| [ADR-0018](../adr/0018-manage-langchain4j-versions-via-bom.md) — the two release lines | `langchain4j-bom-1.22.0.pom` | `langchain4j.stable.version` = `1.22.0`, `langchain4j.beta.version` = `1.22.0-beta32`; `langchain4j-google-genai` is still on the beta line |
+| `examples.conf`'s enum claim | `javap` on the two enums | still true: `GPT_5_1` is in `OpenAiChatModelName`, and `AnthropicChatModelName`'s newest Sonnet is `CLAUDE_SONNET_4_6` |
+
+**The builders the factories call changed only by addition.** `javap` on each builder class at
+both versions, diffed member by member: the OpenAI chat and streaming builders gained
+`promptCacheKey` and `promptCacheOptions`, the Anthropic chat and streaming builders gained
+`cacheAutomatically` and `cacheTtl`. Nothing was removed or renamed in any of them, and the
+build prints no `[deprecation]` or `[removal]` warning under `-Xlint:all`, so no method a
+factory calls is deprecated. `baseUrl` is still on every builder that talks to a server —
+OpenAI's chat, streaming and moderation, Anthropic's chat, streaming and estimator, Gemini's
+shared chat base builder and estimator, both GLM builders, Ollama's base builder — so ADR-0062
+holds. The timeout setters are unchanged too: `timeout` everywhere, and `connectTimeout` with
+`readTimeout` on GLM. None of the four new caching options is exposed: they are
+provider-builder features the schema does not carry, like Gemini's context cache in P34.
+
+#### Verified
+
+On an AMD Ryzen 7 7840HS, Temurin 25, Maven 3.8.7.
+
+- `mvn clean install`: green on all nine reactor projects, **315 tests** offline: core 243,
+  OpenAI, Anthropic and Gemini 12 each, GLM 25, Ollama 11. `dev` at `1.20.0`
+  gives the same 315, run in a separate worktree, so the bump changes no test.
+  [P49](#p49--an-ollama-provider) recorded 316 over the same test sources, while
+  [P50](#p50--the-pre-release-check-of-030) counted 315 there, as here.
+- `build/check-docs.py`: clean, 62 ADRs and 77 tracked markdown files.
+- PIT on core: **291 mutants, 283 killed, 1 timed out, 6 survived, 1 uncovered; 4 min 6 s**
+  of wall time including Maven's start. PIT's own summary says *Killed 284* because it counts
+  the timeout as killed, and 284 is the figure the last run in P49 recorded, so the counts
+  are the same. The eight are the same eight: the five redundant
+  `record(path)` calls in `BlockReader`, the equivalent `Optional.empty()` in
+  `LlmRegistry.reload`, the timeout on `Builder.chooseNotifier` and the uncovered cleanup in
+  `WritableFileConfigSource.stage`.
+- `./run-atomic.sh` and `./run-database.sh` against the new jars: both green, neither
+  contacts a provider.
+- **`mvn -Pintegration verify`, run on the owner's go-ahead: green, five live tests, one per
+  provider.** Four paid calls with the keys from the environment — `gpt-5-mini`,
+  `claude-sonnet-4-6`, `gemini-3.6-flash` and `glm-5.3` all answered — and `OllamaProviderIT`
+  against a local Ollama 0.17.5 server with `OLLAMA_MODEL=tinyllama`, because `llama3.2` is not
+  pulled on it. None of the four configured model identifiers had rotted.
+
+### P55 — Listeners on the models the registry builds
+
+**Status:** Done 2026-10-26 — target 0.4.0, before [P56](#p56--a-mistral-provider) ·
+**Branch:** `task/p55-model-listeners` · [ADR-0063](../adr/0063-listeners-are-registered-on-the-registry-and-reach-the-factory-in-a-context.md) ·
+**Raised by:** the owner on 2026-10-26
+
+The registry builds every model and rebuilds it on a reload, so an application has no place to
+attach a `ChatModelListener`. That rules out the observability LangChain4j already offers —
+`langchain4j-micrometer-metrics`, `langchain4j-observation`, or a listener of one's own that
+logs requests. No factory passes listeners today: `listeners(` has no match in any
+`modelrack4j-provider-*/src/main` on `dev` at `f6050a3`. The only listeners in the project are
+`onReload` and `onReloadFailure`, which are about the registry, not about a model call.
+
+#### What the builders accept
+
+Read with `javap` from the `1.22.0` jars (`1.22.0-beta32` for GLM) on 2026-10-26:
+
+| Builder | `listeners(...)` |
+|---|---|
+| `OpenAiChatModel`, `OpenAiStreamingChatModel` | `List<ChatModelListener>` and varargs |
+| `AnthropicChatModel`, `AnthropicStreamingChatModel` | `List<ChatModelListener>` and varargs |
+| `GoogleAiGeminiChatModel`, `GoogleAiGeminiStreamingChatModel` | `List<ChatModelListener>`, on the shared `BaseGeminiChatModel.GoogleAiGeminiChatModelBaseBuilder` |
+| `ZhipuAiChatModel`, `ZhipuAiStreamingChatModel` | `List<ChatModelListener>` |
+| `OllamaChatModel`, `OllamaStreamingChatModel` | raw `List`, declared on `OllamaBaseChatModel.Builder` |
+| `OpenAiModerationModel` | `List<ModerationModelListener>` — **a different type** |
+| `AnthropicTokenCountEstimator`, `GoogleAiGeminiTokenCountEstimator` | none |
+
+`ModerationModelListener` and `OpenAiModerationModel.listeners(...)` are already in `1.20.0`, so
+this item does not depend on [P54](#p54--langchain4j-1220); doing P54 first only avoids reading
+the builders twice.
+
+#### What to settle, and write as an ADR
+
+The shape changes the SPI, so this item closes with an ADR, as ADR-0062 did for 0.3.0.
+
+- **Where the listeners are registered.** A listener is an object, not a value, so it cannot
+  come from the HOCON file. The natural place is `LlmRegistry.Builder`, and the registry hands
+  the same listeners to every model it builds, at the first load and at every reload.
+- **How a factory receives them. Not through `LlmConfig`.** The reload diff is record equality
+  on `LlmConfig` (ADR-0006), and ADR-0055 kept the parsed custom-properties object out of the
+  record for the same reason: an object without a value `equals` would make every block look
+  changed on every reload. The alternative is a parameter on `createChatModel` and
+  `createStreamingChatModel`, or a small context object passed to every `create*` method so
+  that the next such addition is not another break. Either one breaks every `ProviderFactory`
+  outside the project, as ADR-0062 did; the CHANGELOG says so, with the `AbstractMethodError`
+  that `SnapshotLoader.requirementOf` and `buildBundleReportingLinkage` already translate.
+- **Whether a listener can tell which block it is observing.** A listener registered once
+  observes every block. Read `ChatModelRequestContext` and its attributes map before deciding
+  whether the block name has to be passed in, and how.
+- **Whether moderation is covered in the same version.** It needs a second registration
+  method, because the type differs. P56 adds a second provider with a moderation model, which
+  is an argument for doing both now.
+
+#### What not to do
+
+- **Do not put a listener, or anything else that is not a configuration value, in
+  `LlmConfig`.** See above.
+- **Do not let a listener that throws break a reload.** LangChain4j calls listeners around a
+  model call, not while a model is built, so a listener should never be invoked during staging;
+  confirm it in a test rather than assuming it.
+
+#### Tests worth naming
+
+For each factory, a listener registered on the registry sees a request from the chat model and
+from the streaming model, against a local port, without a real provider. A reload that rebuilds
+a bundle keeps the listeners. Registering listeners changes no `ReloadChange`: two loads of the
+same text, with and without listeners, report nothing updated.
+
+#### Documentation
+
+A section in the reference, and one in the README, showing a listener registered on the
+builder. The capability rule that *a factory reports and core enforces* (ADR-0048) is
+unaffected; the paragraph in `AGENTS.md` that lists what a factory reports gains a line about
+what it now receives.
+
+#### What was settled
+
+The owner chose, on 2026-10-26, among the shapes the entry left open; ADR-0063 records the
+argument.
+
+| Question | Chosen | Not chosen |
+|---|---|---|
+| How a factory receives the listeners | `create…(LlmConfig, ModelContext)` overloads **with defaults** that call the one-argument methods, so no factory breaks | the same context as a break, like ADR-0062 |
+| How a listener learns its block | a **function from `LlmConfig` to the listeners**, called per bundle built | a fixed list; a fixed list plus a hidden listener writing the name into `attributes()` |
+| Moderation | **in 0.4.0**, through `moderationModelListeners(...)` | later |
+
+The defaults are safe because of one check: `SnapshotLoader.requireListeners` compares each
+model's `listeners()` with what the factory was given, and refuses the configuration when
+any is missing. A factory written before `0.4.0` therefore works until an application
+registers listeners, and then fails with a message instead of dropping them.
+
+#### What was read before deciding
+
+With `javap` on the `1.22.0` jars, 2026-10-26:
+
+- Every chat and streaming model of the five providers, and `OpenAiModerationModel`, returns
+  from `listeners()` the list its builder was given. That is what makes the check possible.
+- `ChatModel.chat(ChatRequest, ChatRequestOptions)` builds the listener `attributes()` map
+  from the caller's `ChatRequestOptions.listenerAttributes()`, per call. The registry cannot
+  put the block's name there, because the application calls the model directly.
+- `ChatModelListenerUtils` builds one context per event and hands it to each listener in list
+  order, catching and logging an `Exception` from each. A listener that throws therefore fails
+  neither the call nor a reload, and no listener runs while a model is built.
+
+#### What was built
+
+- **`ModelContext`**, a final class in `spi`, with `of(...)` and `empty()`, and three default
+  methods on `ProviderFactory`. `createTokenCountEstimator` takes no context: LangChain4j has
+  no estimator listener.
+- **`LlmRegistry.Builder.chatModelListeners(...)` and `moderationModelListeners(...)`**, each
+  a `Function<? super LlmConfig, ? extends List<? extends …Listener>>`. A function that
+  throws, returns `null` or returns a list holding `null` fails the build or the reload with a
+  `ConfigValidationException` naming the block.
+- **All five factories** implement the two-argument forms and pass the listeners to every
+  chat and streaming builder; OpenAI also to its moderation builder. The one-argument forms
+  call them with `ModelContext.empty()`.
+
+**One defect found in the method this changed.** `buildBundle` called the custom-properties
+handler as the last argument of the `LlmBundle` constructor, so it ran after every model of
+the block had been built. Its own `@implNote` said it ran *before* `createChatModel` "so that
+a rejected configuration does not first build a model that is then discarded", and
+`AGENTS.md` said the same; ADR-0055 says only "beside". It now runs before the context is
+built and before any model, with a test that counts the chat models a factory built when
+the handler rejects the block: zero. No model from a rejected configuration was ever
+published, so the effect was work thrown away, not a wrong result. The CHANGELOG records it
+under *Fixed*.
+
+#### Verified
+
+On an AMD Ryzen 7 7840HS, Temurin 25, Maven 3.8.7.
+
+- **Core: 16 tests in a new `ModelListenersTest`**, 243 → 259. They cover a listener on the
+  chat and the streaming model, two blocks on one model told apart by the function's
+  argument, a moderation listener, a reload that rebuilds one bundle and calls the function
+  again for that block only, the same text reloaded reporting nothing, a throwing listener
+  breaking neither build, reload nor call, listeners kept when `customPropertiesHandler`
+  retypes the builder after them, the refusal of `fake-legacy` — which implements only the
+  one-argument methods — with listeners and its success without, a factory that passes the
+  listeners to its chat model only, refused for its streaming and for its moderation model, a
+  factory with only the one-argument methods still building all three models, the three ways
+  a function can fail, a rejected reload keeping the previous listeners, and the handler order
+  above.
+- **Each provider: one test**, `listenersReachEveryModel`, against `CountingPort`: the
+  listener is in the model's `listeners()`, sees one request from the chat model and one from
+  the streaming model, and the one-argument form builds a model with none. OpenAI's also
+  covers moderation. Each run reported `Tests run: 1`.
+- **Each new check was made to fail.** Moving the handler back after the models and
+  disabling `requireListeners` failed exactly the two tests that name them; removing the
+  `listeners(...)` line from the GLM chat builder failed GLM's provider test.
+- **PIT on core found three gaps in the first 13 tests, and the last three tests close
+  them.** The first run gave 314 mutants with 4 non-killed beyond the known eight: the calls to
+  `requireListeners` for the streaming and the moderation model survived removal, because the
+  only factory that dropped listeners was refused at its chat model; the two-argument
+  `createModerationModel` default survived being replaced by `Optional.empty()`, and the
+  `createStreamingChatModel` default was not covered at all, because `fake-legacy` produces no
+  moderation model and no test asked it for a streaming one. `fake-partial` and
+  `fake-pre-context` exist for those. The last run, on the code as committed: **315 mutants,
+  307 killed, 1 timed out, 6 survived, 1 uncovered; line coverage 802/834; 4 min 11 s**, the
+  report checked to contain `ModelContext`. The eight are the eight P54 lists, and nothing
+  from this item survives.
+- `mvn clean install`: green; **336 tests** offline, 315 → 336 — core 259, OpenAI, Anthropic
+  and Gemini 13 each, GLM 26, Ollama 12. `build/check-docs.py`: clean.
+
+### P56 — A Mistral provider
+
+**Status:** Done 2026-10-27 — target 0.4.0 · **Branch:** `task/p56-mistral-provider`; the live run
+on `task/p58-pre-release-check-0.4.0` · no ADR ·
+**Raised by:** the owner on 2026-10-26
+
+A sixth provider module, and the second whose provider has a moderation model.
+
+#### What to build
+
+- **`modelrack4j-provider-mistral`** on `dev.langchain4j:langchain4j-mistral-ai`, which
+  `langchain4j-bom` `1.22.0` manages at `${langchain4j.stable.version}`: no `<version>` in the
+  module POM (ADR-0018). Read on 2026-10-26.
+- **`MistralProviderFactory`**, provider id `mistral`. Read from the `1.22.0` jar on 2026-10-26:
+  - `MistralAiChatModel` and `MistralAiStreamingChatModel` builders take `apiKey`, `baseUrl`,
+    `modelName`, `temperature`, `timeout(Duration)`, `logRequests`, `logResponses` and
+    `listeners(List<ChatModelListener>)`;
+  - `MistralAiModerationModel.Builder` takes `apiKey`, `baseUrl`, `modelName`, `timeout`,
+    `logRequests`, `logResponses` and `listeners(List<ModerationModelListener>)`, so
+    `supportsModeration()` is `true`;
+  - the jar has **no** class whose name contains `Estimator` or `Tokeniz`, so
+    `TokenEstimation.ABSENT`, like GLM and Ollama;
+  - `apiKeyRequirement()` `MANDATORY`, `baseUrlRequirement()` `OPTIONAL`, the same as Anthropic
+    and Gemini. `base-url` goes to all three builders (ADR-0062).
+- **The moderation model name.** OpenAI's factory deliberately does not pass the chat model's
+  name to its moderation builder, because the endpoint takes a different model. Mistral's
+  moderation builder has `modelName` too: read what it defaults to, and whether the block's
+  chat `model-name` would be wrong there, before writing the factory.
+- **Wiring**: the `META-INF/services` entry, the module in the parent POM's `<modules>`, the
+  artifact in `modelrack4j-bom`, and a dependency from `modelrack4j-examples`.
+- **The dependency check P49 ran**: what `langchain4j-mistral-ai` brings, and whether
+  `DependencyConvergence` stays green. Record the answer here.
+- **`MistralProviderIT`**, under `-Pintegration`, enabled by `MISTRAL_API_KEY`. **It costs
+  money.** Read the price of the model it uses on Mistral's own page on the day, and write the
+  estimate for one run in this entry before the first run.
+
+The jar also holds `MistralAiEmbeddingModel`, `MistralAiFimModel` and `MistralAiBatchChatModel`.
+None of them is a model a bundle holds; leave them out.
+
+#### What not to do
+
+- **Do not add the PIT plugin to the new module** (ADR-0041).
+- **Do not validate `model-name` against `MistralAiChatModelName`.** ADR-0049 forbids checking
+  a catalogue of values a vendor controls.
+
+#### Documentation and guidance
+
+Every table that lists the providers gains a row: the capability matrix in the README and in
+the reference, and the reference's table of provider modules. Three lines say OpenAI is the
+only provider with a moderation model, found with `grep` on 2026-10-26: `part-1-tutorial.md`
+lines 272 and 327, and line 1364 of the reference, the `ships no moderation model` row of its
+troubleshooting table. Read the rows that name the providers without a token estimator too:
+Mistral belongs there, and does not belong in that moderation row. `AGENTS.md` says nine Maven modules and five providers,
+and lists the provider modules by name.
+
+#### What was found
+
+Read from `langchain4j-mistral-ai` `1.22.0` with `javap` on 2026-10-26.
+
+**The moderation model has no default name, and the chat name is wrong for it.**
+`MistralAiModerationModel`'s constructor passes the builder's `modelName` through
+`ValidationUtils.ensureNotBlank`, so a moderation model built without a name throws. OpenAI's
+leaves it `null` and its server applies a default, which is why OpenAI's factory can omit it.
+The block's `model-name` names a chat model, which the moderation endpoint does not take. So
+this factory supplies one: `MistralAiChatModelName.MISTRAL_MODERATION_LATEST.toString()`,
+`mistral-moderation-latest`, the only moderation name the jar contains. It is taken from
+upstream's enum rather than spelled in the factory, so it changes with a LangChain4j bump and
+not by hand. It is not configurable, as OpenAI's is not; a `moderation.model-name` key would be
+a schema change for every provider and was left out of this item. A test asserts the name,
+and fails with `mistral-small-latest` when the factory passes the block's `model-name`
+instead.
+
+**Everything else the entry predicted held.** The chat and streaming builders take `apiKey`,
+`baseUrl`, `modelName`, `temperature`, `timeout`, `logRequests`, `logResponses` and
+`listeners`; the moderation builder takes all of those but `temperature`, with
+`ModerationModelListener`. No class in the jar estimates tokens. `ModelProvider.MISTRAL_AI`
+is what the chat model reports.
+
+**Dependencies.** The artifact declares `langchain4j-core`, `langchain4j-http-client`,
+`langchain4j-http-client-jdk` (runtime) and three Jackson jars, all at the versions core
+already resolves. The module's runtime classpath is core's plus three jars:
+`langchain4j-mistral-ai` (182 KB) and the two HTTP client jars (41 KB and 19 KB) — the same
+shape as Ollama. `DependencyConvergence` passes in all ten reactor projects.
+
+**What else had to change.**
+
+- **Core's moderation refusal named one provider.** It ended "route moderation through an
+  OpenAI-family configuration", which Mistral is not. It now says "through a configuration on
+  a provider that has one, such as openai or mistral", and `LlmRegistryTest` asserts the whole
+  message, because step 6 of the tutorial prints it word for word.
+- **The offline CI job** blanks every provider key so that a test depending on one fails
+  there; `MISTRAL_API_KEY` is now among them.
+- **Two sentences in `AGENTS.md` were already wrong before this item**, and were corrected
+  while adding Mistral to them: the token-estimation list gave `ABSENT` as GLM only, leaving
+  out Ollama since P49, and "two of the four `validate()` bodies are empty" had been three of
+  five since P49. They now read GLM, Ollama and Mistral, and four of six. The same file's
+  "two of the four" model identifiers outside upstream's enums was checked rather than
+  carried over: of the five hosted IDs the ITs use, `gemini-3.6-flash` and `glm-5.3` are in no
+  enum at `1.22.0` — Gemini's module has no chat model enum at all, and GLM's
+  `ChatCompletionModel` goes no further than `glm-5.1` and `glm-5v-turbo` — while `gpt-5-mini`,
+  `claude-sonnet-4-6` and
+  `mistral-small-latest` are listed.
+- The provider tables in the README and the reference, the reference's artifact table, both
+  memory tables, the per-provider notes, two troubleshooting rows, the tutorial's two
+  OpenAI-only sentences and its list of keys, the README's opening sentences and its list of
+  integration keys, the `ProviderFactory` Javadoc, `CONTRIBUTING.md`'s module count and the
+  CHANGELOG.
+
+#### The live run, and what it costs
+
+`MistralProviderIT` sends one chat request to `mistral-small-latest` and moderates one
+sentence. Read on 2026-10-26 from Mistral's pricing page, `docs.mistral.ai/inference/pricing`:
+Mistral Small 4 costs **$0.15 per million input tokens and $0.60 per million output tokens**,
+and Moderation 2 is listed as **free**. The page names models, not the `-latest` aliases, so
+that `mistral-small-latest` is Small 4 is an assumption. The request is about 20 tokens in and
+a few out, so **one run costs about $0.00001**.
+
+**Run on 2026-10-27, in P58: green.** One chat request to `mistral-small-latest` and one
+moderation of a harmless sentence through `mistral-moderation-latest`, which came back not
+flagged — so the endpoint accepts the one value the factory chose. The key is on Mistral's free
+plan; its first run, minutes after the key was created, got HTTP 429 "Rate limit exceeded"
+(code 1300) on the chat call, and passed once the owner had checked the account.
+
+#### Verified
+
+On an AMD Ryzen 7 7840HS, Temurin 25, Maven 3.8.7.
+
+- `mvn clean install`: green on all ten reactor projects, **348 tests** offline — the 336 of
+  P55 and **12** in the new module. `build/check-docs.py`: clean.
+- The new module's tests cover discovery, the two capabilities, the two key requirements,
+  `base-url` reaching all three models and the listeners reaching all three against
+  `CountingPort`, the moderation model name, a missing key and `token-window` refused through
+  the registry, the chat model's parameters, an omitted temperature, and a bundle built end
+  to end.
+
+### P57 — A catalogue of providers and compatible services
+
+**Status:** Done 2026-10-26 — target 0.4.0 · **Branch:** `task/p57-provider-catalogue` ·
+no ADR ·
+**Raised by:** the owner on 2026-10-26
+
+The reference lists the five **modules**, and a section on `base-url` lists the **local servers**
+reachable through `provider = openai`. Neither answers the question a new user asks: *"I use
+Kimi, or DeepSeek, or Groq — does it work?"* The answer exists, but has to be worked out.
+
+#### What to build
+
+**A manual page**, `docs/manual/providers.md`, linked from the reference's *Providers* section
+and from the README. Not a section of `part-2-reference.md`: the reference describes keys and
+APIs, and a list of outside services goes stale at a different speed.
+
+**One row per service, and each row says how true it is.** Three levels:
+
+| Level | Meaning | Who stands behind it |
+|---|---|---|
+| **Module** | a `modelrack4j-provider-*` of its own, covered by its integration test | the project, at every release |
+| **Tested** | through `openai` or `anthropic` with a `base-url`; one chat and one streaming call made by hand against the real service, with the date | the project, on that date |
+| **Declared** | through `openai` or `anthropic` with a `base-url`; the vendor states compatibility, nobody here has run it | the vendor |
+
+Columns: service, `provider =`, `base-url`, `api-key`, level, date, known limits. Then one HOCON
+example per row.
+
+**Candidate rows.** Every value — address, model name, which protocol the vendor speaks — is
+read from the vendor's own documentation on the day it is written, with the date in the row.
+None of this list is verified:
+
+- Kimi (Moonshot AI), via `openai` and, the vendor says, `anthropic`;
+- DeepSeek, Groq, OpenRouter, Together, xAI, via `openai`;
+- Mistral, as a **Module** after P56;
+- Ollama, LocalAI, llama.cpp, vLLM, LM Studio, already in the reference: the catalogue gives
+  them rows and links back to the section that explains `base-url`;
+- **Not reachable**: Azure OpenAI, Amazon Bedrock, Vertex AI, watsonx. ADR-0062 records that
+  a credential which is not a single key is out of its scope. Say so in the catalogue, because
+  it is the question that will be asked.
+
+**The known limits of a row that is not a module**, said once, near the table:
+
+- **Moderation.** `openai` reports `supportsModeration() == true` for the provider, not for the
+  block. A block pointed at a service with no `/moderations` endpoint accepts a moderation
+  model at load and fails at the first call.
+- **`token-window` memory.** `OpenAiTokenCountEstimator` only knows the model names its jtokkit
+  shipped with; `OpenAiProviderFactory.createTokenCountEstimator` already refuses an unknown one
+  at load with a message that says so.
+
+**The examples stay true on their own.** A `catalog.conf` in `modelrack4j-examples` with one
+block per row, and a test that loads it and checks every block passes validation. It calls no
+service and costs nothing. No test loads `examples.conf` or `local-models.conf` today (searched
+on 2026-10-26). Check first that building the models without a real key does not fail before
+the network.
+
+**The cost of "Tested".** One chat and one streaming call per service, by hand, with the
+smallest model: a few cents per service, but a key for each. A row with no key stays
+"Declared". Not in CI.
+
+#### What not to do
+
+- **Do not add a module for a service that LangChain4j has no module for**, Kimi included. The
+  `openai` route already works, and a module would be a name to maintain with nothing inside.
+- **Do not mark a row "Tested" on the strength of the vendor's documentation.** That is what
+  "Declared" is for.
+- **Do not make capabilities per block in this item.** It would close the moderation gap above,
+  but it changes the SPI for every provider and needs its own decision. The catalogue
+  documents the gap meanwhile.
+
+#### Open for the owner
+
+- Which services can be "Tested", that is, for which ones a key is available.
+- Whether the pre-release check of each version re-tests the "Tested" rows, as it re-runs the
+  integration tests, or the rows keep their date and age visibly.
+
+#### What the owner settled
+
+Asked on 2026-10-26. **No key for any outside service is available**, so every row that is not
+a module is **Declared**, except the one this machine can test for free. **A "Tested" row keeps
+its date** and ages visibly; the pre-release check does not re-test it.
+
+#### What was built
+
+- **`docs/manual/providers.md`**, linked from the *Providers* section of the reference and of
+  the README, and from the manual's index. Fifteen rows: the six modules, Ollama through its
+  OpenAI endpoint, one row for LocalAI, llama.cpp, vLLM and LM Studio together, and seven for
+  hosted services — Kimi twice, through `openai` and through `anthropic`, then DeepSeek, Groq,
+  OpenRouter, Together and xAI. A section on the two limits of a row that is not a module, one
+  on Kimi through `anthropic`, one on the services with no row, and one HOCON block per row.
+- **`modelrack4j-examples/src/main/resources/catalog.conf`**, the same fifteen blocks.
+- **`CatalogTest`**, the first test in `modelrack4j-examples`. It loads `catalog.conf`, and
+  every `hocon` block of the page, under a higher layer that defines each `${VAR}` the text
+  uses, so the result does not depend on the keys of whoever runs it. It asserts the fifteen
+  names, and that the page and the file give **equal `LlmConfig` records** — the comparison a
+  reload uses — so a value changed in one and not the other fails. Changing one model name on
+  the page failed it.
+- **Gemini and GLM became dependencies of `modelrack4j-examples`**, because the catalogue has
+  a block for each.
+
+#### What was read, and where it was not settled
+
+Every hosted row was read from the vendor's own page on 2026-10-26; the page lists the links.
+
+- **The address each provider is given.** `HttpRequest.Builder.url(base, path)` joins the two
+  with one `/` whatever the slashes, so a trailing slash does not matter. The OpenAI client
+  appends `chat/completions`, the Anthropic client `messages`. So an OpenAI-protocol address
+  is the one the vendor documents for the OpenAI SDK, and an Anthropic-protocol address must
+  already end in `/v1`, which Anthropic's own SDKs add themselves.
+- **Kimi through `anthropic` stays doubtful.** Kimi's Messages API page gives
+  `https://api.moonshot.ai/anthropic` and the path `/anthropic/v1/messages`, so the catalogue
+  uses `https://api.moonshot.ai/anthropic/v1`. It documents its key in `Authorization: Bearer`,
+  and `DefaultAnthropicClient` in `langchain4j-anthropic` `1.22.0` sends `x-api-key`. Whether
+  Kimi accepts that header is not documented, and the page says so.
+- **DeepSeek** documents `https://api.deepseek.com` for the OpenAI SDK and says nothing about a
+  `/v1`, so the row uses it as written. It also has an Anthropic endpoint, which maps
+  `claude-*` model names onto its own; it was left out, since it adds nothing the `openai` row
+  does not.
+- **xAI**'s migration and integrations pages answered 404; its overview gives
+  `https://api.x.ai/v1` and `grok-4.7`, and shows the OpenAI SDK without stating
+  compatibility in words. A third-party copy of its documentation says Anthropic compatibility
+  is deprecated, so the row is through `openai` only.
+- **Together** states that `moderations.create` is not implemented, which the row repeats.
+  Groq's page does not say either way.
+- **Azure OpenAI, Bedrock, Vertex AI and watsonx have no row**, for the reason ADR-0062 gives:
+  their builders have not been read, and whether any fits one `api-key` and one `base-url` is
+  open. The page makes no claim either way, rather than calling them unreachable.
+
+#### Verified
+
+On an AMD Ryzen 7 7840HS, Temurin 25, Maven 3.8.7.
+
+- **Ollama through `provider = openai` is Tested.** One chat call and one streaming call
+  through a registry, `base-url = "http://localhost:11434/v1"`, against Ollama 0.17.5 in the
+  local container with `tinyllama`: both answered. Free.
+- **Building every block sends nothing.** The fifteen blocks load with placeholder keys and no
+  network.
+- `mvn clean install`: green on all ten reactor projects, **350 tests** offline — the 348 of
+  P56 and the 2 of `CatalogTest`. `build/check-docs.py`: clean.
+
+### P58 — The pre-release check of 0.4.0
+
+**Status:** In progress — everything offline is green, all six providers answered live,
+Jackson moved off seven advisories, a vulnerability check added to CI; the check has still to
+pass in CI and become required · **Branch:** `task/p58-pre-release-check-0.4.0` · ADR-0064, ADR-0065 ·
+**Raised by:** the owner on 2026-10-26, as the check before 0.4.0 is released
+
+P54 to P57 were each checked on their own branch. This item re-runs, on the merged tree, what a
+merge or the outside world can change, and closes P56, whose live IT has never run: the owner
+decided on 2026-10-26 to run it here rather than before P56 merged. Measured at `f2972fd`, on an
+AMD Ryzen 7 7840HS, Temurin 25, Maven 3.8.7, Pop!_OS 24.04.
+
+| | |
+|---|---|
+| `mvn clean install` | green, 10 modules — 350 offline tests: core 259, OpenAI, Anthropic and Gemini 13 each, GLM 26, Ollama 12, Mistral 12, and 2 in `modelrack4j-examples`. `DependencyConvergence` passes in all ten |
+| `build/check-docs.py` | clean, 63 ADRs and 79 tracked markdown files |
+| PIT on core | 315 mutants, 307 killed, 1 timed out, 6 survived, 1 uncovered; line coverage 802/834; 4 min 10 s. The report contains `ModelContext`. The eight are the eight P54 lists; the same counts as P55's last run |
+| `./run-atomic.sh`, `./run-database.sh`, `./run-properties.sh` | green; none contacts a provider |
+| LangChain4j on Central | `1.22.0` and `1.22.0-beta32` are still the latest releases of both BOMs, and of `langchain4j-mistral-ai` |
+
+**Core's public API changed only by addition.** `javap -public` over every class of the
+released `modelrack4j-core-0.3.0.jar` and of this build, diffed: two methods on
+`LlmRegistry.Builder` (`chatModelListeners`, `moderationModelListeners`), the class
+`spi.ModelContext`, and three `default` methods on `ProviderFactory`. Nothing removed, no
+signature changed.
+
+**A provider jar from 0.3.0 still works, which is the CHANGELOG's central claim.** The
+released `modelrack4j-provider-openai-0.3.0.jar`, loaded by `ServiceLoader` from its own file
+beside this build's core and LangChain4j `1.22.0`, built a block with streaming and moderation.
+With a chat model listener registered, the same block was refused with the message
+`requireListeners` gives — "built a chat model without the listeners this registry was given
+… probably because it was built for a modelrack4j older than 0.4.0". The CHANGELOG now says it
+was checked this way.
+
+**Javadoc prints 13 warnings: P50's twelve and one new of the same kind**, the implicit default
+constructor of `MistralProviderFactory`, which follows the other five factories. None is in a
+type added in 0.4.0.
+
+**The CHANGELOG's `[Unreleased]` section, read through as release notes, needed two
+corrections.** The LangChain4j bullet said "Nothing in this library's API changes", true of the
+bump when P54 wrote it and ambiguous in a version that adds API; it now says the upgrade itself
+changes nothing. The rewording of the moderation refusal sat inside the Mistral bullet under
+*Added*; it is a change of behaviour that code matching on the text would notice, so it moved
+to *Changed*, with that warning.
+
+**Not done here, because it belongs to the release commit:** the `[Unreleased]` and `[0.4.0]`
+links at the end of the CHANGELOG, the version in every POM, and the README's status line.
+
+#### Known vulnerabilities, a check the owner added on 2026-10-27
+
+Asked by the owner during this item. Nothing in the project looked for them: Dependabot alerts
+and secret scanning were off on the repository, CI had no scanner, and no ADR mentioned it.
+
+**What a first look found.** `dependency:list` over core, the six providers and the examples
+gives 41 third-party artifacts in 42 rows (one appears in two scopes): 26 compile, 4 runtime,
+12 test. Queried on the OSV database through its batch API with `curl`, two have advisories:
+`jackson-core` `2.22.1` (GHSA-7hhh-6rmp-j9qf, GHSA-p6pp-m3f8-5c89) and `jackson-databind`
+`2.22.1` (GHSA-cxp5-3px4-pw24, GHSA-gx83-3vf8-gh7j, GHSA-q4xh-88c3-wmh7, GHSA-wjgm-6hv5-3cvf,
+GHSA-wv8q-qhhj-9h54). Five are rated high; all seven were published between 2026-09-28 and
+2026-10-01 and are fixed in `2.22.3`. Both arrive at compile scope from `langchain4j-core`,
+whose own POM names `2.22.1`; the LangChain4j BOM does not manage Jackson. `langchain4j-core`
+`1.20.0` names the same version, so **the released `0.3.0` carries it too**, published three
+days after the last advisory. OSV lists nothing against `2.22.3` or `2.22.4`.
+
+**What the owner chose, among the options put to them:** for the check, a job in CI, with
+osv-scanner, required, plus a weekly run, in this item rather than a new one; for Jackson, a
+managed version in the parent POM and in `modelrack4j-bom` with a CHANGELOG note, not a direct
+dependency in core; and to tell `0.3.0` users in the CHANGELOG, not through a GitHub advisory.
+
+**What was built.**
+
+- **Jackson** (ADR-0065): `jackson.version` = `2.22.4` in the parent, managing `jackson-core` and
+  `jackson-databind` there and in `modelrack4j-bom`. Afterwards every module resolves `2.22.4`,
+  `DependencyConvergence` passes in all ten projects, the 350 offline tests pass, and the OSV
+  query over the 41 artifacts finds nothing. A throwaway application against this build
+  resolves `2.22.4` when it imports the BOM and `2.22.1` when it does not; one on the released
+  `0.3.0` with the CHANGELOG's `jackson-bom` block resolves `2.22.4`.
+- **The check** (ADR-0064): `.github/workflows/vulnerabilities.yml` and `build/osv-scan.sh`.
+  osv-scanner `v2.7.0` is downloaded and checked against the release's SHA256
+  (`160c6253…e4218b`, verified here before it was written into the workflow). The script
+  fails on a finding, on any error and when the log reports no packages. The job
+  `known vulnerabilities` runs on every push and pull request; a weekly job scans `dev` and
+  `main`, taking the script from the workflow's own branch because `main` may not have it.
+  `AGENTS.md`, `CONTRIBUTING.md` and `build.yml`'s comment now say six required checks.
+
+**The first local run found that scanning the `pom.xml` files checks too little.** The session's
+permission classifier refused to run the downloaded binary, so the owner ran the script with
+`!`. osv-scanner, resolving from Maven Central, resolved core and failed for the other seven
+modules — `modelrack4j-core:0.4.0-SNAPSHOT: not found` — then reported 39 packages and no
+vulnerabilities, from direct dependencies only. The first script would have passed that.
+At the owner's choice, Maven now resolves the graph and writes a CycloneDX SBOM
+(`cyclonedx-maven-plugin` 2.9.3, invoked by coordinates, test scope left out) and osv-scanner
+reads the SBOM. Generated after moving this machine's installed `0.4.0-SNAPSHOT` artifacts aside
+and running `mvn clean`, as a CI runner starts, it lists 28 third-party components, Jackson
+`2.22.4` and the providers' transitive Guava and `langchain4j-mistral-ai` among them. The script
+now also fails on a failed resolution in the output and on fewer packages scanned than the SBOM
+lists.
+
+**Found on the way, a question for the owner:** `modelrack4j-bom` inherits from
+`modelrack4j-parent`, and an imported BOM brings its *effective* `dependencyManagement`. The
+effective POM has 225 managed entries, LangChain4j's, JUnit's, AssertJ's and Typesafe Config's
+among them, so an application importing the BOM gets this project's versions of all of them,
+not only of the modelrack4j artifacts. That has been so since the BOM existed. Whether to
+decouple the BOM from the parent is left to the owner; ADR-0065's two Jackson entries are
+explicit in the BOM so that they survive if it is.
+
+**Still to do before this item closes:** make `known vulnerabilities` a required check on `dev`
+and `main`, once it has passed on the pull request; and the live run of all six providers.
+
+#### The live run of all six providers
+
+`mvn -Pintegration verify` on 2026-10-27, with Ollama 0.17.5 in its local container and
+`OLLAMA_MODEL=tinyllama`, after Jackson moved to `2.22.4`: OpenAI (`gpt-5-mini`), Anthropic
+(`claude-sonnet-4-6`), Gemini (`gemini-3.6-flash`), GLM (`glm-5.3`) and Ollama passed.
+`MistralProviderIT` failed on its chat call with HTTP 429, "Rate limit exceeded", code 1300 —
+the key was new, on Mistral's free plan. After the owner checked the account it was run alone
+and passed: one chat request and one moderation, not flagged. That closes P56. None of the
+five configured hosted model identifiers has rotted.
+
+### P59 — The pre-release check of 0.4.0, part two
+
+**Status:** In progress — the three candidates done, the owner asked for all three ·
+**Branch:** `task/p59-pre-release-check-0.4.0-bis` ·
+**Raised by:** the owner on 2026-10-27, after P58 merged with its checks unfinished
+
+[P58](#p58--the-pre-release-check-of-040) merged as `52ed737` with the offline checks, the live
+run of all six providers, the Jackson fix and the `known vulnerabilities` check. The owner
+asked for a second branch for the checks still to do before 0.4.0 is released. P58 stays *In
+progress* until this item closes, and closes with it.
+
+#### Candidates found so far
+
+- **GitHub Actions versions.** The runs of `#83` warned that `actions/setup-java@v4` is
+  deprecated in favour of `v5`, and that `actions/checkout@v4` and `actions/setup-java@v4` target
+  Node.js 20, which GitHub now forces onto Node.js 24. Both workflows use them. Nothing fails
+  today.
+- **`modelrack4j-bom` exports its parent's `dependencyManagement`.** Found in P58: importing the
+  BOM brings 225 managed versions, not only the modelrack4j artifacts — measured with the
+  published `0.3.0` BOM, an application that declares JUnit and AssertJ without a version gets
+  6.1.3 and 3.27.7. Decoupling the BOM from the parent is a question for the owner; ADR-0065's
+  Jackson entries are explicit in the BOM so that they survive it.
+- **The weekly job's name** shows unexpanded on a pull request — `known vulnerabilities on
+  ${{ matrix.ref }}`, skipped — because a matrix is not expanded for a job that does not run.
+  Cosmetic.
+
+#### What was done
+
+The owner asked on 2026-10-27 for all three.
+
+- **GitHub Actions moved to `actions/checkout@v7` and `actions/setup-java@v6`**, in both
+  workflows: the newest majors, read from their releases on the day. Both run on Node.js 24,
+  read from each tag's `action.yml` (`v4` declared `node20`). `checkout` v7 blocks checking out
+  a fork's pull request under `pull_request_target` and `workflow_run`, neither of which this
+  project uses; `setup-java` v6's release notes state its move to ESM is not a user-facing
+  break.
+- **The weekly jobs have fixed names.** The matrix became two jobs, `known vulnerabilities,
+  weekly, dev` and `… main`, because GitHub lists a skipped job without expanding its matrix.
+  ADR-0064's decision — weekly, over both branches — is unchanged.
+- **The BOM no longer exports test libraries** (ADR-0066). The owner chose, among three shapes,
+  to remove JUnit, AssertJ and Awaitility from the parent's `dependencyManagement` — they are now
+  declared with their versions in the parent's `<dependencies>` and in core — rather than to
+  give the BOM no parent, which would duplicate the publishing metadata and the `release`
+  profile in it. The BOM's effective `dependencyManagement` went from 225 entries to 209, none
+  of them JUnit, AssertJ, Awaitility, opentest4j or apiguardian; LangChain4j, Typesafe Config,
+  SLF4J, Jackson and the modelrack4j modules are still in it. A throwaway application importing
+  this build's BOM and declaring JUnit and AssertJ without a version now gets Maven's "version is
+  missing" for both, where `0.3.0`'s BOM gave it `6.1.3` and `3.27.7`. The CHANGELOG says so,
+  under *Changed*. `mvn clean install` stays green, 350 tests, `DependencyConvergence` in all ten
+  projects. PIT on core, run because `pitest-junit5-plugin` had worked against the JUnit BOM:
+  315 mutants, 307 killed, 1 timed out, 6 survived, 1 uncovered, line coverage 802/834 — the
+  same eight as P58.
+
+#### LangChain4j 1.23.0, released 2026-10-28
+
+Read on Central the same day: `langchain4j-bom` `1.23.0`, its beta line named `1.23.0-beta33`;
+`langchain4j-community-bom` still `1.22.0-beta32`, whose `langchain4j-community-zhipu-ai`
+depends on `langchain4j-core` `1.22.0`. The two BOMs move together (ADR-0018, ADR-0022), so
+0.4.0 stays on `1.22.0` unless the owner waits for the community release — P50's situation with
+`1.21.0`.
+
+`langchain4j-core` `1.23.0` declares `jackson-core` and `jackson-databind` `2.22.4`, the version
+ADR-0065 manages; its release notes list "Bump Jackson to 2.22.4 and 3.2.4 to fix DoS
+advisories". So the bump that follows 0.4.0 can remove the Jackson entries, as ADR-0065 point 5
+says. The notes also change `OpenAiStreamingChatModel` to fail on provider errors sent inside
+the stream, which that bump's live run should cover. The OSV query over the 41 third-party
+artifacts, repeated the same day on the current tree: nothing.
+
+#### A Java review of what changed since 0.3.0
+
+Asked by the owner on 2026-10-28, over every `.java` file in `git diff v0.3.0..HEAD`, against
+the Java 17 profile.
+
+**One defect, in the SPI: the two `create` methods could call each other.** ADR-0063's
+defaults make `createChatModel(LlmConfig, ModelContext)` call `createChatModel(LlmConfig)`,
+and the Javadoc of the one-argument method tells an implementor to write it as a call to the
+two-argument one. A factory that does that and forgets to override the two-argument method
+compiles — the default has a body — and recurses. A `jshell` probe with such a factory gave
+`StackOverflowError`. That is an `Error`: `build()` let it through, and on the watcher thread a
+reload would have ended the thread in silence, the trap `AGENTS.md` already describes for
+`AbstractMethodError`. `buildBundleReportingLinkage` translates only `LinkageError`.
+
+**Fixed with a guard in `spi.DefaultCreate`**, package-private: each of the three defaults
+runs the one-argument method through it, and a second entry on the same thread throws an
+`IllegalStateException` naming the factory and the method. The thread-local flag is removed in
+`finally`. `FakeRecursiveProviderFactory` reproduces the mistake; three tests in
+`ModelListenersTest` cover `build()`, the streaming and moderation defaults, a reload onto such
+a factory that leaves the previous bundles live, and the flag cleared afterwards on the same
+thread. Disabling the guard failed exactly those three. Core's tests: 259 → 262. PIT on core
+afterwards: 322 mutants, 314 killed, 1 timed out, 6 survived, 1 uncovered, line coverage
+811/845. All seven new mutants — four in `DefaultCreate`, three in the defaults — are killed,
+including the one that removes `ACTIVE.remove()`; the eight not killed are P58's eight.
+
+**Two minor findings, left as they are.** `requireListeners(chatModel.listeners(), …)`
+evaluates `listeners()` even when no listener is registered, harmless with LangChain4j's
+models; and `ModelContext.of` rejects a `null` element through `List.copyOf`'s message-less
+`NullPointerException`, which its Javadoc states and the registry pre-empts with a message of
+its own.
+
+#### Kimi tested, 2026-10-28
+
+The owner created a key on Kimi's international platform. One chat call and one streaming call
+through each route of the catalogue, with `kimi-k3.1-pro`: through `openai`
+(`https://api.moonshot.ai/v1`) both answered; through `anthropic`
+(`https://api.moonshot.ai/anthropic/v1`) the chat answered, which settles the doubt P57 left —
+Kimi accepts the `x-api-key` header LangChain4j's Anthropic client sends — and the streaming
+call was refused with `rate_limit_reached_error` at the account's limit of three requests a
+minute, then answered when run alone 25 seconds later. Both rows are now **Tested**, dated
+2026-10-28, and the page's section on the `anthropic` route says the header works and that a new
+account's limit is low. `catalog.conf` is unchanged: the blocks were already the ones tested.
+
+#### A consistency pass over the documentation and the examples, 2026-10-28
+
+Asked by the owner. Checked mechanically, then the hits read in context:
+
+- **Counts.** Every "four / five / six / seven" before a noun in the README, the manual,
+  `CONTRIBUTING.md`, `AGENTS.md`, the examples and the workflows. One was stale: `AGENTS.md`
+  said the listener check matters although "the five factories here all pass them"; six now.
+- **Lists of providers that leave Mistral out.** Four, all written before P56 and missed by it:
+  the README's list of `provider =` values beside the module names, the README's sentence on
+  which providers require `api-key`, and in the reference the `api-key` row of *Every key* and
+  the `has no api-key` row of *Troubleshooting*. All four now name Mistral.
+- **The exception guarantee.** The reference said the four hosted providers of P6 throw beneath
+  `LangChain4jException`. Mistral does too — its 429 in P58 arrived as
+  `dev.langchain4j.exception.RateLimitException` — and the sentence now says so.
+- **The capability tables** of the README and the reference are identical row for row, and each
+  row matches what its factory reports in code: estimation, moderation, both key requirements.
+- **Every message the documentation quotes** — the *Troubleshooting* symptoms, and the
+  unlabelled output blocks of the tutorial, the reference, the README and the catalogue — was
+  matched against the library's string literals, joined across `+` and `append`. What did not
+  match is either built at run time (a key, a block, a provider), or not this library's: Typesafe
+  Config's, the Java compiler's, Anthropic's API. Nothing is stale.
+- **The examples.** The README's and the reference's tables of examples agree on which four of
+  the seven send no request and on the keys the other three need; seven `run-*.sh` scripts for
+  seven programs. `CatalogTest` passes, so the catalogue page and `catalog.conf` agree.
+
+#### The integration tests cover what 0.4.0 adds, 2026-10-28
+
+Asked by the owner. Each `*IT` made one chat call, Mistral's a moderation too; none streamed,
+none moderated on OpenAI, and none checked a listener against a real provider — the offline
+tests show a listener sees the request before it is sent, not that it sees a real response.
+They had also last run before `DefaultCreate` changed how core builds every model.
+
+Each `*IT` now builds its registry with a `ChatModelListener` from `chatModelListeners(...)`,
+makes one chat call and one streaming call, and asserts the listener saw exactly `request`,
+`response`, `request`, `response`. OpenAI's and Mistral's also moderate one sentence, not
+flagged, through a `ModerationModelListener` that must see `moderation request` and
+`moderation response`. A short bounded wait covers a streamed response reported to listeners
+after the handler completes.
+
+`mvn -Pintegration verify` on the branch, with Ollama 0.17.5 and `OLLAMA_MODEL=tinyllama`: all
+six green. OpenAI 7.4 s, Anthropic 3.7 s, Gemini 4.3 s, GLM 5.6 s, Ollama 18.7 s, Mistral 2.7 s.
+That is the first live evidence that a listener on the registry sees a real provider's responses,
+streamed ones included, and that OpenAI's moderation still answers.
+
+#### A Java review of the whole code base, 2026-10-28
+
+Asked by the owner after the review of what changed since 0.3.0. All production code read —
+core, the six providers, the seven examples, about 8 300 lines — against the Java 17 profile
+and the skill's five questions; the tests, about 10 000 lines, searched for the defects this
+project has met before: a discarded `Future`, an assertion inside `finally`, `sleep` used to
+synchronise, a registry not closed. None of those turned up. Three defects did, each confirmed
+by a probe before it was fixed, and each fix has a test that fails without it.
+
+- **An `Error` from a reload listener stopped hot reload.** `LlmRegistry.notify` and
+  `ConfigWatcher.reloadIfQuiet` caught `RuntimeException` only. A `jshell` probe with
+  `watch(true)` and an `onReload` listener that throws `AssertionError`: the first edit
+  reloaded, the watcher thread then ended — `Exception in thread "modelrack4j-config-watcher"`
+  on `System.err` and nothing in SLF4J — and the second edit was never reloaded. The README
+  promised that a listener which throws cannot break reloading. Both catches now also take
+  `LinkageError` and `AssertionError`, the errors application code raises, while a
+  `VirtualMachineError` still propagates; the watcher thread has an uncaught-exception handler
+  that logs if it dies anyway. Two tests in `ReloadTest`: a throwing listener registered before
+  the counting one, after which two edits are both reloaded and counted; and a
+  custom-properties handler that throws `AssertionError` for one value, after which the next
+  edit is reloaded. With the old catches both failed, on their two-second and ten-second
+  waits.
+- **`store()` missed an `include` that does not start a line.** The pattern was
+  `(?m)^\s*include\s`. Tested on the regex: it did not match `llm { include "a.conf" }` or
+  `x = 1, include "a.conf"`, which Typesafe Config parses. For a layer reached through a
+  symbolic link such a text skipped the refusal and was validated against a different sibling
+  than the one it is read with — the hazard the refusal exists for. The pattern now looks for
+  `include` followed by what an include names, a quoted file or `required(`, `file(`, `url(`,
+  `classpath(`, anywhere in the text. Two tests in `ConfigStoreTest`: an include after an
+  opening brace is refused, which failed with the old pattern; and a `description` containing
+  the word, which is still stored.
+- **An unknown `memory.type` did not say where it was.** Every other validation message names
+  the block and the layer with the line; this one said only "Unknown memory.type 'x'". It now
+  reads `llm.SL.memory.type is 'x' (<layer>: <line>). Supported values are …`, and
+  `MemoryConfig.unknownType`, no longer used, is gone. `LlmRegistryTest` asserts the prefix,
+  the file and the ending; the old message failed it.
+
+Read and found sound: the reload lock and the single-write swap; `FileChangeNotifier`'s state
+under one lock with the join outside it; the staged write, its cleanup on an `Error`, its
+permissions; every `ConfigException` translated with its cause; the records validating in their
+constructors and copying their collections; the examples closing every registry, shutting their
+pool down and keeping every `Future`. One minor item left as it is: the private
+`apiKey(config)` helper is the same in five provider modules, which share no code but core.
+
+
+PIT on core over the three fixes, AMD Ryzen 7 7840HS, Temurin 25: **321 mutants, 313 killed, 1
+timed out, 6 survived, 1 uncovered**, line coverage 810/844. The eight are the eight P54 lists.
+The run has one mutant fewer than the last, the one in the removed `MemoryConfig.unknownType`;
+the new message in `LlmConfig` is killed, and the two catches give PIT nothing to mutate.
+`ConfigWatcher` is excluded from mutation, so its handler is covered by `ReloadTest` only.
+
+#### A second Java review of the whole code base, and every test again, 2026-10-28
+
+Asked by the owner once the three fixes above were committed: review everything again, fix,
+re-run every test, check the documentation and run the examples. All production code read
+again, about 8 300 lines, against the Java 17 profile. One defect in the library, two in an
+example, and twelve passages that later code had made untrue.
+
+- **A `store()` whose `write()` threw an `Error` left the new snapshot live with nothing
+  stored.** `storeHoldingTheLock` publishes before it commits, and put the previous snapshot
+  back in a `catch (RuntimeException)`. An `AssertionError` or a `LinkageError` from an
+  application's own `WritableConfigSource.write()` skipped it, which breaks the contract the
+  method's name states. The rollback is now in a `finally` guarded by a flag, the idiom
+  `WritableFileConfigSource.write` already uses. `ConfigStoreTest` gained
+  `store_whenTheWriteThrowsAnError_rollsBack`; with the old catch it failed on
+  `expected: "first"`.
+- **Two `@implNote`s in `SnapshotLoader` said the watcher loop catches only
+  `RuntimeException`**, which the fix above made false. They now say that `reload()` does, and
+  what that still costs: no WARN line and no failure listener. `AGENTS.md` said the same, and
+  its P59 paragraph had been inserted between a sentence and the `ConfigValidationException` it
+  referred to; both are fixed, and the paragraph names the `finally` in `storeHoldingTheLock`.
+  Its `DefaultCreate` paragraph called a `StackOverflowError` "the same trap as
+  `AbstractMethodError`", which the watcher now survives; it says `VirtualMachineError` instead.
+- **Three providers said moderation is refused by `validate()`.** Anthropic, Gemini and GLM:
+  `createModerationModel` was "unreachable through the registry, which calls validate()
+  first", true before P27 moved the rule to core. They now say what Ollama's already said.
+- **Four passages written when there were fewer modules or examples.** `GlmProviderFactory` and
+  its test compared GLM with "the other three modules" (five now); `GeminiProviderIT` said it
+  was the only module without a model-name enum, and Ollama has none either; and
+  `AtomicSnapshot` said it and `DatabaseSource` were "the two examples that run anywhere ...
+  the other three call a paid API", written when there were five.
+- **`ConsoleChat`: a moderation request that failed ended the session**, outside the `try`
+  that keeps one failed answer from doing so. It is now caught, and the question is not sent
+  unchecked. **And an empty configuration printed "choose 1-0"**: the menu now says to add a
+  block and press Enter.
+
+Left as they are, both minor: a reload whose own code throws an `Error` is logged by the
+watcher but reaches no failure listener, because `ReloadFailure.cause` is an `Exception` and
+changing that is an API change; and the examples that write a temporary directory leave it
+behind, as they always have.
+
+Everything run again after these fixes, on AMD Ryzen 7 7840HS, Temurin 25, Maven 3.8.7:
+
+| Run | Result |
+|---|---|
+| `mvn clean install` | green, 358 offline tests: core 267, OpenAI, Anthropic and Gemini 13 each, GLM 26, Ollama 12, Mistral 12, examples 2 |
+| `mvn -Pintegration verify`, keys from `.env`, Ollama in its container with `tinyllama` | green; all six `*IT` ran, none skipped, each with a chat call, a streaming call and the listener events, OpenAI and Mistral also moderating |
+| `build/check-docs.py` | clean, 66 ADRs and 82 tracked markdown files |
+| The released `modelrack4j-provider-openai-0.3.0.jar` beside this core | builds a block with streaming and moderation through the guarded defaults; with a chat model listener registered it is refused with `requireListeners`' message |
+| `./run-atomic.sh`, `./run-database.sh`, `./run-properties.sh` | green; output as the README and the reference describe it. Atomic: no tear either way, one reload of `[SH, SL]` |
+| `./run-local.sh`, `OLLAMA_MODEL=tinyllama` | both steps; the development layer answered from Ollama, the production layer built with the key from `.env` and sent nothing |
+| `./run-swap.sh` | Anthropic, then OpenAI after the edit; two requests |
+| `./run-council.sh`, piped, with `examples.conf` and with `local-models.conf` | three answers from the paid file, two from the local one |
+| `./run-chat.sh`, piped | a moderated block, a streamed block, and `/tools` calling `now()` through an `AiServices` proxy |
+| `./run-chat.sh` over `llm {}`, and over a moderated block whose `base-url` is a closed port | the new empty-menu prompt; `[moderation failed, question not sent: …]` twice and a clean exit. With the old `ConsoleChat` the second run ended at the first question, `exec:java` reporting the exception |
+
+PIT was not run again: the only code change to core is the rollback in `storeHoldingTheLock`, a
+`finally` with a flag, and `ConfigStoreTest` covers both of its branches.

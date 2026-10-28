@@ -20,10 +20,15 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import dev.langchain4j.community.model.zhipu.ZhipuAiChatModel;
 import dev.langchain4j.model.ModelProvider;
+import dev.langchain4j.model.chat.ChatModel;
+import dev.langchain4j.model.chat.StreamingChatModel;
+import dev.langchain4j.model.chat.listener.ChatModelListener;
+import dev.langchain4j.model.chat.listener.ChatModelRequestContext;
 import io.github.maxtrezzi.modelrack4j.ConfigValidationException;
 import io.github.maxtrezzi.modelrack4j.LlmConfig;
 import io.github.maxtrezzi.modelrack4j.LlmRegistry;
 import io.github.maxtrezzi.modelrack4j.spi.KeyRequirement;
+import io.github.maxtrezzi.modelrack4j.spi.ModelContext;
 import io.github.maxtrezzi.modelrack4j.spi.ProviderFactory;
 import io.github.maxtrezzi.modelrack4j.spi.TokenEstimation;
 import java.io.IOException;
@@ -34,6 +39,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 import java.util.ServiceLoader;
+import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -96,6 +102,37 @@ class GlmProviderFactoryTest {
     }
 
     @Test
+    @DisplayName("listeners from the context reach the chat and the streaming model")
+    void listenersReachEveryModel() throws Exception {
+        // ADR-0063. Against the local port, so each call is real and fails there: a listener
+        // sees the request before it is sent, whatever happens to it afterwards.
+        List<String> seen = new CopyOnWriteArrayList<>();
+        ChatModelListener listener = new ChatModelListener() {
+            @Override
+            public void onRequest(ChatModelRequestContext context) {
+                seen.add("request");
+            }
+        };
+        ModelContext context = ModelContext.of(List.of(listener), List.of());
+
+        try (CountingPort port = new CountingPort()) {
+            LlmConfig config = config(Optional.empty(), false, Optional.of(port.url()));
+            ChatModel chat = factory.createChatModel(config, context);
+            StreamingChatModel streaming =
+                    factory.createStreamingChatModel(config, context).orElseThrow();
+
+            assertThat(chat.listeners()).containsExactly(listener);
+            assertThat(streaming.listeners()).containsExactly(listener);
+            assertThat(factory.createChatModel(config).listeners()).isEmpty();
+            port.assertReachedBy("the chat model", () -> chat.chat("hi"));
+            port.assertReachedBy("the streaming chat model",
+                    () -> CountingPort.streamOnce(streaming));
+        }
+
+        assertThat(seen).containsExactly("request", "request");
+    }
+
+    @Test
     @DisplayName("a block with no api-key is refused by core, before the shape check runs")
     void aMissingKeyIsRefused() {
         // Core's message rather than this factory's: validate() would otherwise split a key
@@ -112,7 +149,7 @@ class GlmProviderFactoryTest {
     void chatModelIsParameterised() {
         var model = factory.createChatModel(config(Optional.of(0.9), false));
 
-        // The builder key is `model`, not `modelName` as in the other three modules; this
+        // The builder key is `model`, not `modelName` as in the other five modules; this
         // asserts the mapping from the schema's model-name actually arrived.
         assertThat(model).isInstanceOf(ZhipuAiChatModel.class);
         assertThat(model.defaultRequestParameters().modelName()).isEqualTo(MODEL);
@@ -147,7 +184,7 @@ class GlmProviderFactoryTest {
                 """))
                 .isInstanceOf(ConfigValidationException.class)
                 .hasMessageContaining("ships no moderation model")
-                .hasMessageContaining("OpenAI");
+                .hasMessageContaining("such as openai or mistral");
     }
 
     @Test

@@ -181,6 +181,17 @@ public final class ConsoleChat {
             List<String> names = List.copyOf(generation.names());
 
             System.out.println();
+            if (names.isEmpty()) {
+                // A configuration with no blocks is valid, and this console invites edits, so
+                // the menu can be empty. "choose 1-0" would ask for something impossible.
+                System.out.print("no models configured: add a block to the file, save, then"
+                        + " press Enter, or " + EXIT_COMMAND + ": ");
+                String line = console.readLine();
+                if (line == null || EXIT_COMMAND.equalsIgnoreCase(line.trim())) {
+                    return Optional.empty();
+                }
+                continue;
+            }
             System.out.println("configured models");
             for (int i = 0; i < names.size(); i++) {
                 var bundle = generation.get(names.get(i));
@@ -304,7 +315,14 @@ public final class ConsoleChat {
                 return Outcome.MENU;
             }
 
-            if (isFlagged(bundle, question)) {
+            try {
+                if (isFlagged(bundle, question)) {
+                    continue;
+                }
+            } catch (RuntimeException e) {
+                // Moderation is a request too, and one that fails should not end the session
+                // any more than a failed answer does. The question is not sent unchecked.
+                System.out.println("  [moderation failed, question not sent: " + e + "]");
                 continue;
             }
             if (throughAiService) {

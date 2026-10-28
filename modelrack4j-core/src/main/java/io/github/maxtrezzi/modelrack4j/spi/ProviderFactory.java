@@ -34,6 +34,13 @@ import java.util.Optional;
  *
  * <p>Implementations must be stateless and safe for concurrent use: one instance serves every
  * configuration naming its provider.
+ *
+ * <p>Each model has two {@code create} methods. Core calls the one that takes a
+ * {@link ModelContext}, which carries the listeners the application registered. The one that
+ * takes only the configuration is what a factory written before {@code 0.4.0} implements, and
+ * the two-argument form delegates to it by default, so such a factory keeps working. A factory
+ * written for this version implements both: the two-argument form builds the model, and the
+ * one-argument form calls it with {@link ModelContext#empty()}.
  */
 public interface ProviderFactory {
 
@@ -87,8 +94,8 @@ public interface ProviderFactory {
      * Returns whether this provider can build a {@code ModerationModel}, which decides
      * whether a block may set {@code moderation.enabled = true}.
      *
-     * <p>Of the providers in this repository, only OpenAI can. Reporting it here rather than
-     * rejecting it in {@link #validate(LlmConfig)} keeps the rule and its message in core,
+     * <p>Of the providers in this repository, OpenAI and Mistral can. Reporting it here rather
+     * than rejecting it in {@link #validate(LlmConfig)} keeps the rule and its message in core,
      * beside the {@link #tokenEstimation()} rules, so every provider refuses the same
      * configuration in the same words.
      *
@@ -118,7 +125,10 @@ public interface ProviderFactory {
     void validate(LlmConfig config);
 
     /**
-     * Builds the chat model. Every bundle has one, so this never returns empty.
+     * Builds the chat model, without listeners.
+     *
+     * <p>Core does not call this; it calls {@link #createChatModel(LlmConfig, ModelContext)}.
+     * Implement it as {@code createChatModel(config, ModelContext.empty())}.
      *
      * @param config the validated configuration
      * @return the chat model, never null
@@ -126,7 +136,30 @@ public interface ProviderFactory {
     ChatModel createChatModel(LlmConfig config);
 
     /**
-     * Builds the streaming chat model, if the configuration asked for one.
+     * Builds the chat model. Every bundle has one, so this never returns empty.
+     *
+     * @param config the validated configuration
+     * @param context the listeners to pass to the model's builder
+     * @return the chat model, never null
+     * @implSpec The default calls {@link #createChatModel(LlmConfig)} and ignores the
+     *     context, which is what keeps a factory written before {@code 0.4.0} working
+     *     unchanged (ADR-0063). Such a factory builds a model without the listeners, and core
+     *     refuses that model when the context had any. A factory that overrides this must
+     *     pass {@link ModelContext#chatModelListeners()} to the builder, and the model's
+     *     {@code listeners()} must report them. A factory that implements the one-argument
+     *     form by calling this one and does not override this one fails here with an
+     *     {@code IllegalStateException} that says so, rather than recursing.
+     */
+    default ChatModel createChatModel(LlmConfig config, ModelContext context) {
+        return DefaultCreate.delegate(this, "createChatModel", () -> createChatModel(config));
+    }
+
+    /**
+     * Builds the streaming chat model, without listeners.
+     *
+     * <p>Core does not call this; it calls
+     * {@link #createStreamingChatModel(LlmConfig, ModelContext)}. Implement it as
+     * {@code createStreamingChatModel(config, ModelContext.empty())}.
      *
      * @param config the validated configuration
      * @return the streaming model, or empty when {@code streaming} is false
@@ -134,8 +167,27 @@ public interface ProviderFactory {
     Optional<StreamingChatModel> createStreamingChatModel(LlmConfig config);
 
     /**
-     * Builds the moderation model, if the configuration asked for one and this provider has
-     * one.
+     * Builds the streaming chat model, if the configuration asked for one.
+     *
+     * @param config the validated configuration
+     * @param context the listeners to pass to the model's builder
+     * @return the streaming model, or empty when {@code streaming} is false
+     * @implSpec The default calls {@link #createStreamingChatModel(LlmConfig)}, for the
+     *     reason given on {@link #createChatModel(LlmConfig, ModelContext)}. The streaming
+     *     model takes the same listeners as the chat model.
+     */
+    default Optional<StreamingChatModel> createStreamingChatModel(
+            LlmConfig config, ModelContext context) {
+        return DefaultCreate.delegate(this, "createStreamingChatModel",
+                () -> createStreamingChatModel(config));
+    }
+
+    /**
+     * Builds the moderation model, without listeners.
+     *
+     * <p>Core does not call this; it calls
+     * {@link #createModerationModel(LlmConfig, ModelContext)}. Implement it as
+     * {@code createModerationModel(config, ModelContext.empty())}.
      *
      * @param config the validated configuration
      * @return the moderation model, or empty
@@ -143,7 +195,27 @@ public interface ProviderFactory {
     Optional<ModerationModel> createModerationModel(LlmConfig config);
 
     /**
+     * Builds the moderation model, if the configuration asked for one and this provider has
+     * one.
+     *
+     * @param config the validated configuration
+     * @param context the listeners to pass to the model's builder
+     * @return the moderation model, or empty
+     * @implSpec The default calls {@link #createModerationModel(LlmConfig)}, for the reason
+     *     given on {@link #createChatModel(LlmConfig, ModelContext)}. A factory that
+     *     overrides this must pass {@link ModelContext#moderationModelListeners()} to the
+     *     builder.
+     */
+    default Optional<ModerationModel> createModerationModel(
+            LlmConfig config, ModelContext context) {
+        return DefaultCreate.delegate(this, "createModerationModel",
+                () -> createModerationModel(config));
+    }
+
+    /**
      * Builds the token count estimator that token-window memory needs.
+     *
+     * <p>It takes no {@link ModelContext}: LangChain4j defines no listener for an estimator.
      *
      * @param config the validated configuration
      * @return the estimator, or empty when {@link #tokenEstimation()} is

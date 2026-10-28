@@ -97,6 +97,7 @@ class ConfigStoreTest {
         private final AtomicReference<String> stored;
         private final AtomicInteger writes = new AtomicInteger();
         private volatile boolean refuseWrites;
+        private volatile Error failWith;
 
         MemoryRow(String text) {
             this.stored = new AtomicReference<>(text);
@@ -118,6 +119,9 @@ class ConfigStoreTest {
                 // The medium failed, not the text: that is what ConfigAccessException means,
                 // and what WritableConfigSource.write tells an implementer to throw.
                 throw new ConfigAccessException("the database is unreachable");
+            }
+            if (failWith != null) {
+                throw failWith;
             }
             writes.incrementAndGet();
             stored.set(text);
@@ -497,6 +501,24 @@ class ConfigStoreTest {
         }
 
         @Test
+        @DisplayName("a write that throws an Error puts the previous configuration back too")
+        void store_whenTheWriteThrowsAnError_rollsBack() {
+            MemoryRow row = new MemoryRow(LAYER);
+
+            try (LlmRegistry<Void> registry = registryOver(row)) {
+                row.failWith = new AssertionError("an assert in the application's write");
+
+                assertThatThrownBy(() -> registry.store(row, LAYER_WITH_SECOND_MODEL))
+                        .isInstanceOf(AssertionError.class)
+                        .hasMessageContaining("an assert");
+
+                assertThat(registry.get("SL").config().modelName()).isEqualTo("first");
+                assertThat(row.text()).isEqualTo(LAYER);
+                assertThat(row.writes).hasValue(0);
+            }
+        }
+
+        @Test
         @DisplayName("a layer this registry does not read cannot be stored through it")
         void store_withAForeignLayer_isRefused() {
             MemoryRow mine = new MemoryRow(LAYER);
@@ -733,6 +755,55 @@ class ConfigStoreTest {
                 assertThat(registry.get("SL").config().modelName()).isEqualTo("first");
             }
             assertThat(stagedFilesUnder(dir)).isEmpty();
+        }
+
+        @Test
+        @DisplayName("an include that does not start a line is recognised too")
+        void store_withAnIncludeInsideBracesThroughASymlink_isRefused() throws IOException {
+            // HOCON allows an include after an opening brace or a comma on the same line. The
+            // check once matched only at the start of a line, so this text was validated
+            // against the sibling next to the link's target and read with the one next to
+            // the link.
+            Path real = writeLayer("data/layer.conf", """
+                    include "provider.conf"
+                    llm { SL { api-key = ${secret}, model-name = "first" } }
+                    """);
+            Path link = dir.resolve("layer.conf");
+            Files.createSymbolicLink(link, real);
+            writeLayer("provider.conf", "llm { SL { provider = fake-local } }");
+            WritableConfigSource target = ConfigSource.ofWritableFile(link);
+            String before = read(real);
+
+            try (LlmRegistry<Void> registry = registryOver(target)) {
+                assertThatThrownBy(() -> registry.store(target, """
+                        { include "provider.conf",
+                          llm { SL { api-key = ${secret}, model-name = "second" } } }
+                        """))
+                        .isInstanceOf(ConfigValidationException.class)
+                        .hasMessageContaining("symbolic link")
+                        .hasMessageContaining("include");
+
+                assertThat(read(real)).isEqualTo(before);
+            }
+            assertThat(stagedFilesUnder(dir)).isEmpty();
+        }
+
+        @Test
+        @DisplayName("a value that only contains the word include is not taken for one")
+        void store_withTheWordIncludeInAValueThroughASymlink_isAccepted() throws IOException {
+            Path real = writeLayer("data/layer.conf", LAYER);
+            Path link = dir.resolve("layer.conf");
+            Files.createSymbolicLink(link, real);
+            WritableConfigSource target = ConfigSource.ofWritableFile(link);
+            String text = LAYER_WITH_SECOND_MODEL.replace("model-name  = \"second\"",
+                    "model-name  = \"second\"\n    description = \"we include the provider here\"");
+
+            try (LlmRegistry<Void> registry = registryOver(target)) {
+                registry.store(target, text);
+
+                assertThat(registry.get("SL").config().description())
+                        .hasValue("we include the provider here");
+            }
         }
 
         @Test

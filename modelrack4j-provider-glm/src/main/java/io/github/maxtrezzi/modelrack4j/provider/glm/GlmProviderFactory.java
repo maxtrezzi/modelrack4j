@@ -24,6 +24,7 @@ import dev.langchain4j.model.moderation.ModerationModel;
 import io.github.maxtrezzi.modelrack4j.ConfigValidationException;
 import io.github.maxtrezzi.modelrack4j.LlmConfig;
 import io.github.maxtrezzi.modelrack4j.spi.KeyRequirement;
+import io.github.maxtrezzi.modelrack4j.spi.ModelContext;
 import io.github.maxtrezzi.modelrack4j.spi.ProviderFactory;
 import io.github.maxtrezzi.modelrack4j.spi.TokenEstimation;
 import java.nio.charset.StandardCharsets;
@@ -43,7 +44,7 @@ import java.util.Optional;
  * sending the key. {@link #validate(LlmConfig)} therefore rejects a key of another shape when
  * the configuration loads, rather than letting it fail on the first request.
  *
- * @implNote Two shape differences from the other three modules are handled here rather than
+ * @implNote Two shape differences from the other five modules are handled here rather than
  *     leaking into the configuration schema: the builder names the model {@code model}
  *     instead of {@code modelName}, and it has no single request timeout.
  */
@@ -121,6 +122,11 @@ public final class GlmProviderFactory implements ProviderFactory {
 
     @Override
     public ChatModel createChatModel(LlmConfig config) {
+        return createChatModel(config, ModelContext.empty());
+    }
+
+    @Override
+    public ChatModel createChatModel(LlmConfig config, ModelContext context) {
         ZhipuAiChatModel.ZhipuAiChatModelBuilder builder = ZhipuAiChatModel.builder()
                 .apiKey(apiKey(config))
                 .model(config.modelName())
@@ -128,6 +134,7 @@ public final class GlmProviderFactory implements ProviderFactory {
                 .readTimeout(config.timeout())
                 .logRequests(config.logRequests())
                 .logResponses(config.logResponses());
+        builder.listeners(context.chatModelListeners());
         config.temperature().ifPresent(builder::temperature);
         config.baseUrl().ifPresent(builder::baseUrl);
         return builder.build();
@@ -135,6 +142,12 @@ public final class GlmProviderFactory implements ProviderFactory {
 
     @Override
     public Optional<StreamingChatModel> createStreamingChatModel(LlmConfig config) {
+        return createStreamingChatModel(config, ModelContext.empty());
+    }
+
+    @Override
+    public Optional<StreamingChatModel> createStreamingChatModel(
+            LlmConfig config, ModelContext context) {
         ZhipuAiStreamingChatModel.ZhipuAiStreamingChatModelBuilder builder =
                 ZhipuAiStreamingChatModel.builder()
                         .apiKey(apiKey(config))
@@ -143,6 +156,7 @@ public final class GlmProviderFactory implements ProviderFactory {
                         .readTimeout(config.timeout())
                         .logRequests(config.logRequests())
                         .logResponses(config.logResponses());
+        builder.listeners(context.chatModelListeners());
         config.temperature().ifPresent(builder::temperature);
         config.baseUrl().ifPresent(builder::baseUrl);
         return Optional.of(builder.build());
@@ -150,8 +164,8 @@ public final class GlmProviderFactory implements ProviderFactory {
 
     @Override
     public Optional<ModerationModel> createModerationModel(LlmConfig config) {
-        // Unreachable through the registry, which calls validate() first. Empty rather than
-        // an exception, so the SPI contract holds if it is ever called directly.
+        // Unreachable through the registry, which refuses moderation for this provider first.
+        // Empty rather than an exception, so the SPI contract holds if it is called directly.
         return Optional.empty();
     }
 

@@ -7,7 +7,7 @@
   <parent>
     <groupId>io.github.maxtrezzi</groupId>
     <artifactId>modelrack4j-parent</artifactId>
-    <version>0.3.0</version>
+    <version>0.4.0</version>
   </parent>
 
   <artifactId>modelrack4j-core</artifactId>
@@ -61,9 +61,14 @@
       <artifactId>slf4j-api</artifactId>
     </dependency>
 
+    <!--
+      Watch tests are inherently asynchronous: poll for the expected state, never sleep. The
+      version is here rather than in the parent's dependencyManagement (ADR-0066).
+    -->
     <dependency>
       <groupId>org.awaitility</groupId>
       <artifactId>awaitility</artifactId>
+      <version>${awaitility.version}</version>
       <scope>test</scope>
     </dependency>
   </dependencies>

@@ -24,6 +24,7 @@ import dev.langchain4j.model.googleai.GoogleAiGeminiTokenCountEstimator;
 import dev.langchain4j.model.moderation.ModerationModel;
 import io.github.maxtrezzi.modelrack4j.LlmConfig;
 import io.github.maxtrezzi.modelrack4j.spi.KeyRequirement;
+import io.github.maxtrezzi.modelrack4j.spi.ModelContext;
 import io.github.maxtrezzi.modelrack4j.spi.ProviderFactory;
 import io.github.maxtrezzi.modelrack4j.spi.TokenEstimation;
 import java.util.Optional;
@@ -83,6 +84,11 @@ public final class GeminiProviderFactory implements ProviderFactory {
 
     @Override
     public ChatModel createChatModel(LlmConfig config) {
+        return createChatModel(config, ModelContext.empty());
+    }
+
+    @Override
+    public ChatModel createChatModel(LlmConfig config, ModelContext context) {
         GoogleAiGeminiChatModel.GoogleAiGeminiChatModelBuilder builder =
                 GoogleAiGeminiChatModel.builder()
                         .apiKey(apiKey(config))
@@ -90,6 +96,7 @@ public final class GeminiProviderFactory implements ProviderFactory {
                         .timeout(config.timeout())
                         .logRequests(config.logRequests())
                         .logResponses(config.logResponses());
+        builder.listeners(context.chatModelListeners());
         config.temperature().ifPresent(builder::temperature);
         config.baseUrl().ifPresent(builder::baseUrl);
         return builder.build();
@@ -97,6 +104,12 @@ public final class GeminiProviderFactory implements ProviderFactory {
 
     @Override
     public Optional<StreamingChatModel> createStreamingChatModel(LlmConfig config) {
+        return createStreamingChatModel(config, ModelContext.empty());
+    }
+
+    @Override
+    public Optional<StreamingChatModel> createStreamingChatModel(
+            LlmConfig config, ModelContext context) {
         GoogleAiGeminiStreamingChatModel.GoogleAiGeminiStreamingChatModelBuilder builder =
                 GoogleAiGeminiStreamingChatModel.builder()
                         .apiKey(apiKey(config))
@@ -104,6 +117,7 @@ public final class GeminiProviderFactory implements ProviderFactory {
                         .timeout(config.timeout())
                         .logRequests(config.logRequests())
                         .logResponses(config.logResponses());
+        builder.listeners(context.chatModelListeners());
         config.temperature().ifPresent(builder::temperature);
         config.baseUrl().ifPresent(builder::baseUrl);
         return Optional.of(builder.build());
@@ -111,8 +125,8 @@ public final class GeminiProviderFactory implements ProviderFactory {
 
     @Override
     public Optional<ModerationModel> createModerationModel(LlmConfig config) {
-        // Unreachable through the registry, which calls validate() first. Empty rather than
-        // an exception, so the SPI contract holds if it is ever called directly.
+        // Unreachable through the registry, which refuses moderation for this provider first.
+        // Empty rather than an exception, so the SPI contract holds if it is called directly.
         return Optional.empty();
     }
 
