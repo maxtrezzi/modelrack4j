@@ -6871,3 +6871,34 @@ says. The notes also change `OpenAiStreamingChatModel` to fail on provider error
 the stream, which that bump's live run should cover. The OSV query over the 41 third-party
 artifacts, repeated the same day on the current tree: nothing.
 
+#### A Java review of what changed since 0.3.0
+
+Asked by the owner on 2026-10-28, over every `.java` file in `git diff v0.3.0..HEAD`, against
+the Java 17 profile.
+
+**One defect, in the SPI: the two `create` methods could call each other.** ADR-0063's
+defaults make `createChatModel(LlmConfig, ModelContext)` call `createChatModel(LlmConfig)`,
+and the Javadoc of the one-argument method tells an implementor to write it as a call to the
+two-argument one. A factory that does that and forgets to override the two-argument method
+compiles — the default has a body — and recurses. A `jshell` probe with such a factory gave
+`StackOverflowError`. That is an `Error`: `build()` let it through, and on the watcher thread a
+reload would have ended the thread in silence, the trap `AGENTS.md` already describes for
+`AbstractMethodError`. `buildBundleReportingLinkage` translates only `LinkageError`.
+
+**Fixed with a guard in `spi.DefaultCreate`**, package-private: each of the three defaults
+runs the one-argument method through it, and a second entry on the same thread throws an
+`IllegalStateException` naming the factory and the method. The thread-local flag is removed in
+`finally`. `FakeRecursiveProviderFactory` reproduces the mistake; three tests in
+`ModelListenersTest` cover `build()`, the streaming and moderation defaults, a reload onto such
+a factory that leaves the previous bundles live, and the flag cleared afterwards on the same
+thread. Disabling the guard failed exactly those three. Core's tests: 259 → 262. PIT on core
+afterwards: 322 mutants, 314 killed, 1 timed out, 6 survived, 1 uncovered, line coverage
+811/845. All seven new mutants — four in `DefaultCreate`, three in the defaults — are killed,
+including the one that removes `ACTIVE.remove()`; the eight not killed are P58's eight.
+
+**Two minor findings, left as they are.** `requireListeners(chatModel.listeners(), …)`
+evaluates `listeners()` even when no listener is registered, harmless with LangChain4j's
+models; and `ModelContext.of` rejects a `null` element through `List.copyOf`'s message-less
+`NullPointerException`, which its Javadoc states and the registry pre-empts with a message of
+its own.
+

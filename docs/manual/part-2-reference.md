@@ -1289,6 +1289,11 @@ context. That keeps a factory written before 0.4.0 working. Such a factory build
 without the listeners, so when an application registers some, core sees that the model does
 not report them and refuses the configuration with a message that names your provider.
 
+**Override the two-argument method whenever you write the one-argument method as a call to
+it.** Otherwise each calls the other through the default. The compiler does not see it,
+because the default has a body; the registry stops it with an `IllegalStateException` that
+names the factory and the method, instead of a `StackOverflowError`.
+
 **Report a capability; do not enforce it.** `tokenEstimation()`, `supportsModeration()`,
 `apiKeyRequirement()` and `baseUrlRequirement()` say what your provider can do and needs, and
 core turns each into the rejection and the message. So

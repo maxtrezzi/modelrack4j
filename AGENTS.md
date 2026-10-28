@@ -520,7 +520,13 @@ factories the project does not own, the same role `requireProduced` plays for
 `supportsModeration()`. The listeners come from functions on `LlmRegistry.Builder`, called per
 bundle built, and never enter `LlmConfig`, for the reason ADR-0055 keeps the parsed custom
 properties out of it. The next thing a factory needs from the registry goes on `ModelContext`,
-which is a class rather than a record so that adding to it breaks nobody.
+which is a class rather than a record so that adding to it breaks nobody. **The defaults go
+through `spi.DefaultCreate`, and that is not removable either**: a factory that writes the
+one-argument method as a call to the two-argument one, as the Javadoc advises, and forgets to
+override the latter, makes the pair call each other, and the compiler accepts it. Unguarded it
+was a `StackOverflowError` — an `Error`, which the watcher loop does not catch, the same trap as
+`AbstractMethodError` above; the guard turns it into an `IllegalStateException` that names the
+method (P59).
 
 **A block's custom properties are text in `LlmConfig` and an object on `LlmBundle`
 (ADR-0055).** The `custom-properties` sub-block is rendered from the merged configuration with

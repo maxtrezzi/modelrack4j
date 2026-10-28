@@ -25,15 +25,20 @@ import dev.langchain4j.model.chat.response.ChatResponse;
 import dev.langchain4j.model.chat.response.StreamingChatResponseHandler;
 import dev.langchain4j.model.moderation.listener.ModerationModelListener;
 import dev.langchain4j.model.moderation.listener.ModerationModelRequestContext;
+import io.github.maxtrezzi.modelrack4j.spi.ModelContext;
 import io.github.maxtrezzi.modelrack4j.testing.FakeCountingProviderFactory;
+import io.github.maxtrezzi.modelrack4j.testing.FakePreContextProviderFactory;
+import io.github.maxtrezzi.modelrack4j.testing.FakeRecursiveProviderFactory;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.DisplayName;
@@ -359,6 +364,60 @@ class ModelListenersTest {
 
             assertThat(registry.get("SL").streamingChatModel()).isPresent();
             assertThat(registry.get("SL").moderationModel()).isPresent();
+        }
+    }
+
+    @Test
+    @DisplayName("create methods that call each other fail with a message, not a stack overflow")
+    void mutuallyRecursiveCreateMethodsAreRefused() throws IOException {
+        // fake-recursive writes the one-argument method as the SPI advises and forgets to
+        // override the two-argument one, so each calls the other. Unguarded that was a
+        // StackOverflowError, an Error that build() and the watcher's reload do not catch.
+        Path file = write("app.conf",
+                "llm.SL { provider = fake-recursive, api-key = \"k\", model-name = \"m\" }\n");
+
+        assertThatThrownBy(() -> LlmRegistry.builder().configFiles(List.of(file)).build())
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("Provider factory " + FakeRecursiveProviderFactory.class.getName()
+                        + " implements createChatModel(LlmConfig) by calling"
+                        + " createChatModel(LlmConfig, ModelContext), which it does not"
+                        + " override, so each method calls the other. Override the"
+                        + " two-argument method.");
+    }
+
+    @Test
+    @DisplayName("the guard covers the streaming and the moderation defaults too")
+    void theGuardCoversEveryDefault() {
+        var factory = new FakeRecursiveProviderFactory();
+        LlmConfig config = new LlmConfig("SL", Optional.empty(), "fake-recursive",
+                Optional.empty(), Optional.empty(), "m", Optional.empty(), Duration.ofSeconds(1),
+                false, false, true, Optional.empty(), true, "{}");
+
+        assertThatThrownBy(() -> factory.createStreamingChatModel(config, ModelContext.empty()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("createStreamingChatModel(LlmConfig) by calling");
+        assertThatThrownBy(() -> factory.createModerationModel(config, ModelContext.empty()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("createModerationModel(LlmConfig) by calling");
+        // The flag is cleared on the way out, so a legitimate default on the same thread, as
+        // a pooled watcher thread runs one reload after another, is not refused afterwards.
+        assertThat(new FakePreContextProviderFactory()
+                .createChatModel(config, ModelContext.empty())).isNotNull();
+    }
+
+    @Test
+    @DisplayName("a reload onto such a factory is rejected, and the previous bundles stay live")
+    void aReloadOntoARecursiveFactoryIsRejected() throws IOException {
+        Path file = write("app.conf", TWO_BLOCKS);
+
+        try (LlmRegistry<Void> registry =
+                LlmRegistry.builder().configFiles(List.of(file)).build()) {
+            Files.writeString(file, TWO_BLOCKS.replace(
+                    "SH { provider = fake-local", "SH { provider = fake-recursive"),
+                    StandardCharsets.UTF_8);
+
+            assertThatThrownBy(registry::reload).isInstanceOf(IllegalStateException.class);
+            assertThat(registry.get("SH").config().provider()).isEqualTo("fake-local");
         }
     }
 

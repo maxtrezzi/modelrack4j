@@ -57,7 +57,9 @@ will not be held back for a major bump until the API settles at `1.0.0`.
   the old ones. Such a factory builds its models without the listeners, so when an application
   registers listeners, the registry sees that a model does not report them and refuses the
   configuration with a message that names the provider. To support listeners, override the
-  new methods and pass the listeners to each model's builder. Checked with the released
+  new methods and pass the listeners to each model's builder. A factory that writes the old
+  method as a call to the new one and forgets to override the new one is refused with an
+  `IllegalStateException` naming the method, rather than recursing. Checked with the released
   `modelrack4j-provider-openai` `0.3.0`: on this version's core it builds every model as
   before, and is refused, with that message, only when listeners are registered.
 
