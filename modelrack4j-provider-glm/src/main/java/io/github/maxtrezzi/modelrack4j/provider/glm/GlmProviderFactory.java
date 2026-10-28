@@ -44,7 +44,7 @@ import java.util.Optional;
  * sending the key. {@link #validate(LlmConfig)} therefore rejects a key of another shape when
  * the configuration loads, rather than letting it fail on the first request.
  *
- * @implNote Two shape differences from the other three modules are handled here rather than
+ * @implNote Two shape differences from the other five modules are handled here rather than
  *     leaking into the configuration schema: the builder names the model {@code model}
  *     instead of {@code modelName}, and it has no single request timeout.
  */
@@ -164,8 +164,8 @@ public final class GlmProviderFactory implements ProviderFactory {
 
     @Override
     public Optional<ModerationModel> createModerationModel(LlmConfig config) {
-        // Unreachable through the registry, which calls validate() first. Empty rather than
-        // an exception, so the SPI contract holds if it is ever called directly.
+        // Unreachable through the registry, which refuses moderation for this provider first.
+        // Empty rather than an exception, so the SPI contract holds if it is called directly.
         return Optional.empty();
     }
 

@@ -95,6 +95,11 @@ will not be held back for a major bump until the API settles at `1.0.0`.
   error of that kind from your own code while a reload is built — a custom-properties handler,
   a listener function, a `ConfigSource`. If the watcher thread stops anyway, it now says so in
   your logs.
+- **A `store()` whose `write()` throws an `Error` now puts the previous configuration back.**
+  The new configuration is applied before the layer is written, and only an exception undid
+  that. An `AssertionError` or a `LinkageError` from your own `WritableConfigSource.write()`
+  left the new configuration live although nothing was stored, so what the application ran
+  and what the layer held disagreed until the next reload.
 - **`store()` now recognises an `include` that does not start a line**, such as
   `llm { include "a.conf" }`. For a layer reached through a symbolic link, a text using that
   form was validated against the file next to the link's target, while it is read with the

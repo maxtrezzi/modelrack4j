@@ -202,14 +202,14 @@ final class SnapshotLoader<T> {
      * @implNote A {@code LinkageError} — a {@code NoSuchMethodError} or
      *     {@code NoClassDefFoundError} from a provider jar built against another version of
      *     this library or of LangChain4j — is an {@code Error}, and {@code LlmRegistry.reload()}
-     *     and the watcher loop catch only {@code RuntimeException}. Left alone it escapes a
-     *     reload with no log line and no failure listener, and on the watcher thread it ends
-     *     the thread, so every later edit is ignored. That was measured for one subclass,
-     *     {@code AbstractMethodError}, with the released {@code 0.2.0} OpenAI provider; the
-     *     path is the same for all of them. Translating is safe here: a linkage error is fixed
-     *     by the classes that were loaded, it does not signal a broken VM, and it concerns this
-     *     one provider. {@link #requirementOf} catches the most likely case first, with a
-     *     message that names the method.
+     *     catches only {@code RuntimeException}. Left alone it escapes a reload with no WARN
+     *     line and no failure listener. That was measured for one subclass,
+     *     {@code AbstractMethodError}, with the released {@code 0.2.0} OpenAI provider, which
+     *     on the watcher thread also ended the thread; the path is the same for all of them.
+     *     Translating is safe here: a linkage error is fixed by the classes that were loaded,
+     *     it does not signal a broken VM, and it concerns this one provider.
+     *     {@link #requirementOf} catches the most likely case first, with a message that names
+     *     the method.
      */
     private LlmBundle<T> buildBundleReportingLinkage(LlmConfig config) {
         try {
@@ -502,10 +502,10 @@ final class SnapshotLoader<T> {
      * @throws ConfigValidationException if the factory does not implement the method
      * @implNote The two methods have no default (ADR-0062), so a factory compiled against
      *     {@code 0.2.0} throws {@code AbstractMethodError} here. That is an {@code Error}, and
-     *     both {@code LlmRegistry.reload()} and the watcher loop catch only
-     *     {@code RuntimeException}: left alone, it escaped a reload with no log line and no
-     *     failure listener, and on the watcher thread it ended the thread, so every later
-     *     edit was ignored in silence. Measured with the released {@code 0.2.0} OpenAI
+     *     {@code LlmRegistry.reload()} catches only {@code RuntimeException}: left alone, it
+     *     escaped a reload with no WARN line and no failure listener, and on the watcher thread
+     *     it ended the thread, so every later edit was ignored in silence. Measured with the
+     *     released {@code 0.2.0} OpenAI
      *     provider, added by a reload to a registry that had started without it. Translating
      *     it is safe: a linkage error is fixed by the class that was loaded, not a sign of a
      *     broken VM, and it can only mean this one factory is out of date.

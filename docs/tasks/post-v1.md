@@ -7008,3 +7008,61 @@ timed out, 6 survived, 1 uncovered**, line coverage 810/844. The eight are the e
 The run has one mutant fewer than the last, the one in the removed `MemoryConfig.unknownType`;
 the new message in `LlmConfig` is killed, and the two catches give PIT nothing to mutate.
 `ConfigWatcher` is excluded from mutation, so its handler is covered by `ReloadTest` only.
+
+#### A second Java review of the whole code base, and every test again, 2026-10-28
+
+Asked by the owner once the three fixes above were committed: review everything again, fix,
+re-run every test, check the documentation and run the examples. All production code read
+again, about 8 300 lines, against the Java 17 profile. One defect in the library, two in an
+example, and twelve passages that later code had made untrue.
+
+- **A `store()` whose `write()` threw an `Error` left the new snapshot live with nothing
+  stored.** `storeHoldingTheLock` publishes before it commits, and put the previous snapshot
+  back in a `catch (RuntimeException)`. An `AssertionError` or a `LinkageError` from an
+  application's own `WritableConfigSource.write()` skipped it, which breaks the contract the
+  method's name states. The rollback is now in a `finally` guarded by a flag, the idiom
+  `WritableFileConfigSource.write` already uses. `ConfigStoreTest` gained
+  `store_whenTheWriteThrowsAnError_rollsBack`; with the old catch it failed on
+  `expected: "first"`.
+- **Two `@implNote`s in `SnapshotLoader` said the watcher loop catches only
+  `RuntimeException`**, which the fix above made false. They now say that `reload()` does, and
+  what that still costs: no WARN line and no failure listener. `AGENTS.md` said the same, and
+  its P59 paragraph had been inserted between a sentence and the `ConfigValidationException` it
+  referred to; both are fixed, and the paragraph names the `finally` in `storeHoldingTheLock`.
+  Its `DefaultCreate` paragraph called a `StackOverflowError` "the same trap as
+  `AbstractMethodError`", which the watcher now survives; it says `VirtualMachineError` instead.
+- **Three providers said moderation is refused by `validate()`.** Anthropic, Gemini and GLM:
+  `createModerationModel` was "unreachable through the registry, which calls validate()
+  first", true before P27 moved the rule to core. They now say what Ollama's already said.
+- **Four passages written when there were fewer modules or examples.** `GlmProviderFactory` and
+  its test compared GLM with "the other three modules" (five now); `GeminiProviderIT` said it
+  was the only module without a model-name enum, and Ollama has none either; and
+  `AtomicSnapshot` said it and `DatabaseSource` were "the two examples that run anywhere ...
+  the other three call a paid API", written when there were five.
+- **`ConsoleChat`: a moderation request that failed ended the session**, outside the `try`
+  that keeps one failed answer from doing so. It is now caught, and the question is not sent
+  unchecked. **And an empty configuration printed "choose 1-0"**: the menu now says to add a
+  block and press Enter.
+
+Left as they are, both minor: a reload whose own code throws an `Error` is logged by the
+watcher but reaches no failure listener, because `ReloadFailure.cause` is an `Exception` and
+changing that is an API change; and the examples that write a temporary directory leave it
+behind, as they always have.
+
+Everything run again after these fixes, on AMD Ryzen 7 7840HS, Temurin 25, Maven 3.8.7:
+
+| Run | Result |
+|---|---|
+| `mvn clean install` | green, 358 offline tests: core 267, OpenAI, Anthropic and Gemini 13 each, GLM 26, Ollama 12, Mistral 12, examples 2 |
+| `mvn -Pintegration verify`, keys from `.env`, Ollama in its container with `tinyllama` | green; all six `*IT` ran, none skipped, each with a chat call, a streaming call and the listener events, OpenAI and Mistral also moderating |
+| `build/check-docs.py` | clean, 66 ADRs and 82 tracked markdown files |
+| The released `modelrack4j-provider-openai-0.3.0.jar` beside this core | builds a block with streaming and moderation through the guarded defaults; with a chat model listener registered it is refused with `requireListeners`' message |
+| `./run-atomic.sh`, `./run-database.sh`, `./run-properties.sh` | green; output as the README and the reference describe it. Atomic: no tear either way, one reload of `[SH, SL]` |
+| `./run-local.sh`, `OLLAMA_MODEL=tinyllama` | both steps; the development layer answered from Ollama, the production layer built with the key from `.env` and sent nothing |
+| `./run-swap.sh` | Anthropic, then OpenAI after the edit; two requests |
+| `./run-council.sh`, piped, with `examples.conf` and with `local-models.conf` | three answers from the paid file, two from the local one |
+| `./run-chat.sh`, piped | a moderated block, a streamed block, and `/tools` calling `now()` through an `AiServices` proxy |
+| `./run-chat.sh` over `llm {}`, and over a moderated block whose `base-url` is a closed port | the new empty-menu prompt; `[moderation failed, question not sent: …]` twice and a clean exit. With the old `ConsoleChat` the second run ended at the first question, `exec:java` reporting the exception |
+
+PIT was not run again: the only code change to core is the rollback in `storeHoldingTheLock`, a
+`finally` with a flag, and `ConfigStoreTest` covers both of its branches.

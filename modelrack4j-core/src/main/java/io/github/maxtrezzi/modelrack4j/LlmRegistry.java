@@ -601,13 +601,18 @@ public final class LlmRegistry<T> implements AutoCloseable {
             ReloadChange change = ReloadChange.between(previous, next);
 
             bundles = next;   // published, but nobody is told: this is the caller's change
+            boolean stored = false;
             try {
                 staged.commit();
-            } catch (RuntimeException notStored) {
+                stored = true;
+            } finally {
                 // Back to exactly the state before the store. Nothing was announced, so
-                // nothing has to be un-announced.
-                bundles = previous;
-                throw notStored;
+                // nothing has to be un-announced. A finally rather than a catch: an Error
+                // from an application's write() — an assert, a missing class — would
+                // otherwise leave this snapshot live with nothing stored behind it.
+                if (!stored) {
+                    bundles = previous;
+                }
             }
             return change.isEmpty() ? Optional.empty() : Optional.of(change);
         } finally {

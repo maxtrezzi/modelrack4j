@@ -48,9 +48,9 @@ import org.junit.jupiter.api.io.TempDir;
  * {@code -Pintegration}, and the annotation below skips the class when the key is absent, so
  * running the profile with only one provider configured skips the rest rather than failing.
  *
- * @implNote Unlike the other three modules, this one ships no model-name enum, so the name
- *     below could not be checked against the artifact and is the one place in this module
- *     where a live call is the only verification available.
+ * @implNote Like the Ollama module and unlike the other four, this one ships no model-name
+ *     enum, so the name below could not be checked against the artifact and is the one place
+ *     in this module where a live call is the only verification available.
  */
 @EnabledIfEnvironmentVariable(named = "GEMINI_API_KEY", matches = ".+")
 class GeminiProviderIT {

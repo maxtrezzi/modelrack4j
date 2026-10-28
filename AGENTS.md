@@ -484,20 +484,24 @@ in a provider's `validate()` — that is only for a rule core cannot see. **The 
 methods have no default, and must not get one**: a default of `MANDATORY` would refuse every
 block of a keyless provider that forgot to override it, which trades a compile error for a
 wrong answer. The price of no default is that a factory compiled against `0.2.0` throws
-`AbstractMethodError`, an `Error` that `reload()` and the watcher loop do not catch — it once
-ended the watcher thread in silence. **`SnapshotLoader.requirementOf` translates it into a
-`ConfigValidationException`, and `buildBundleReportingLinkage` does the same for any
-`LinkageError` a factory raises while its bundle is built; do not remove either, and do not
-widen the catch to `Error`** — a linkage error belongs to one provider's classes, an
-`OutOfMemoryError` does not. **The one deliberate exception is application code run by a
-reload:** `LlmRegistry.notify` and `ConfigWatcher.reloadIfQuiet` catch `RuntimeException`,
-`LinkageError` and `AssertionError`, because a listener that failed an `assert` or reached a
-missing class otherwise ended the watcher thread, and with it hot reload, with nothing in the
-application's logs (P59). `VirtualMachineError` still propagates there too, and the watcher
-thread has an uncaught-exception handler that logs if it dies anyway. It is a `ConfigValidationException` rather than a new type
-because that is what a rejected reload is reported as; it stretches ADR-0053's "read something
-and objected" a little, since the objection is to the provider rather than to the text. P27 emptied the three `validate()` bodies that had been restating a capability;
-P25 then gave GLM's real work, and P48 gave OpenAI's one rule, so **four of the six are empty
+`AbstractMethodError`, an `Error` that `reload()` does not catch — it once ended the watcher
+thread in silence, and it still bypasses the WARN line and the failure listeners.
+**`SnapshotLoader.requirementOf` translates it into a `ConfigValidationException`, and
+`buildBundleReportingLinkage` does the same for any `LinkageError` a factory raises while its
+bundle is built; do not remove either, and do not widen the catch to `Error`** — a linkage
+error belongs to one provider's classes, an `OutOfMemoryError` does not. It is a
+`ConfigValidationException` rather than a new type because that is what a rejected reload is
+reported as; it stretches ADR-0053's "read something and objected" a little, since the
+objection is to the provider rather than to the text. **The one deliberate exception is
+application code run by a reload or a store:** `LlmRegistry.notify` and
+`ConfigWatcher.reloadIfQuiet` catch `RuntimeException`, `LinkageError` and `AssertionError`,
+because a listener that failed an `assert` or reached a missing class otherwise ended the
+watcher thread, and with it hot reload, with nothing in the application's logs (P59).
+`VirtualMachineError` still propagates there too, and the watcher thread has an
+uncaught-exception handler that logs if it dies anyway. `storeHoldingTheLock` puts the previous
+snapshot back in a `finally`, so a `write()` that throws any `Error` cannot leave a snapshot
+live that was never stored. P27 emptied the three `validate()` bodies that had been restating a
+capability; P25 then gave GLM's real work, and P48 gave OpenAI's one rule, so **four of the six are empty
 and GLM's and OpenAI's are not**. OpenAI's refuses a block with neither `api-key` nor
 `base-url`, because only that factory knows no address means `api.openai.com`; it is the one
 key rule that stays in a provider. **`base-url` goes to every builder a factory calls for the
@@ -529,8 +533,8 @@ which is a class rather than a record so that adding to it breaks nobody. **The 
 through `spi.DefaultCreate`, and that is not removable either**: a factory that writes the
 one-argument method as a call to the two-argument one, as the Javadoc advises, and forgets to
 override the latter, makes the pair call each other, and the compiler accepts it. Unguarded it
-was a `StackOverflowError` — an `Error`, which the watcher loop does not catch, the same trap as
-`AbstractMethodError` above; the guard turns it into an `IllegalStateException` that names the
+was a `StackOverflowError` — a `VirtualMachineError`, which even the watcher loop does not
+catch; the guard turns it into an `IllegalStateException` that names the
 method (P59).
 
 **A block's custom properties are text in `LlmConfig` and an object on `LlmBundle`

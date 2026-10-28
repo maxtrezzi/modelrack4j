@@ -97,6 +97,7 @@ class ConfigStoreTest {
         private final AtomicReference<String> stored;
         private final AtomicInteger writes = new AtomicInteger();
         private volatile boolean refuseWrites;
+        private volatile Error failWith;
 
         MemoryRow(String text) {
             this.stored = new AtomicReference<>(text);
@@ -118,6 +119,9 @@ class ConfigStoreTest {
                 // The medium failed, not the text: that is what ConfigAccessException means,
                 // and what WritableConfigSource.write tells an implementer to throw.
                 throw new ConfigAccessException("the database is unreachable");
+            }
+            if (failWith != null) {
+                throw failWith;
             }
             writes.incrementAndGet();
             stored.set(text);
@@ -489,6 +493,24 @@ class ConfigStoreTest {
                 assertThatThrownBy(() -> registry.store(row, LAYER_WITH_SECOND_MODEL))
                         .isInstanceOf(ConfigAccessException.class)
                         .hasMessageContaining("unreachable");
+
+                assertThat(registry.get("SL").config().modelName()).isEqualTo("first");
+                assertThat(row.text()).isEqualTo(LAYER);
+                assertThat(row.writes).hasValue(0);
+            }
+        }
+
+        @Test
+        @DisplayName("a write that throws an Error puts the previous configuration back too")
+        void store_whenTheWriteThrowsAnError_rollsBack() {
+            MemoryRow row = new MemoryRow(LAYER);
+
+            try (LlmRegistry<Void> registry = registryOver(row)) {
+                row.failWith = new AssertionError("an assert in the application's write");
+
+                assertThatThrownBy(() -> registry.store(row, LAYER_WITH_SECOND_MODEL))
+                        .isInstanceOf(AssertionError.class)
+                        .hasMessageContaining("an assert");
 
                 assertThat(registry.get("SL").config().modelName()).isEqualTo("first");
                 assertThat(row.text()).isEqualTo(LAYER);

@@ -149,7 +149,7 @@ class GlmProviderFactoryTest {
     void chatModelIsParameterised() {
         var model = factory.createChatModel(config(Optional.of(0.9), false));
 
-        // The builder key is `model`, not `modelName` as in the other three modules; this
+        // The builder key is `model`, not `modelName` as in the other five modules; this
         // asserts the mapping from the schema's model-name actually arrived.
         assertThat(model).isInstanceOf(ZhipuAiChatModel.class);
         assertThat(model.defaultRequestParameters().modelName()).isEqualTo(MODEL);
